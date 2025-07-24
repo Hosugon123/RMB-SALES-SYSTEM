@@ -11,9 +11,9 @@ from flask_login import UserMixin
 from flask import request, jsonify
 import psycopg2
 from psycopg2.extras import DictCursor
-from flask import g
+from flask import Flask
 from . import db
-from .models import Transaction
+from models import Transaction
 from datetime import datetime
 from flask_login import current_user, login_required
 
@@ -107,6 +107,26 @@ def init_db():
                 cursor.execute("INSERT INTO cash_accounts (account_name, currency) VALUES (?, ?)", (name, currency))
         
         conn.commit()
+
+def create_app():
+    app = Flask(__name__)
+    
+    # ... 您所有原本在全域範圍內的 app.config, db.init_app(app) 等設定...
+    # ... 您所有原本在全域範圍內的藍圖註冊 (app.register_blueprint) ...
+    
+    # 將您的路由和其他函式也定義或匯入到這個函式內部
+    
+    with app.app_context():
+        # 如果需要，在這裡初始化資料庫
+        from . import db
+        db.init_db()
+
+    return app
+
+# 在檔案的最底部，我們可以保留這個，方便本機測試
+if __name__ == '__main__':
+    app = create_app()
+    app.run(debug=True)
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
