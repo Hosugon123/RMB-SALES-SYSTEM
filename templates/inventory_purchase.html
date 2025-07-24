@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2 class="mb-4">進貨管理頁面</h2>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">幣種換算與進貨記錄</h5>
+        </div>
+        <div class="card-body">
+            <p class="card-text">當前人民幣買入匯率 (我們向外買入): <strong class="fs-5">NTD {{ "%.4f"|format(current_buy_rate) }}</strong></p>
+            <p class="card-text">當前人民幣賣出匯率 (我們向客戶賣出): <strong class="fs-5">NTD {{ "%.4f"|format(current_sell_rate) }}</strong></p>
+            <hr>
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="purchase_currency" class="form-label">輸入幣種:</label>
+                    <select class="form-select" id="purchase_currency" name="purchase_currency" required>
+                        <option value="TWD">台幣 (TWD)</option>
+                        <option value="RMB">人民幣 (RMB)</option>
+                        <option value="USD">美金 (USD)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="purchase_amount" class="form-label">輸入金額:</label>
+                    <input type="number" class="form-control" id="purchase_amount" name="purchase_amount" step="0.01" min="0.01" required value="{{ input_amount if input_amount else '' }}">
+                </div>
+                <div class="mb-3">
+                    <label for="target_currency" class="form-label">換算目標幣種:</label>
+                    <select class="form-select" id="target_currency" name="target_currency" required>
+                        <option value="RMB">人民幣 (RMB)</option>
+                        <option value="TWD">台幣 (TWD)</option>
+                        <option value="USD">美金 (USD)</option>
+                    </select>
+                </div>
+                <div class="d-grid mb-3">
+                    <button type="submit" class="btn btn-info text-white">進行換算</button>
+                </div>
+            </form>
+
+            {% if converted_amount is not none %}
+                <div class="alert alert-success mt-3" role="alert">
+                    換算結果：<strong class="fs-5">{{ "%.2f"|format(input_amount) }} {{ input_currency }}</strong> = <strong class="fs-5">{{ "%.2f"|format(converted_amount) }} {{ output_currency }}</strong>
+                </div>
+            {% endif %}
+
+            <hr>
+            <p class="text-muted">此頁面僅提供換算功能。實際進貨記錄和資金流動，請根據您的業務流程手動記錄到相關帳戶或總賬。</p>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}售出錄入{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- 左側：創建新訂單 -->
+        <div class="col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0 fw-light"><i class="bi bi-pencil-square me-2"></i>創建新訂單</h4>
+                    <small>為客戶建立一筆新的售出訂單</small>
+                </div>
+                <div class="card-body">
+                    <form id="create-order-form">
+                        <input type="hidden" name="action" value="create_order">
+                        <input type="hidden" id="customer-id-hidden" name="user_id">
+                        
+                        <!-- 常用客戶 -->
+                        <div class="mb-3">
+                            <label for="customer-select" class="form-label">常用客戶</label>
+                            <div class="input-group">
+                                <select id="customer-select" class="form-select">
+                                    <option value="">從常用客戶選擇...</option>
+                                    {% for customer in customers %}
+                                    <option value="{{ customer.id }}">{{ customer.username }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-outline-primary" type="button" id="confirm-customer-btn">
+                                    <i class="bi bi-check-lg"></i> 確認
+                                </button>
+                                <button class="btn btn-outline-danger" type="button" id="delete-customer-btn" title="從常用列表中移除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 客戶名稱 -->
+                        <div class="mb-3">
+                            <label for="customer-name-input" class="form-label">客戶名稱</label>
+                            <div class="input-group">
+                                <input type="text" id="customer-name-input" name="customer_name" class="form-control" placeholder="手動輸入或從上方帶入" required>
+                                <button class="btn btn-outline-secondary" type="button" id="add-customer-btn">
+                                    <i class="bi bi-person-plus"></i> 新增至常用
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 訂單日期 -->
+                        <div class="mb-3">
+                            <label for="order-date" class="form-label">訂單日期</label>
+                            <input type="date" id="order-date" name="order_date" class="form-control" value="{{ today }}">
+                        </div>
+
+                        <!-- 售出匯率 & 售出金額 -->
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="exchange-rate" class="form-label">售出匯率</label>
+                                <input type="number" id="exchange-rate" name="exchange_rate" class="form-control" step="0.0001" value="{{ sell_rate }}" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="rmb-sell-amount" class="form-label">售出金額 (RMB)</label>
+                                <input type="number" id="rmb-sell-amount" name="rmb_sell_amount" class="form-control" step="0.01" placeholder="¥" required>
+                            </div>
+                        </div>
+
+                        <!-- 應收金額 (TWD) -->
+                        <div class="alert alert-success text-center">
+                            <h6 class="text-success-emphasis mb-1">應收 (TWD)</h6>
+                            <h2 id="twd-receivable" class="fw-bold mb-0">NT$ 0.00</h2>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-plus-circle me-2"></i>確認創建訂單
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側：待收款列表 -->
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h4 class="mb-0 fw-light"><i class="bi bi-hourglass-split me-2"></i>待收款列表</h4>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="pending-sales-table">
+                            <thead>
+                                <tr>
+                                    <th>客戶</th>
+                                    <th>售出 (RMB)</th>
+                                    <th>應收 (TWD)</th>
+                                    <th>日期</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sale in pending_sales %}
+                                <tr id="tx-row-{{ sale.id }}">
+                                    <td>{{ sale.username }}</td>
+                                    <td>{{ "%.2f"|format(sale.rmb_order_amount) }}</td>
+                                    <td>{{ "%.2f"|format(sale.twd_expected_payment) }}</td>
+                                    <td>{{ sale.order_time.split(' ')[0] }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-danger btn-delete-order" data-tx-id="{{ sale.id }}">刪除</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000
+    });
+
+    // --- DOM 元素宣告 ---
+    const customerSelect = document.getElementById('customer-select');
+    const customerNameInput = document.getElementById('customer-name-input');
+    const customerIdHidden = document.getElementById('customer-id-hidden');
+    
+    const confirmCustomerBtn = document.getElementById('confirm-customer-btn');
+    const addCustomerBtn = document.getElementById('add-customer-btn');
+    const deleteCustomerBtn = document.getElementById('delete-customer-btn');
+    
+    const exchangeRateInput = document.getElementById('exchange-rate');
+    const rmbAmountInput = document.getElementById('rmb-sell-amount');
+    const twdReceivableDisplay = document.getElementById('twd-receivable');
+    
+    const createOrderForm = document.getElementById('create-order-form');
+    const pendingSalesTableBody = document.querySelector("#pending-sales-table tbody");
+
+    // --- 核心邏輯區 ---
+
+    // 1. 【全新】新增常用客戶 (移植自成功經驗)
+    addCustomerBtn.addEventListener('click', function () {
+        const newName = customerNameInput.value.trim();
+        if (!newName) {
+            Swal.fire('錯誤', '請在「客戶名稱」欄位輸入要新增的名稱。', 'warning');
+            return;
+        }
+
+        fetch("{{ url_for('add_customer_ajax') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: newName })
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.status !== 'success') {
+                throw new Error(res.message);
+            }
+            
+            Toast.fire({ icon: 'success', title: res.message });
+
+            // 檢查下拉選單中是否已存在此選項，避免重複添加
+            if (!customerSelect.querySelector(`option[value='${res.customer.id}']`)) {
+                 const newOption = new Option(res.customer.username, res.customer.id, true, true);
+                 customerSelect.appendChild(newOption);
+            }
+            customerSelect.value = res.customer.id; // 自動選中
+        })
+        .catch(error => {
+            Swal.fire('新增失敗', error.message || '伺服器錯誤', 'error');
+        });
+    });
+
+    // 2. 【全新】刪除常用客戶 (移植自成功經驗)
+    deleteCustomerBtn.addEventListener('click', function () {
+        const selectedOption = customerSelect.options[customerSelect.selectedIndex];
+        const customerId = selectedOption.value;
+        const customerName = selectedOption.text;
+
+        if (!customerId) {
+            Swal.fire('提示', '請先從下拉選單中選擇要移除的客戶。', 'info');
+            return;
+        }
+
+        Swal.fire({
+            title: `確定要從常用列表移除 "${customerName}" 嗎?`,
+            text: "此操作只會將其隱藏，不會刪除歷史訂單。",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '是的，移除',
+            cancelButtonText: '取消'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch("{{ url_for('delete_customer_ajax') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ customer_id: customerId })
+                })
+                .then(response => response.json())
+                .then(res => {
+                    if (res.status !== 'success') {
+                        throw new Error(res.message);
+                    }
+                    
+                    selectedOption.remove();
+                    customerNameInput.value = '';
+                    customerIdHidden.value = '';
+                    Swal.fire('已移除!', res.message, 'success');
+                })
+                .catch(error => {
+                    Swal.fire('移除失敗', error.message || '伺服器錯誤', 'error');
+                });
+            }
+        });
+    });
+    
+    // 3. 從下拉選單確認客戶
+    confirmCustomerBtn.addEventListener('click', function () {
+        const selectedOption = customerSelect.options[customerSelect.selectedIndex];
+        if (selectedOption.value) {
+            customerNameInput.value = selectedOption.text;
+            customerIdHidden.value = selectedOption.value;
+            Toast.fire({ icon: 'info', title: `已帶入客戶: ${selectedOption.text}` });
+        } else {
+            Swal.fire('提示', '請先從下拉選單中選擇一個常用客戶。', 'info');
+        }
+    });
+
+    // 4. 即時計算應收金額
+    function calculateReceivable() {
+        const rate = parseFloat(exchangeRateInput.value) || 0;
+        const rmb = parseFloat(rmbAmountInput.value) || 0;
+        const twd = rate * rmb;
+        twdReceivableDisplay.textContent = `NT$ ${twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    exchangeRateInput.addEventListener('input', calculateReceivable);
+    rmbAmountInput.addEventListener('input', calculateReceivable);
+
+    // 5. 提交創建訂單表單
+    createOrderForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // 如果是從下拉選單選的，確保隱藏的ID有值
+        if (customerSelect.value) {
+            customerIdHidden.value = customerSelect.value;
+        } else {
+            customerIdHidden.value = ''; // 如果是手動輸入，清空ID，讓後端處理
+        }
+
+        fetch("{{ url_for('admin_sales_action') }}", {
+            method: 'POST',
+            body: new FormData(this)
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.status !== 'success') {
+                 throw new Error(res.message);
+            }
+            Toast.fire({ icon: 'success', title: res.message });
+            
+            // 動態新增一行到待收款列表
+            const tx = res.transaction;
+            const newRow = `
+                <tr id="tx-row-${tx.id}">
+                    <td>${tx.username}</td>
+                    <td>${parseFloat(tx.rmb_order_amount).toFixed(2)}</td>
+                    <td>${parseFloat(tx.twd_expected_payment).toFixed(2)}</td>
+                    <td>${tx.order_time.split(' ')[0]}</td>
+                    <td><button class="btn btn-sm btn-danger btn-delete-order" data-tx-id="${tx.id}">刪除</button></td>
+                </tr>
+            `;
+            pendingSalesTableBody.insertAdjacentHTML('afterbegin', newRow);
+            
+            // 清空表單
+            this.reset();
+            exchangeRateInput.value = "{{ sell_rate }}"; // 恢復預設匯率
+            document.getElementById('order-date').value = "{{ today }}";
+            calculateReceivable();
+        })
+        .catch(error => {
+            Swal.fire('創建失敗', error.message || '伺服器錯誤', 'error');
+        });
+    });
+
+    // 6. 刪除待收款訂單 (事件委派)
+    pendingSalesTableBody.addEventListener('click', function(e) {
+        if (e.target.classList.contains('btn-delete-order')) {
+            const txId = e.target.dataset.txId;
+            
+            Swal.fire({
+                title: `確定要刪除訂單 #${txId} 嗎?`,
+                text: "此操作無法復原！",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: '是的，刪除'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const formData = new FormData();
+                    formData.append('action', 'delete_order');
+                    formData.append('transaction_id', txId);
+                    
+                    fetch("{{ url_for('admin_sales_action') }}", {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(res => {
+                        if (res.status !== 'success') {
+                            throw new Error(res.message);
+                        }
+                        document.getElementById(`tx-row-${res.deleted_id}`).remove();
+                        Swal.fire('已刪除!', res.message, 'success');
+                    })
+                    .catch(error => {
+                        Swal.fire('刪除失敗', error.message || '伺服器錯誤', 'error');
+                    });
+                }
+            });
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <h2 class="mb-4">用戶儀表板</h2>
+            <p class="lead">歡迎您，<span class="fw-bold">{{ username }}</span>！</p>
+
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">當前匯率與您的帳務</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">人民幣賣出匯率 (您向我們採購): <strong class="text-primary fs-5">NTD {{ "%.2f"|format(sell_rate) }}</strong></p>
+                    <p class="card-text">您的應收帳款 (待支付給我們的台幣): <strong class="text-danger fs-5">NTD {{ "%.2f"|format(accounts_receivable) }}</strong></p>
+                </div>
+            </div>
+
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">採購人民幣</h5>
+                </div>
+                <div class="card-body">
+                    <p>請將應付台幣金額匯款至以下任一指定收款帳戶，並在匯款時務必備註您的<strong class="text-primary">用戶名</strong>：</p>
+                    <ul class="list-group list-group-flush mb-4">
+                        {% for channel in your_payment_channels %}
+                            <li class="list-group-item"><strong>{{ channel.channel_name }}</strong>：{{ channel.details }}</li>
+                        {% endfor %}
+                    </ul>
+                    
+                    <form method="POST" action="{{ url_for('buy_rmb') }}">
+                        <div class="mb-3">
+                            <label for="rmb_order_amount" class="form-label">請輸入您要採購的人民幣數量 (RMB):</label>
+                            <input type="number" class="form-control" id="rmb_order_amount" name="rmb_order_amount" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="customer_payment_note" class="form-label">請備註您的匯款方式 (例如：OO銀行轉帳、XX支付寶):</label>
+                            <textarea class="form-control" id="customer_payment_note" name="customer_payment_note" rows="3" placeholder="請填寫您匯款的方式或帳號後五碼，以利我們對帳" required></textarea>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg">提交採購訂單</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">我的交易記錄</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">查看您的所有歷史交易詳情。</p>
+                    <a href="{{ url_for('user_transactions') }}" class="btn btn-info text-white">查看我的交易</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

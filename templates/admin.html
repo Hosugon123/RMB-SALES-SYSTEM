@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}儀表板{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<!-- 這個頁面專用的樣式 -->
+<style>
+    .metric-card {
+        border: none;
+        border-radius: .75rem;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, .05);
+        transition: transform .2s ease-in-out, box-shadow .2s ease-in-out;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, .08);
+    }
+    .metric-card .card-body {
+        display: flex;
+        align-items: center;
+    }
+    .metric-card .icon-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        margin-right: 1.25rem;
+    }
+    .metric-card .card-footer {
+        background-color: #f8f9fa;
+        border-top: 1px solid #dee2e6;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
+    <h1 class="h2">儀表板總覽</h1>
+</div>
+
+<!-- 四個關鍵指標卡片 -->
+<div class="row">
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-primary-subtle text-primary">
+                    <i class="bi bi-wallet2 fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">預估總資產 (TWD)</p>
+                    <!-- 修正: 從 total_assets_twd 改為 estimated_cash -->
+                    <h3 class="fw-bold mb-0">${{ "%.0f"|format(estimated_cash or 0) }}</h3>
+                </div>
+            </div>
+            <a href="{{ url_for('admin_dashboard') }}" class="card-footer text-decoration-none text-muted d-block">
+                查看詳情 <i class="bi bi-arrow-right-circle float-end"></i>
+            </a>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-warning-subtle text-warning">
+                    <i class="bi bi-hourglass-split fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">待處理訂單</p>
+                    <!-- 修正: 從 pending_orders_count 改為 pending_transactions_count -->
+                    <h3 class="fw-bold mb-0">{{ pending_transactions_count or 0 }} <span class="fs-6 fw-normal">筆</span></h3>
+                </div>
+            </div>
+            <a href="{{ url_for('admin_transactions') }}" class="card-footer text-decoration-none text-primary fw-bold d-block">
+                前往處理 <i class="bi bi-arrow-right-circle float-end"></i>
+            </a>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-danger-subtle text-danger">
+                    <i class="bi bi-receipt-cutoff fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">總應收帳款 (TWD)</p>
+                    <!-- 修正: 從 total_receivables_twd 改為 total_unsettled_amount -->
+                    <h3 class="fw-bold mb-0">${{ "%.0f"|format(total_unsettled_amount or 0) }}</h3>
+                </div>
+            </div>
+            <a href="{{ url_for('admin_dashboard') }}" class="card-footer text-decoration-none text-muted d-block">
+                查看帳款 <i class="bi bi-arrow-right-circle float-end"></i>
+            </a>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-success-subtle text-success">
+                    <i class="bi bi-currency-yen fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">總人民幣庫存</p>
+                    <!-- 這個本來就正確，不用改 -->
+                    <h3 class="fw-bold mb-0">¥{{ "%.0f"|format(total_rmb_stock or 0) }}</h3>
+                </div>
+            </div>
+            <a href="{{ url_for('admin_dashboard') }}" class="card-footer text-decoration-none text-muted d-block">
+                管理庫存 <i class="bi bi-arrow-right-circle float-end"></i>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 主要內容區：圖表和訂單列表 -->
+<div class="row mt-3">
+    <!-- 左側：月度銷售圖表 -->
+    <div class="col-lg-7 mb-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-0 pt-3">
+                <h5 class="card-title fw-bold"><i class="bi bi-bar-chart-line-fill me-2"></i>月度銷售額 (RMB)</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="salesChart" style="min-height: 280px; height: 280px; max-height: 280px; max-width: 100%;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右側：近期待處理訂單 -->
+    <div class="col-lg-5 mb-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-0 pt-3">
+                <h5 class="card-title fw-bold"><i class="bi bi-list-check me-2"></i>近期待處理訂單</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">ID</th>
+                                <th>用戶</th>
+                                <th>應付 (TWD)</th>
+                                <th class="pe-3">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in recent_pending_txs %}
+                            <tr>
+                               <td class="ps-3">#{{ tx.id }}</td>
+                               <td>{{ tx.username if tx.username else 'N/A' }}</td> <!-- 修正: tx.customer.username -> tx.username -->
+                               <td><span class="badge bg-danger-subtle text-danger-emphasis rounded-pill">${{ "%.2f"|format(tx.twd_amount) }}</span></td>
+                               <td class="pe-3"><a href="{{ url_for('admin_transactions') }}" class="btn btn-sm btn-outline-primary">處理</a></td>
+                            </tr>
+                            {% else %}
+                             <tr>
+                                <td colspan="4" class="text-center p-5 text-muted">
+                                    <i class="bi bi-check2-circle fs-2 d-block mb-2"></i>
+                                    太棒了！目前沒有待處理的訂單。
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<!-- Chart.js 函式庫 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- 原生 JS 初始化 Chart.js -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    'use strict';
+
+    const salesChartCanvas = document.getElementById('salesChart');
+    if (!salesChartCanvas) {
+        return;
+    }
+
+    const ctx = salesChartCanvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 280);
+    gradient.addColorStop(0, 'rgba(54, 162, 235, 0.6)');
+    gradient.addColorStop(1, 'rgba(54, 162, 235, 0)');
+
+    const salesChartData = {
+        labels: {{ monthly_sales_data.labels|tojson }},
+        datasets: [{
+            label: '銷售額 (RMB)',
+            backgroundColor: gradient,
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 2,
+            fill: true,
+            pointRadius: 3,
+            pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+            tension: 0.3, 
+            data: {{ monthly_sales_data.data|tojson }}
+        }]
+    };
+
+    const salesChartOptions = {
+        maintainAspectRatio: false,
+        responsive: true,
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            x: {
+                grid: {
+                    display: false
+                }
+            },
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '¥' + new Intl.NumberFormat().format(value);
+                    }
+                }
+            }
+        },
+        interaction: {
+            intersect: false,
+            mode: 'index',
+        }
+    };
+
+    new Chart(ctx, {
+        type: 'line',
+        data: salesChartData,
+        options: salesChartOptions
+    });
+});
+</script>
+{% endblock %}

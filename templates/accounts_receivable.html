@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2 class="mb-4">所有用戶應收帳款</h2>
+
+    {% if users %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>用戶名</th>
+                        <th>應收帳款 (NTD)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td class="{% if user.accounts_receivable > 0 %}text-danger{% elif user.accounts_receivable < 0 %}text-success{% endif %}">
+                            {{ "%.2f"|format(user.accounts_receivable) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="alert alert-info">目前沒有用戶。</p>
+    {% endif %}
+{% endblock %}

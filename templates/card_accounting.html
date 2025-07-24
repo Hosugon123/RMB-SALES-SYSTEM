@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- 讓卡片在頁面中央，並設定最大寬度 -->
+    <div class="col-md-8 col-lg-7 mx-auto">
+        <div class="card border-0 shadow-sm" style="background-color: #f8f9fa;">
+            <div class="card-body p-4 p-md-5">
+                <div class="text-center mb-4">
+                    <h2 class="card-title fw-light text-dark mb-1">刷卡進貨登錄</h2>
+                    <p class="text-muted small">請依序輸入本次進貨的所有相關資訊</p>
+                </div>
+                
+                <form method="POST">
+                    
+                    <!-- PART 1: 資料輸入 -->
+                    <div class="p-4 rounded" style="background-color: #ffffff;">
+                        <!-- vvvv 這是你要求的修改 vvvv -->
+                        <h5 class="fw-normal text-primary mb-3"><i class="bi bi-pencil-square me-2"></i>刷卡資訊</h5>
+                        <!-- ^^^^ 修改到這裡 ^^^^ -->
+                        
+                        <div class="mb-3">
+                            <label for="purchase_date" class="form-label">刷卡日期</label>
+                            <input type="date" class="form-control" id="purchase_date" name="purchase_date" value="{{ today }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="supplier" class="form-label">刷卡對象 / 供應商</label>
+                            <input type="text" class="form-control" id="supplier" name="supplier" placeholder="例如：淘寶賣家A" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="rmb_amount" class="form-label">刷卡金額 (RMB)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="rmb_amount" name="rmb_amount" step="0.01" min="0.01" required placeholder="例如: 2000">
+                                <span class="input-group-text">含3%手續費:</span>
+                                <span class="input-group-text bg-light fw-bold" id="rmb_with_fee">0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="twd_equivalent" class="form-label">信用卡帳單 (TWD)</label>
+                            <input type="number" class="form-control" id="twd_equivalent" name="twd_equivalent" step="0.01" min="0.01" required placeholder="例如: 8500">
+                        </div>
+                    </div>
+
+                    <!-- PART 2: 匯率計算與預估 -->
+                    <div class="p-4 mt-4 rounded" style="background-color: #ffffff;">
+                        <h5 class="fw-normal text-success mb-3"><i class="bi bi-calculator me-2"></i>匯率計算與預估</h5>
+
+                        <div class="mb-3">
+                            <p class="mb-1 text-muted small">系統買入匯率 (成本)</p>
+                            <p class="fs-4 text-center bg-light rounded py-2 mb-0" id="calculated_rate_display" style="color: #20c997;">0.0000</p>
+                            <small class="form-text text-muted">此匯率根據: 信用卡帳單 / (刷卡RMB * 1.03) 自動計算。</small>
+                        </div>
+
+                        <div class="input-group mb-3">
+                            <input type="number" class="form-control" id="sell_rate_input" name="sell_rate_input" step="0.0001" value="{{ realtime_rates.sell_rate if realtime_rates else '4.5' }}" required placeholder="設定售出匯率">
+                            <button class="btn btn-outline-secondary" type="button" id="calculate_sell_btn">計算預估</button>
+                        </div>
+
+                        <div class="row text-center g-2">
+                            <div class="col-6 col-sm-3">
+                                <small class="text-muted d-block">售出金額</small>
+                                <h5 class="mb-0" id="sell_amount_display">0.00</h5>
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <small class="text-muted d-block">海外手續費</small>
+                                <h5 class="mb-0 text-danger" id="overseas_fee_display">0.00</h5>
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <small class="text-muted d-block">刷卡回饋</small>
+                                <h5 class="mb-0 text-success" id="cashback_display">0.00</h5>
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <small class="text-muted d-block">預估利潤</small>
+                                <h5 class="mb-0 fw-bold" id="profit_display">0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- PART 3: 最終操作 -->
+                    <div class="mt-4 pt-3 border-top">
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-check-circle me-2"></i>確認登錄此筆進貨
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 獲取所有需要操作的元件
+    const rmbAmountInput = document.getElementById('rmb_amount');
+    const rmbWithFeeDisplay = document.getElementById('rmb_with_fee');
+    const twdEquivalentInput = document.getElementById('twd_equivalent');
+    const calculatedRateDisplay = document.getElementById('calculated_rate_display');
+    const sellRateInput = document.getElementById('sell_rate_input');
+    const calculateSellBtn = document.getElementById('calculate_sell_btn');
+    const sellAmountDisplay = document.getElementById('sell_amount_display');
+    const profitDisplay = document.getElementById('profit_display');
+    const overseasFeeDisplay = document.getElementById('overseas_fee_display');
+    const cashbackDisplay = document.getElementById('cashback_display');
+
+    function formatNumber(num) {
+        return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+    }
+
+    function performCalculations() {
+        const rmb = parseFloat(rmbAmountInput.value) || 0;
+        const twd = parseFloat(twdEquivalentInput.value) || 0;
+        const rmbWithFee = rmb * 1.03;
+
+        rmbWithFeeDisplay.textContent = formatNumber(rmbWithFee);
+
+        if (rmbWithFee > 0 && twd > 0) {
+            const rate = twd / rmbWithFee;
+            calculatedRateDisplay.textContent = rate.toFixed(4);
+        } else {
+            calculatedRateDisplay.textContent = '0.0000';
+        }
+
+        const overseasFee = twd * 0.015;
+        const cashback = twd * 0.03;
+        overseasFeeDisplay.textContent = formatNumber(overseasFee);
+        cashbackDisplay.textContent = formatNumber(cashback);
+    }
+
+    calculateSellBtn.addEventListener('click', function() {
+        const sellRate = parseFloat(sellRateInput.value) || 0;
+        const rmbAmount = parseFloat(rmbAmountInput.value) || 0;
+        const twdBill = parseFloat(twdEquivalentInput.value) || 0;
+
+        const calculatedSellAmount = sellRate * rmbAmount;
+        sellAmountDisplay.textContent = formatNumber(calculatedSellAmount);
+
+        const overseasFee = twdBill * 0.015;
+        const cashback = twdBill * 0.03;
+        const profit = calculatedSellAmount - twdBill - overseasFee + cashback;
+        profitDisplay.textContent = formatNumber(profit);
+        
+        profitDisplay.classList.remove('text-success', 'text-danger', 'text-dark');
+        if (profit > 0) {
+            profitDisplay.classList.add('text-success');
+        } else if (profit < 0) {
+            profitDisplay.classList.add('text-danger');
+        } else {
+            profitDisplay.classList.add('text-dark');
+        }
+    });
+
+    rmbAmountInput.addEventListener('input', performCalculations);
+    twdEquivalentInput.addEventListener('input', performCalculations);
+
+    performCalculations();
+});
+</script>
+{% endblock %}

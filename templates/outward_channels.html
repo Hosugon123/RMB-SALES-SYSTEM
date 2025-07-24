@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2 class="mb-4">匯出管道管理</h2>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">新增匯出管道</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_outward_channels') }}">
+                <input type="hidden" name="action" value="add_channel">
+                <div class="mb-3">
+                    <label for="channel_name" class="form-label">管道名稱:</label>
+                    <input type="text" class="form-control" id="channel_name" name="channel_name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="channel_type" class="form-label">管道類型:</label>
+                    <input type="text" class="form-control" id="channel_type" name="channel_type" placeholder="例如：銀行、支付寶、信用卡" required>
+                </div>
+                <div class="mb-3">
+                    <label for="details" class="form-label">詳細資訊 (內部參考):</label>
+                    <textarea class="form-control" id="details" name="details" rows="3" placeholder="例如：銀行帳號、支付寶帳號、信用卡發卡機構等"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="initial_balance" class="form-label">初始人民幣餘額:</label>
+                    <input type="number" class="form-control" id="initial_balance" name="initial_balance" step="0.01" value="0.00">
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary">新增管道</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">所有匯出管道</h5>
+        </div>
+        <div class="card-body">
+            {% if outward_channels %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th>
+                                <th>管道名稱</th>
+                                <th>類型</th>
+                                <th>詳細資訊</th>
+                                <th>當前RMB餘額</th>
+                                <th>狀態</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for channel in outward_channels %}
+                            <tr>
+                                <td>{{ channel.id }}</td>
+                                <td>{{ channel.channel_name }}</td>
+                                <td>{{ channel.channel_type }}</td>
+                                <td>{{ channel.details }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <span class="me-2">{{ "%.2f"|format(channel.current_balance_rmb) }} RMB</span>
+                                        <form method="POST" action="{{ url_for('admin_outward_channels') }}" class="inline-form mb-0">
+                                            <input type="hidden" name="action" value="update_balance">
+                                            <input type="hidden" name="channel_id" value="{{ channel.id }}">
+                                            <input type="number" name="new_balance" value="{{ '%.2f'|format(channel.current_balance_rmb) }}" step="0.01" class="form-control form-control-sm me-1" style="width: 100px; display: inline-block;">
+                                            <button type="submit" class="btn btn-warning btn-sm">更新餘額</button>
+                                        </form>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge {% if channel.is_active %}bg-success{% else %}bg-danger{% endif %}">
+                                        {% if channel.is_active %}啟用中{% else %}已禁用{% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('admin_outward_channels') }}" class="inline-form mb-0">
+                                        <input type="hidden" name="action" value="toggle_active">
+                                        <input type="hidden" name="channel_id" value="{{ channel.id }}">
+                                        <input type="hidden" name="is_active" value="{{ 'false' if channel.is_active else 'true' }}">
+                                        <button type="submit" class="btn {% if channel.is_active %}btn-danger{% else %}btn-success{% endif %} btn-sm">
+                                            {% if channel.is_active %}禁用{% else %}啟用{% endif %}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="alert alert-info">目前沒有匯出管道。請添加一個。</p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

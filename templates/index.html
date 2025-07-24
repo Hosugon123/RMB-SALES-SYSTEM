@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-8 text-center">
+            <h1 class="display-4">歡迎使用人民幣買賣銷售系統</h1>
+            <p class="lead">請登入或註冊帳戶以繼續。</p>
+            <p class="mt-4">
+                <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg me-2">登入</a>
+                <a href="{{ url_for('register') }}" class="btn btn-outline-secondary btn-lg">註冊</a>
+            </p>
+        </div>
+    </div>
+{% endblock %}
