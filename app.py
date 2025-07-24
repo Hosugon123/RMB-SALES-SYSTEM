@@ -693,14 +693,14 @@ def admin_update_movement_note():
 # ==            API: Record Purchase (Buy) - AJAX              ==
 # ===============================================================
 @app.route('/admin/purchase/record', methods=['POST'])
-@login_required # 我們仍然保留這個裝飾器
+@login_required # 我們仍然保留這個裝飾器，它能處理非 AJAX 請求的跳轉
 def record_purchase_ajax():
-    # ==================== 這是唯一的修改點 ====================
-    # 在執行任何操作前，先檢查使用者是否已通過認證。
-    # current_user.is_authenticated 對於匿名用戶會返回 False。
+    # ==================== 這是關鍵的修正 ====================
+    # 對於 AJAX 請求，我們必須在函式內部再次檢查認證狀態。
+    # 因為裝飾器無法處理 AJAX 的重新導向。
     if not current_user.is_authenticated:
         # 回傳一個特定的 JSON 錯誤，讓前端可以提示使用者重新登入
-        return jsonify({'status': 'error', 'message': '您的登入已過期，請重新登入後再試。', 'action': 'redirect'}), 401 # 401 Unauthorized
+        return jsonify({'status': 'error', 'message': '您的登入已過期，請重新登入後再試。'}), 401 # 401 Unauthorized
     # ========================================================
 
     # 現在我們可以安全地假設 current_user 是個真實的使用者物件了
@@ -711,7 +711,7 @@ def record_purchase_ajax():
     if not data:
         return jsonify({'status': 'error', 'message': '無效的請求，缺少 JSON 數據。'}), 400
 
-    # (接下來的程式碼與上一版完全相同，保持不變)
+    # (接下來的程式碼保持不變)
     channel_name = data.get('channel_name')
     try:
         rmb_amount = float(data.get('rmb_amount', 0))
@@ -725,6 +725,7 @@ def record_purchase_ajax():
         return jsonify({'status': 'error', 'message': '買入渠道名稱不可為空。'}), 400
 
     try:
+        # 假設您的 Transaction 模型 (Model) 已經有了這些欄位
         new_purchase = Transaction(
             transaction_type='buy',
             customer_name=channel_name,
@@ -734,7 +735,7 @@ def record_purchase_ajax():
             status='已完成',
             order_time=datetime.utcnow(),
             note=f"從 {channel_name} 買入",
-            user_id=current_user.id # 假設您的模型有關聯 user_id
+            user_id=current_user.id 
         )
         db.session.add(new_purchase)
         db.session.commit()
