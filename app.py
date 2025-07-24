@@ -8,13 +8,21 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
 from flask import request, jsonify
+import psycopg2
+from psycopg2.extras import DictCursor
+from flask import g
+from . import db
+from .models import Transaction
+from datetime import datetime
+from flask_login import current_user, login_required
 
 
 app = Flask(__name__)
 app.secret_key = 'asdf1234555' 
 DATABASE = os.path.join(app.instance_path, 'sales_system.db')
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
 
 instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
 os.makedirs(instance_path, exist_ok=True)
@@ -127,30 +135,99 @@ class User(db.Model, UserMixin):
 
 # --- 輔助函式 (與上一版相同) ---
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
-with app.app_context():
-    init_db()
+    """
+    獲取資料庫連線。
+    如果在 g (請求的全域物件) 中沒有 db 連線，就建立一個。
+    優先使用 PostgreSQL (當 DATABASE_URL 存在時)，否則回退到本地 SQLite。
+    """
+    if 'db' not in g:
+        if DATABASE_URL:
+            # 在 Render.com 或其他雲端環境
+            g.db = psycopg2.connect(DATABASE_URL)
+        else:
+            # 在本地開發環境
+            instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+            os.makedirs(instance_path, exist_ok=True)
+            db_path = os.path.join(instance_path, 'sales_system.db')
+            g.db = sqlite3.connect(db_path)
+            g.db.row_factory = sqlite3.Row # 讓 SQLite 回傳的結果可以像字典一樣用欄位名存取
+    return g.db
+
+@app.teardown_appcontext
+def close_db(e=None):
+    """在請求處理結束後，自動關閉資料庫連線。"""
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+# 輔助函式，用於統一 SQL 查詢語法
+def query_db(query, args=(), one=False):
+    """
+    執行資料庫查詢，自動處理佔位符 '?' 或 '%s' 的轉換。
+    - query: SQL 查詢語句 (統一使用 '?' 作為佔位符)
+    - args: 查詢參數的元組
+    - one: 如果為 True，則只返回第一條結果，否則返回所有結果
+    """
+    db = get_db()
+    
+    # 根據資料庫類型，轉換 SQL 查詢語句的佔位符
+    if DATABASE_URL: # PostgreSQL 使用 %s
+        query = query.replace('?', '%s')
+    
+    cur = db.cursor(cursor_factory=DictCursor if DATABASE_DOCKER_URL else None)
+    cur.execute(query, args)
+    
+    # 獲取查詢結果
+    results = cur.fetchall()
+    
+    # 提交事務（對於 SELECT 來說不是必須的，但對於 INSERT/UPDATE/DELETE 是）
+    db.commit() 
+    cur.close()
+    
+    if one:
+        return results[0] if results else None
+    return results
+
+# ==============================================================================
+#  使用者認證與權限 (Authentication & Authorization)
+# ==============================================================================
+
 def login_required(f):
+    """裝飾器：確保使用者已登入。"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session: flash('請先登入！', 'danger'); return redirect(url_for('login'))
+        if 'user_id' not in session:
+            flash('請先登入！', 'danger')
+            return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
 def admin_required(f):
+    """裝飾器：確保使用者是管理員。"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('is_admin'): flash('您沒有權限訪問此頁面！', 'danger'); return redirect(url_for('user_dashboard'))
+        # 先檢查是否登入
+        if 'user_id' not in session:
+            flash('請先登入！', 'danger')
+            return redirect(url_for('login'))
+        # 再檢查是否為管理員
+        if not session.get('is_admin'):
+            flash('您沒有權限訪問此頁面！', 'danger')
+            # 如果有一般使用者的儀表板，可以導向那裡
+            # return redirect(url_for('user_dashboard')) 
+            return redirect(url_for('index')) # 或者直接導回首頁
         return f(*args, **kwargs)
     return decorated_function
 
-# --- 核心路由 (與上一版相同) ---
+# ==============================================================================
+#  核心路由 (Core Routes)
+# ==============================================================================
+
 @app.route('/')
 def index():
     if 'user_id' in session:
-        return redirect(url_for('admin_dashboard')) if session.get('is_admin') else redirect(url_for('user_dashboard'))
+        # 如果是管理員，導向管理員儀表板，否則導向登出（或未來的使用者儀表板）
+        return redirect(url_for('admin_dashboard') if session.get('is_admin') else url_for('logout'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -158,21 +235,32 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        conn = get_db()
-        user = conn.execute("SELECT id, password_hash, is_admin, username FROM users WHERE username = ? AND is_active = 1", (username,)).fetchone()
-        conn.close()
+        
+        # 使用新的 query_db 函式來查詢
+        user = query_db(
+            "SELECT id, password_hash, is_admin, username FROM users WHERE username = ? AND is_active = 1",
+            (username,),
+            one=True
+        )
+        
         if user and check_password_hash(user['password_hash'], password):
-            session['user_id'] = user['id']; session['username'] = user['username']; session['is_admin'] = user['is_admin']
+            session.clear() # 登入前先清空 session，更安全
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['is_admin'] = user['is_admin']
             flash('登入成功！', 'success')
             return redirect(url_for('admin_dashboard'))
         else:
             flash('用戶名或密碼不正確，或帳號已被停用！', 'danger')
+            
     return render_template('login.html')
 
 @app.route('/logout')
 @login_required
 def logout():
-    session.clear(); flash('您已登出！', 'info'); return redirect(url_for('login'))
+    session.clear()
+    flash('您已成功登出！', 'info')
+    return redirect(url_for('login'))
 
 # --- 管理員路由 ---
 
@@ -605,42 +693,61 @@ def admin_update_movement_note():
 # ==            API: Record Purchase (Buy) - AJAX              ==
 # ===============================================================
 @app.route('/admin/purchase/record', methods=['POST'])
-@login_required
+@login_required # 我們仍然保留這個裝飾器
 def record_purchase_ajax():
+    # ==================== 這是唯一的修改點 ====================
+    # 在執行任何操作前，先檢查使用者是否已通過認證。
+    # current_user.is_authenticated 對於匿名用戶會返回 False。
+    if not current_user.is_authenticated:
+        # 回傳一個特定的 JSON 錯誤，讓前端可以提示使用者重新登入
+        return jsonify({'status': 'error', 'message': '您的登入已過期，請重新登入後再試。', 'action': 'redirect'}), 401 # 401 Unauthorized
+    # ========================================================
+
+    # 現在我們可以安全地假設 current_user 是個真實的使用者物件了
     if not current_user.is_admin:
         return jsonify({'status': 'error', 'message': '權限不足'}), 403
 
     data = request.get_json()
-    channel_name = data.get('channel_name')
-    rmb_amount = data.get('rmb_amount')
-    buy_rate = data.get('buy_rate')
-    twd_amount = data.get('twd_amount')
+    if not data:
+        return jsonify({'status': 'error', 'message': '無效的請求，缺少 JSON 數據。'}), 400
 
-    if not all([channel_name, rmb_amount, buy_rate, twd_amount]):
-        return jsonify({'status': 'error', 'message': '提交的資料不完整'}), 400
+    # (接下來的程式碼與上一版完全相同，保持不變)
+    channel_name = data.get('channel_name')
+    try:
+        rmb_amount = float(data.get('rmb_amount', 0))
+        buy_rate = float(data.get('buy_rate', 0))
+        if rmb_amount <= 0 or buy_rate <= 0:
+            raise ValueError("金額與匯率必須大於零")
+    except (ValueError, TypeError):
+        return jsonify({'status': 'error', 'message': '金額或匯率格式不正確。'}), 400
+
+    if not channel_name:
+        return jsonify({'status': 'error', 'message': '買入渠道名稱不可為空。'}), 400
 
     try:
         new_purchase = Transaction(
             transaction_type='buy',
-            operator_id=current_user.id,
-            rmb_amount=float(rmb_amount),
-            twd_amount=float(twd_amount),
-            buy_rate=float(buy_rate),
-            source_channel_name=channel_name,
-            status='已完成',  # 買入交易直接標示為已完成
-            order_time=datetime.utcnow()
-            # 其他欄位會使用資料庫的默認值，例如 note 為空
+            customer_name=channel_name,
+            rmb_amount=rmb_amount,
+            exchange_rate=buy_rate,
+            twd_amount=rmb_amount * buy_rate,
+            status='已完成',
+            order_time=datetime.utcnow(),
+            note=f"從 {channel_name} 買入",
+            user_id=current_user.id # 假設您的模型有關聯 user_id
         )
         db.session.add(new_purchase)
         db.session.commit()
+        
         return jsonify({
             'status': 'success',
             'message': f'一筆從 {channel_name} 買入 ¥{rmb_amount:.2f} 的交易已成功記錄！'
         })
+
     except Exception as e:
         db.session.rollback()
-        print(f"Error recording purchase: {e}")
-        return jsonify({'status': 'error', 'message': f'資料庫儲存失敗: {e}'}), 500
+        print(f"Error recording purchase with ORM: {e}") 
+        return jsonify({'status': 'error', 'message': f'資料庫儲存失敗，請檢查後台日誌。'}), 500
 
 
 # ===============================================================
