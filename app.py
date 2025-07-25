@@ -12,7 +12,6 @@ from flask import request, jsonify
 import psycopg2
 from psycopg2.extras import DictCursor
 from flask import Flask
-from . import db
 from models import Transaction
 from datetime import datetime
 from flask_login import current_user, login_required
