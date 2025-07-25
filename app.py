@@ -12,7 +12,6 @@ from flask import request, jsonify
 import psycopg2
 from psycopg2.extras import DictCursor
 from flask import Flask
-from models import Transaction
 from datetime import datetime
 from flask_login import current_user, login_required
 
@@ -712,26 +711,21 @@ def admin_update_movement_note():
 # ==            API: Record Purchase (Buy) - AJAX              ==
 # ===============================================================
 @app.route('/admin/purchase/record', methods=['POST'])
-@login_required # 我們仍然保留這個裝飾器，它能處理非 AJAX 請求的跳轉
+@login_required 
 def record_purchase_ajax():
-    # ==================== 這是關鍵的修正 ====================
-    # 對於 AJAX 請求，我們必須在函式內部再次檢查認證狀態。
-    # 因為裝飾器無法處理 AJAX 的重新導向。
-    if not current_user.is_authenticated:
-        # 回傳一個特定的 JSON 錯誤，讓前端可以提示使用者重新登入
-        return jsonify({'status': 'error', 'message': '您的登入已過期，請重新登入後再試。'}), 401 # 401 Unauthorized
-    # ========================================================
-
-    # 現在我們可以安全地假設 current_user 是個真實的使用者物件了
+    # 檢查權限
     if not current_user.is_admin:
         return jsonify({'status': 'error', 'message': '權限不足'}), 403
 
+    # 安全地獲取和驗證數據
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'message': '無效的請求，缺少 JSON 數據。'}), 400
 
-    # (接下來的程式碼保持不變)
     channel_name = data.get('channel_name')
+    if not channel_name:
+        return jsonify({'status': 'error', 'message': '買入渠道名稱不可為空。'}), 400
+        
     try:
         rmb_amount = float(data.get('rmb_amount', 0))
         buy_rate = float(data.get('buy_rate', 0))
@@ -740,23 +734,28 @@ def record_purchase_ajax():
     except (ValueError, TypeError):
         return jsonify({'status': 'error', 'message': '金額或匯率格式不正確。'}), 400
 
-    if not channel_name:
-        return jsonify({'status': 'error', 'message': '買入渠道名稱不可為空。'}), 400
-
+    # 使用 try...except 包裹資料庫操作
     try:
-        # 假設您的 Transaction 模型 (Model) 已經有了這些欄位
+        # ==================== 這是最關鍵的修正 ====================
+        # 使用 SQLAlchemy ORM 語法，但傳入與您資料庫結構完全匹配的欄位名稱
         new_purchase = Transaction(
-            transaction_type='buy',
-            customer_name=channel_name,
-            rmb_amount=rmb_amount,
-            exchange_rate=buy_rate,
-            twd_amount=rmb_amount * buy_rate,
-            status='已完成',
-            order_time=datetime.utcnow(),
-            note=f"從 {channel_name} 買入",
-            user_id=current_user.id 
+            transaction_type='buy',          # 交易類型
+            status='已入帳',                 # 買入的狀態，直接設為'已入帳'
+            source_channel_name=channel_name,# 來源渠道名稱
+            rmb_amount=rmb_amount,           # 人民幣金額
+            twd_amount=rmb_amount * buy_rate,# 台幣總額
+            buy_rate=buy_rate,               # 買入匯率
+            order_time=datetime.utcnow(),    # 訂單時間 (使用 UTC 標準時間)
+            operator_name=current_user.username # 操作者名稱
+            # 'note' 欄位可以不填，因為資料庫允許它為空
         )
         db.session.add(new_purchase)
+        
+        # (可選) 如果您有 cash_accounts 表，可以在這裡更新餘額
+        # cash_account = db.session.query(CashAccount).filter_by(currency='RMB').first()
+        # if cash_account:
+        #     cash_account.balance += rmb_amount
+        
         db.session.commit()
         
         return jsonify({
@@ -765,8 +764,8 @@ def record_purchase_ajax():
         })
 
     except Exception as e:
-        db.session.rollback()
-        print(f"Error recording purchase with ORM: {e}") 
+        db.session.rollback() # 如果出錯，回滾所有操作
+        print(f"Error in record_purchase_ajax with ORM: {e}") 
         return jsonify({'status': 'error', 'message': f'資料庫儲存失敗，請檢查後台日誌。'}), 500
 
 
