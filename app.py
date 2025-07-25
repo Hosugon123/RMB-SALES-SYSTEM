@@ -2,10 +2,14 @@ import os
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask import render_template, request, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime
+from datetime import date
 import math
+from sqlalchemy import func
+from flask import jsonify, render_template, request, redirect, url_for, flash
 
 # ===================================================================
 # 1. App、資料庫、登入管理器 的基礎設定
@@ -73,6 +77,41 @@ class CashAccount(db.Model):
     account_name = db.Column(db.String(100), unique=True, nullable=False)
     currency = db.Column(db.String(10), nullable=False)
     balance = db.Column(db.Float, default=0.0)
+
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
+
+class SalesRecord(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # 關聯到 User 模型
+    customer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    customer = db.relationship('User', backref=db.backref('sales', lazy=True))
+
+    rmb_amount = db.Column(db.Float, nullable=False)
+    exchange_rate = db.Column(db.Float, nullable=False)
+    twd_amount = db.Column(db.Float, nullable=False)
+    
+    # 我們將 order_time 重新命名為 sale_date 以保持一致性
+    sale_date = db.Column(db.Date, nullable=False, default=date.today)
+    
+    # PENDING 或 COMPLETED
+    status = db.Column(db.String(20), nullable=False, default='PENDING') 
+    
+    # 建立時間戳記
+    created_at = db.Column(db.DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f'<Sale {self.id} for Customer {self.customer_id}>'
+
+# 【全新】渠道/產品模型 (如果您的舊代碼沒有，最好加上)
+class Channel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
 
 # (其他模型如 FundMovement, CardPurchase 可在未來依此格式加入)
 
@@ -184,11 +223,149 @@ def general_ledger():
     return render_template('general_ledger.html', customers=customers)
 
 # (其他頁面路由的 placeholder，您可以後續將它們的邏輯用 ORM 實現)
-@app.route('/admin/sales_entry')
-@admin_required
+@app.route('/sales_entry')
+@login_required
 def sales_entry():
-    # ... 未來實現 ...
-    return "此頁面待開發"
+    # 查詢所有活躍的、且是客戶角色的使用者
+    # 假設您已在 User 模型加入 is_customer 和 is_active 欄位
+    active_customers = User.query.filter_by(is_active=True, is_customer=True).order_by(User.username).all()
+    
+    # 查詢所有狀態為 PENDING 的銷售紀錄
+    pending_sales = SalesRecord.query.filter_by(status='PENDING').order_by(SalesRecord.sale_date.desc()).all()
+    
+    # 您可以設定一個預設匯率，或從某處讀取
+    default_sell_rate = 4.85 
+
+    return render_template(
+        'sales_entry.html', 
+        customers=active_customers, 
+        pending_sales=pending_sales,
+        today=date.today().isoformat(),
+        sell_rate=default_sell_rate
+    )
+
+# 【全新】處理新增/刪除訂單的 AJAX 路由
+@app.route('/sales_action', methods=['POST'])
+@login_required
+def sales_action():
+    action = request.form.get('action')
+
+    # --- 處理「創建訂單」---
+    if action == 'create_order':
+        try:
+            customer_name = request.form.get('customer_name')
+            customer_id = request.form.get('user_id') # 來自隱藏欄位
+            
+            target_customer = None
+            # 優先使用 ID，如果沒有 ID，則用名稱查詢或創建
+            if customer_id:
+                target_customer = User.query.get(int(customer_id))
+            elif customer_name:
+                # 尋找現有客戶，如果找不到就建立一個新的
+                target_customer = User.query.filter_by(username=customer_name).first()
+                if not target_customer:
+                    target_customer = User(
+                        username=customer_name, 
+                        password_hash='not_a_login_user', # 給一個虛擬密碼
+                        is_customer=True,
+                        is_active=True
+                    )
+                    db.session.add(target_customer)
+                    # 我們需要先 flush 來取得新客戶的 ID
+                    db.session.flush() 
+            else:
+                return jsonify({'status': 'error', 'message': '客戶名稱或ID為必填'}), 400
+
+            # 獲取表單資料並計算
+            rmb = float(request.form.get('rmb_sell_amount'))
+            rate = float(request.form.get('exchange_rate'))
+            order_date_str = request.form.get('order_date')
+            twd = rmb * rate
+
+            new_sale = SalesRecord(
+                customer_id=target_customer.id,
+                rmb_amount=rmb,
+                exchange_rate=rate,
+                twd_amount=twd,
+                sale_date=date.fromisoformat(order_date_str),
+                status='PENDING'
+            )
+            db.session.add(new_sale)
+            db.session.commit()
+
+            # 準備回傳給前端的資料
+            transaction_data = {
+                'id': new_sale.id,
+                'username': target_customer.username,
+                'rmb_order_amount': "%.2f" % new_sale.rmb_amount,
+                'twd_expected_payment': "%.2f" % new_sale.twd_amount,
+                'order_time': new_sale.sale_date.isoformat()
+            }
+            return jsonify({'status': 'success', 'message': '訂單創建成功！', 'transaction': transaction_data})
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'status': 'error', 'message': f'伺服器錯誤: {e}'}), 500
+
+    # --- 處理「刪除訂單」---
+    elif action == 'delete_order':
+        try:
+            tx_id = request.form.get('transaction_id')
+            sale_to_delete = SalesRecord.query.get(int(tx_id))
+            if not sale_to_delete:
+                return jsonify({'status': 'error', 'message': '找不到該訂單'}), 404
+            
+            db.session.delete(sale_to_delete)
+            db.session.commit()
+            return jsonify({'status': 'success', 'message': '訂單已刪除。', 'deleted_id': tx_id})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'status': 'error', 'message': f'刪除失敗: {e}'}), 500
+            
+    return jsonify({'status': 'error', 'message': '無效的操作'}), 400
+
+
+# 【全新】處理新增常用客戶的 AJAX 路由
+@app.route('/add_customer_ajax', methods=['POST'])
+@login_required
+def add_customer_ajax():
+    data = request.get_json()
+    username = data.get('username')
+    if not username:
+        return jsonify({'status': 'error', 'message': '未提供用戶名'}), 400
+    
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        return jsonify({'status': 'error', 'message': '此客戶名稱已存在'}), 409
+
+    new_customer = User(
+        username=username, 
+        password_hash='not_a_login_user',
+        is_customer=True,
+        is_active=True
+    )
+    db.session.add(new_customer)
+    db.session.commit()
+
+    customer_data = {'id': new_customer.id, 'username': new_customer.username}
+    return jsonify({'status': 'success', 'message': '客戶新增成功', 'customer': customer_data})
+
+
+# 【全新】處理刪除常用客戶的 AJAX 路由 (軟刪除)
+@app.route('/delete_customer_ajax', methods=['POST'])
+@login_required
+def delete_customer_ajax():
+    data = request.get_json()
+    customer_id = data.get('customer_id')
+    
+    customer_to_deactivate = User.query.get(int(customer_id))
+    if not customer_to_deactivate:
+         return jsonify({'status': 'error', 'message': '找不到該客戶'}), 404
+    
+    customer_to_deactivate.is_active = False
+    db.session.commit()
+    
+    return jsonify({'status': 'success', 'message': '客戶已從常用列表移除'})
 
 @app.route('/admin/card_accounting')
 @admin_required
