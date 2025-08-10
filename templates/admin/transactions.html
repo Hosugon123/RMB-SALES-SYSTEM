@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+
+{% block title %}所有交易記錄{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="text-center mb-4">
+                <h2 class="fw-light text-dark mb-1"><i class="bi bi-collection me-2"></i>所有交易記錄</h2>
+                <p class="text-muted small">此處列出買賣、調撥與信用卡等所有類型的交易</p>
+            </div>
+
+            <div class="accordion" id="transactionsAccordion">
+
+                <!-- ======================= 1. 買賣紀錄 ======================= -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingSales">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#collapseSales" aria-expanded="false" aria-controls="collapseSales">
+                            <i class="bi bi-receipt-cutoff me-2"></i><strong>買賣紀錄</strong>
+                        </button>
+                    </h2>
+                    <div id="collapseSales" class="accordion-collapse collapse" aria-labelledby="headingSales"
+                        data-bs-parent="#transactionsAccordion">
+                        <div class="accordion-body">
+                            <div class="table-responsive">
+                                <table id="transactions-table" class="table table-hover align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>操作者</th>
+                                            <th>操作項目</th>
+                                            <th>人民幣(RMB)</th>
+                                            <th>單位成本</th>
+                                            <th>總成本</th>
+                                            <th>台幣(TWD)</th>
+                                            <th>日期</th>
+                                            <th>來源/客戶</th>
+                                            <th>備註</th>
+                                            <th class="text-end">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for tx in sales_transactions %}
+                                        <tr data-id="{{ tx.id }}" data-status="{{ tx.status }}">
+                                            <td>{{ tx.operator_name }}</td>
+                                            <td class="status-cell">
+                                                {% if tx.transaction_type == 'buy' %}
+                                                <span class="text-success">買入</span>
+                                                {% elif tx.transaction_type == 'sell' %}
+                                                <span class="text-danger">售出</span>
+                                                {% else %}
+                                                <span class="text-muted">未知</span>
+                                                {% endif %}
+                                            </td>
+
+                                            <td>¥ {{ "%.2f"|format(tx.rmb_amount) }}</td>
+                                            <td>
+                                                {% if tx.cost_per_unit is not none %}
+                                                ¥ {{ "%.4f"|format(tx.cost_per_unit) }}
+                                                {% else %}
+                                                <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if tx.total_cost is not none %}
+                                                ¥ {{ "%.2f"|format(tx.total_cost) }}
+                                                {% else %}
+                                                <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>$ {{ "%.2f"|format(tx.twd_amount) }}</td>
+
+
+                                            <td><small>{{ tx.order_time.strftime('%Y-%m-%d') }}</small></td>
+                                            <td>
+                                                {% if tx.transaction_type == 'buy' %}{{ tx.source_channel_name or 'N/A'
+                                                }}
+                                                {% else %}{{ tx.customer_name or 'N/A' }}{% endif %}
+                                            </td>
+                                            <td class="note-cell">
+                                                <span class="note-text">{{ tx.note or '...' }}</span>
+                                            </td>
+                                            <td class="actions-cell text-end">
+                                                <button class="btn btn-sm btn-outline-info btn-edit-note" title="編輯備註">
+                                                    <i class="bi bi-pencil-square"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% if not sales_transactions %}
+                                        <tr>
+                                            <td colspan="8" class="text-center text-muted p-5"><i
+                                                    class="bi bi-folder-x fs-2"></i>
+                                                <p class="mt-2">目前沒有買賣記錄。</p>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {% if total_sales_pages > 1 %}
+                            <nav>
+                                <ul class="pagination justify-content-center">
+                                    <li class="page-item {% if sales_page <= 1 %}disabled{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page-1, movements_page=movements_page, cards_page=cards_page, show='sales') }}">上一頁</a>
+                                    </li>
+                                    {% for p in range(1, total_sales_pages + 1) %}
+                                    <li class="page-item {% if p == sales_page %}active{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=p, movements_page=movements_page, cards_page=cards_page, show='sales') }}">{{
+                                            p }}</a>
+                                    </li>
+                                    {% endfor %}
+                                    <li class="page-item {% if sales_page >= total_sales_pages %}disabled{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page+1, movements_page=movements_page, cards_page=cards_page, show='sales') }}">下一頁</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                            {% endif %}
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ======================= 2. 調撥紀錄 ======================= -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingMovements">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#collapseMovements" aria-expanded="false" aria-controls="collapseMovements">
+                            <i class="bi bi-arrow-left-right me-2"></i><strong>調撥紀錄</strong>
+                        </button>
+                    </h2>
+                    <div id="collapseMovements" class="accordion-collapse collapse" aria-labelledby="headingMovements"
+                        data-bs-parent="#transactionsAccordion">
+                        <div class="accordion-body">
+                            <div class="table-responsive">
+                                <table id="movements-table" class="table table-hover align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>調撥者</th>
+                                            <th>調撥對象</th>
+                                            <th>人民幣(RMB)</th>
+                                            <th>台幣(TWD)</th>
+                                            <th>日期時間</th>
+                                            <th>備註</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for move in fund_movements %}
+                                        <tr data-move-id="{{ move.id }}">
+                                            <td>{{ move.handled_by or '系統' }}</td>
+                                            <td><small>{{ move.from_account_name }} → {{ move.to_account_name }}</small>
+                                            </td>
+                                            {% if move.currency == 'RMB' %}<td class="fw-bold text-success">¥ {{
+                                                "%.2f"|format(move.amount) }}</td>
+                                            <td>-</td>
+                                            {% else %}<td>-</td>
+                                            <td class="fw-bold text-primary">$ {{ "%.2f"|format(move.amount) }}</td>{%
+                                            endif %}
+                                            <td><small>{{ move.move_date.strftime('%Y-%m-%d') }}</small></td>
+                                            <td class="note-cell-movement"><span class="note-text-movement">{{
+                                                    move.description or '...' }}</span></td>
+                                            <td><button class="btn btn-sm btn-outline-info btn-edit-note-movement"
+                                                    title="編輯備註"><i class="bi bi-pencil-square"></i></button></td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% if not fund_movements %}
+                                        <tr>
+                                            <td colspan="7" class="text-center text-muted p-5"><i
+                                                    class="bi bi-folder-x fs-2"></i>
+                                                <p class="mt-2">目前沒有調撥記錄。</p>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% if total_movements_pages > 1 %}
+                            <nav>
+                                <ul class="pagination justify-content-center">
+                                    <li class="page-item {% if movements_page <= 1 %}disabled{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page, movements_page=movements_page-1, cards_page=cards_page, show='movements') }}">上一頁</a>
+                                    </li>
+                                    {% for p in range(1, total_movements_pages + 1) %}
+                                    <li class="page-item {% if p == movements_page %}active{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page, movements_page=p, cards_page=cards_page, show='movements') }}">{{
+                                            p }}</a>
+                                    </li>
+                                    {% endfor %}
+                                    <li
+                                        class="page-item {% if movements_page >= total_movements_pages %}disabled{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page, movements_page=movements_page+1, cards_page=cards_page, show='movements') }}">下一頁</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ======================= 3. 信用卡紀錄 ======================= -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingCards">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#collapseCards" aria-expanded="false" aria-controls="collapseCards">
+                            <i class="bi bi-credit-card me-2"></i><strong>信用卡紀錄</strong>
+                        </button>
+                    </h2>
+                    <div id="collapseCards" class="accordion-collapse collapse" aria-labelledby="headingCards"
+                        data-bs-parent="#transactionsAccordion">
+                        <div class="accordion-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle" style="font-size: 0.9em;">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>刷卡人</th>
+                                            <th>刷卡對象</th>
+                                            <th>含3%人民幣(RMB)</th>
+                                            <th>帳單(TWD)</th>
+                                            <th>匯率(含3%)</th>
+                                            <th>海外手續費(1.5%)</th>
+                                            <th>售出匯率</th>
+                                            <th>回饋</th>
+                                            <th>利潤</th>
+                                            <th>刷卡日期</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for cp in card_purchases %}
+                                        <tr>
+                                            <td>{{ cp.operator or '系統' }}</td>
+                                            <td>{{ cp.supplier or 'N/A' }}</td>
+                                            <td class="text-success">¥ {{ "%.2f"|format(cp.rmb_amount * 1.03) }}</td>
+                                            <td class="text-primary">$ {{ "%.2f"|format(cp.twd_amount) }}</td>
+                                            <td>{{ "%.4f"|format(cp.calculated_buy_rate or 0) }}</td>
+                                            <td>$ {{ "%.2f"|format(cp.twd_amount * 0.015) }}</td>
+                                            <td>{{ "%.4f"|format(current_sell_rate or 0) }}</td>
+                                            <td class="text-muted">N/A</td>
+                                            <td class="text-muted">N/A</td>
+                                            <td><small>{{ cp.purchase_date.strftime('%Y-%m-%d') }}</small></td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% if not card_purchases %}
+                                        <tr>
+                                            <td colspan="10" class="text-center text-muted p-5"><i
+                                                    class="bi bi-folder-x fs-2"></i>
+                                                <p class="mt-2">目前沒有信用卡買入記錄。</p>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% if total_cards_pages > 1 %}
+                            <nav>
+                                <ul class="pagination justify-content-center">
+                                    <li class="page-item {% if cards_page <= 1 %}disabled{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page, movements_page=movements_page, cards_page=cards_page-1, show='cards') }}">上一頁</a>
+                                    </li>
+                                    {% for p in range(1, total_cards_pages + 1) %}
+                                    <li class="page-item {% if p == cards_page %}active{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page, movements_page=movements_page, cards_page=p, show='cards') }}">{{
+                                            p }}</a>
+                                    </li>
+                                    {% endfor %}
+                                    <li class="page-item {% if cards_page >= total_cards_pages %}disabled{% endif %}">
+                                        <a class="page-link"
+                                            href="{{ url_for('admin_transactions', sales_page=sales_page, movements_page=movements_page, cards_page=cards_page+1, show='cards') }}">下一頁</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<!-- 引入 SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        timerProgressBar: true,
+        showConfirmButton: false
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.btn-edit-note').forEach(button => {
+            button.addEventListener('click', e => {
+                e.preventDefault();
+                const tr = button.closest('tr');
+                const txId = tr.dataset.id;
+                const noteSpan = tr.querySelector('.note-text');
+                const currentNote = noteSpan.textContent.trim() === '...' ? '' : noteSpan.textContent.trim();
+
+                Swal.fire({
+                    title: `編輯備註 #${txId}`,
+                    input: 'textarea',
+                    inputValue: currentNote,
+                    showCancelButton: true,
+                    confirmButtonText: '儲存',
+                    cancelButtonText: '取消',
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        fetch("{{ url_for('admin_update_transaction_note') }}", {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                tx_id: txId,
+                                note: result.value
+                            })
+                        })
+                            .then(r => r.json())
+                            .then(res => {
+                                if (res.status !== 'success') throw new Error(res.message);
+                                Toast.fire({ icon: 'success', title: res.message });
+                                noteSpan.textContent = result.value || '...';
+                            })
+                            .catch(err => {
+                                Swal.fire('儲存失敗', err.message, 'error');
+                            });
+                    }
+                });
+            });
+        });
+    });
+</script>
+{% endblock %}

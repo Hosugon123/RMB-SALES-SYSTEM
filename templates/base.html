@@ -112,12 +112,11 @@
 
         <ul class="list-unstyled components">
             <li class="{% if request.endpoint == 'admin_dashboard' %}active{% endif %}"><a href="{{ url_for('admin_dashboard') }}"><i class="bi bi-grid-1x2-fill me-3"></i>儀表板</a></li>
-            <li class="{% if request.endpoint == 'general_ledger' %}active{% endif %}"><a href="{{ url_for('general_ledger') }}"><i class="bi bi-bag-plus-fill me-3"></i>買入頁面</a></li>
+            <li class="{% if request.endpoint == 'buy_in' %}active{% endif %}"><a href="{{ url_for('buy_in') }}"><i class="bi bi-bag-plus-fill me-3"></i>買入頁面</a></li>
             <li class="{% if request.endpoint == 'sales_entry' %}active{% endif %}"><a href="{{ url_for('sales_entry') }}"><i class="bi bi-cash-coin me-3"></i>售出錄入</a></li>
-            <li class="{% if request.endpoint == 'card_accounting' %}active{% endif %}"><a href="{{ url_for('card_accounting') }}"><i class="bi bi-credit-card-2-front-fill me-3"></i>刷卡記帳</a></li>
+            <li class="{% if request.endpoint == 'card_purchase' %}active{% endif %}"><a href="{{ url_for('card_purchase') }}"><i class="bi bi-credit-card-2-front-fill me-3"></i>刷卡記帳</a></li>
             <li class="{% if request.endpoint == 'cash_management' %}active{% endif %}"><a href="{{ url_for('cash_management') }}"><i class="bi bi-wallet2 me-3"></i>現金管理</a></li>
-            <li class="{% if request.endpoint == 'admin_transactions' %}active{% endif %}"><a href="{{ url_for('admin_transactions') }}"><i class="bi bi-table me-3"></i>所有交易</a></li>
-        </ul>
+            {# <li class="{% if request.endpoint == 'admin_transactions' %}active{% endif %}"><a href="{{ url_for('admin_transactions') }}"><i class="bi bi-table me-3"></i>所有交易</a></li> #}</ul>
 
         <div class="sidebar-footer">
             <a href="{{ url_for('logout') }}" class="btn btn-outline-danger w-100">登出 <i class="bi bi-box-arrow-right ms-1"></i></a>

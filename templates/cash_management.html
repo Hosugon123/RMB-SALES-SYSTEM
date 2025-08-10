@@ -1,309 +1,218 @@
 {% extends "base.html" %}
 
-{% block title %}現金管理{% endblock %}
+{% block title %}現金管理儀表板{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-lg-10 col-xl-8 mx-auto">
-        <div class="card border-0 shadow-sm mb-4" style="background-color: #f8f9fa;">
-            <div class="card-body p-4 p-md-5">
-                <div class="text-center mb-4">
-                    <h2 class="card-title fw-light text-dark mb-1">現金管理總覽</h2>
-                    <p class="text-muted small">查看所有現金與銀行帳戶的即時餘額</p>
-                </div>
+<div class="container-fluid pt-3">
+    <!-- 頁面標題和功能按鈕 -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-4 border-bottom">
+        <h1 class="h2"><i class="bi bi-wallet2 me-2"></i>現金管理</h1>
+        <div>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addHolderModal"><i class="bi bi-person-plus-fill me-1"></i> 新增持有人</button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAccountModal"><i class="bi bi-plus-circle-fill me-1"></i> 新增帳戶</button>
+            <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#transferModal"><i class="bi bi-arrow-left-right me-1"></i> 內部轉帳</button>
+        </div>
+    </div>
 
-                <!-- PART 1: 總餘額概覽 -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <div class="card h-100 border-0 shadow-sm">
-                            <div class="card-body text-center">
-                                <h6 class="text-muted">台幣總額 (TWD)</h6>
-                                <h2 class="fw-bold text-primary display-5">
-                                    <i class="bi bi-cash-coin me-2"></i>{{ total_twd }}
-                                </h2>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card h-100 border-0 shadow-sm">
-                            <div class="card-body text-center">
-                                <h6 class="text-muted">人民幣總額 (RMB)</h6>
-                                <h2 class="fw-bold text-success display-5">
-                                    <i class="bi bi-wallet2 me-2"></i>{{ total_rmb }}
-                                </h2>
-                            </div>
-                        </div>
-                    </div>
+    <!-- 頂部核心指標卡片 -->
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <div class="card shadow-sm text-center h-100">
+                <div class="card-body">
+                    <p class="text-muted mb-1">總台幣資產 (TWD)</p>
+                    <h2 class="fw-bold text-primary">NT$ {{ "{:,.2f}".format(total_twd or 0) }}</h2>
                 </div>
-
-                <!-- 內部撥交按鈕 -->
-                <div class="text-center mb-4">
-                    <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#transferModal">
-                        <i class="bi bi-arrow-left-right me-2"></i>內部資金撥交
-                    </button>
-                </div>
-
-                <!-- PART 2: 各帳戶詳情 -->
-                <div class="row g-4" id="accounts-container">
-                    {% for person, accounts in grouped_accounts.items() %}
-                    <div class="col-md-6" data-person-group="{{ person }}">
-                        <div class="card h-100 border-0 shadow-sm">
-                            <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center">
-                                <h5 class="fw-normal mb-0"><i class="bi bi-person-circle me-2"></i>{{ person }}</h5>
-                            </div>
-                            <div class="card-body pt-0">
-                                <ul class="list-group list-group-flush">
-                                    {% for account in accounts %}
-                                    <li class="list-group-item d-flex justify-content-between align-items-center" data-account-id="{{ account.id }}">
-                                        <div>
-                                            {% if '現金' in account.account_name %}<i class="bi bi-cash text-muted me-2"></i>
-                                            {% elif '支付寶' in account.account_name %}<i class="bi bi-alipay text-muted me-2"></i>
-                                            {% else %}<i class="bi bi-bank text-muted me-2"></i>
-                                            {% endif %}
-                                            <span class="account-name">{{ account.account_name.split(' ', 1)[1] }}</span>
-                                        </div>
-                                        <div>
-                                            <strong class="fs-5 me-2 account-balance {% if account.currency == 'TWD' %}text-primary{% else %}text-success{% endif %}">
-                                                {{ account.formatted_balance }}
-                                            </strong>
-                                            <div class="btn-group">
-                                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                                    操作
-                                                </button>
-                                                <ul class="dropdown-menu dropdown-menu-end">
-                                                    <li><a class="dropdown-item btn-update-balance" href="#" data-bs-toggle="modal" data-bs-target="#balanceModal">修改餘額</a></li>
-                                                    <li><a class="dropdown-item btn-add-movement" href="#" data-bs-toggle="modal" data-bs-target="#movementModal" data-is-decrease="false">存入/收入</a></li>
-                                                    <li><a class="dropdown-item btn-add-movement text-danger" href="#" data-bs-toggle="modal" data-bs-target="#movementModal" data-is-decrease="true">提出/支出</a></li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    {% endfor %}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
+            </div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <div class="card shadow-sm text-center h-100">
+                <div class="card-body">
+                    <p class="text-muted mb-1">總人民幣資產 (RMB)</p>
+                    <h2 class="fw-bold text-success">¥ {{ "{:,.2f}".format(total_rmb or 0) }}</h2>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Modals for Actions -->
-<!-- 1. 修改餘額 Modal -->
-<div class="modal fade" id="balanceModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form id="balanceForm">
-                <div class="modal-header">
-                    <h5 class="modal-title">修改餘額: <span id="balanceModalAccountName"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="action" value="update_balance">
-                    <input type="hidden" id="balanceAccountId" name="account_id">
-                    <label for="new_balance" class="form-label">新的餘額</label>
-                    <input type="number" step="0.01" class="form-control" id="new_balance" name="new_balance" required>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary">確認修改</button>
-                </div>
-            </form>
+    <!-- 獨立的帳戶資訊區塊 -->
+    <div class="card shadow-sm mt-3">
+        <div class="card-header"><h5 class="mb-0 fw-light"><i class="bi bi-people-fill me-2"></i>資金持有人與帳戶</h5></div>
+        <div class="card-body">
+            <div id="accounts-container" class="row">
+                <!-- JavaScript 將會動態填充這裡 -->
+            </div>
         </div>
+    </div>
+
+    <!-- 獨立的流水帳區塊 -->
+    <div class="card shadow-sm mt-4">
+        <div class="card-header"><h5 class="mb-0 fw-light"><i class="bi bi-graph-up-arrow me-2"></i>近期資金流水</h5></div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-3">時間</th>
+                            <th>類型</th>
+                            <th>描述</th>
+                            <th class="text-end">TWD 變動</th>
+                            <th class="text-end pe-3">RMB 變動</th>
+                        </tr>
+                    </thead>
+                    <tbody id="movements-tbody">
+                        <!-- JavaScript 將會動態填充這裡 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- ****** 關鍵新增：分頁控制項 ****** -->
+        {% if pagination and pagination.pages > 1 %}
+        <div class="card-footer d-flex justify-content-center">
+            <nav aria-label="Page navigation">
+                <ul class="pagination mb-0">
+                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('cash_management', page=pagination.prev_num) }}">&laquo;</a>
+                    </li>
+                    
+                    {% for p in range(1, pagination.pages + 1) %}
+                        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('cash_management', page=p) }}">{{ p }}</a>
+                        </li>
+                    {% endfor %}
+
+                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('cash_management', page=pagination.next_num) }}">&raquo;</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
     </div>
 </div>
 
-<!-- 2. 新增存入/提出 Modal -->
-<div class="modal fade" id="movementModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form id="movementForm">
-                <div class="modal-header">
-                    <h5 class="modal-title"><span id="movementModalTitle"></span>: <span id="movementModalAccountName"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="action" value="add_movement">
-                    <input type="hidden" id="movementAccountId" name="account_id">
-                    <input type="hidden" id="isDecrease" name="is_decrease">
-                    <div class="mb-3">
-                        <label for="amount" class="form-label">金額</label>
-                        <input type="number" step="0.01" min="0.01" class="form-control" id="amount" name="amount" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="movement_type" class="form-label">類型</label>
-                        <select class="form-select" id="movement_type" name="movement_type" required>
-                            <option value="外部存入">外部存入</option>
-                            <option value="外部提出">外部提出</option>
-                            <option value="營運收入">營運收入</option>
-                            <option value="營運支出">營運支出</option>
-                            <option value="雜項">雜項</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="description" class="form-label">描述 (可選)</label>
-                        <input type="text" class="form-control" id="description" name="description">
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary">確認記錄</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- 3. 內部撥交 Modal -->
-<div class="modal fade" id="transferModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form id="transferForm">
-                <div class="modal-header">
-                    <h5 class="modal-title">內部資金撥交</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="action" value="transfer_funds">
-                    <div class="mb-3">
-                        <label for="from_account_id" class="form-label">從帳戶</label>
-                        <select class="form-select" id="from_account_id" name="from_account_id" required>
-                            <option value="">選擇來源帳戶...</option>
-                            {% for person, accounts in grouped_accounts.items() %}
-                                <optgroup label="{{ person }}">
-                                {% for account in accounts %}
-                                    <option value="{{ account.id }}">{{ account.account_name }}</option>
-                                {% endfor %}
-                                </optgroup>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="to_account_id" class="form-label">到帳戶</label>
-                        <select class="form-select" id="to_account_id" name="to_account_id" required>
-                            <option value="">選擇目標帳戶...</option>
-                             {% for person, accounts in grouped_accounts.items() %}
-                                <optgroup label="{{ person }}">
-                                {% for account in accounts %}
-                                    <option value="{{ account.id }}">{{ account.account_name }}</option>
-                                {% endfor %}
-                                </optgroup>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="transfer_amount" class="form-label">撥交金額</label>
-                        <input type="number" step="0.01" min="0.01" class="form-control" id="transfer_amount" name="transfer_amount" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-warning">確認撥交</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+<!-- 引用所有的操作模態框 -->
+{% include '_cash_management_modals.html' %}
 {% endblock %}
 
+
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const Toast = Swal.mixin({
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: false,
-        timer: 3000
-    });
+document.addEventListener('DOMContentLoaded', function () {
+    // 從後端 Jinja2 獲取已經準備好的數據，並提供安全的預設值
+    const accountsByHolder = {{ accounts_by_holder|tojson if accounts_by_holder is defined else '{}' }};
+    const movements = {{ movements|tojson if movements is defined else '[]' }};
+    const holders = {{ holders|tojson if holders is defined else '[]' }};
+    const allAccounts = {{ owner_accounts|tojson if owner_accounts is defined else '[]' }}; // Renamed for clarity
     
+    // 獲取所有需要操作的 DOM 元素
     const accountsContainer = document.getElementById('accounts-container');
-    const balanceModalEl = document.getElementById('balanceModal');
-    const balanceModal = new bootstrap.Modal(balanceModalEl);
-    const movementModalEl = document.getElementById('movementModal');
-    const movementModal = new bootstrap.Modal(movementModalEl);
-    const transferModalEl = document.getElementById('transferModal');
-    const transferModal = new bootstrap.Modal(transferModalEl);
-    
-    // --- 處理所有表單提交的通用函式 ---
-    function handleFormSubmit(formId, modalInstance) {
-        document.getElementById(formId).addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            fetch("{{ url_for('admin_update_cash_account') }}", {
-                method: 'POST',
-                body: new FormData(this)
-            })
-            .then(response => response.json())
-            .then(res => {
-                if (res.status !== 'success') throw new Error(res.message);
-                
-                modalInstance.hide();
-                Toast.fire({ icon: 'success', title: res.message });
-                
-                // 動態更新頁面上的餘額顯示
-                res.accounts.forEach(acc => {
-                    const liElement = document.querySelector(`li[data-account-id='${acc.id}']`);
-                    if (liElement) {
-                        const balanceSpan = liElement.querySelector('.account-balance');
-                        // 後端已經格式化好了，直接使用即可
-                        const formattedBalance = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(acc.balance);
-                        balanceSpan.textContent = formattedBalance;
-                    }
+    const movementsTbody = document.getElementById('movements-tbody');
+    const movementModalEl = document.getElementById('addMovementModal');
+    const movementModal = movementModalEl ? new bootstrap.Modal(movementModalEl) : null;
+    const movementModalTitle = document.getElementById('movementModalTitle');
+    const movementAccountIdInput = document.getElementById('movementAccountId');
+
+    // --- 填充下拉選單的通用函式 ---
+    function populateSelect(selectId, options) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        if (!Array.isArray(options)) {
+            select.innerHTML = '<option value="" disabled selected>--- 數據載入錯誤 ---</option>';
+            return;
+        }
+        select.innerHTML = '<option value="" disabled selected>--- 請選擇 ---</option>';
+        options.forEach(opt => select.add(new Option(opt.text, opt.value)));
+    }
+
+    // --- 填充帶有分組的下拉選單 ---
+    function populateGroupedSelect(selectId, groupedOptions) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        select.innerHTML = '<option value="" disabled selected>--- 請選擇帳戶 ---</option>';
+        
+        groupedOptions.forEach(group => {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = group.holder_name; // 設定分組標題
+            group.accounts.forEach(acc => {
+                const optionText = `${acc.name} (${acc.currency})`;
+                optgroup.appendChild(new Option(optionText, acc.id));
+            });
+            select.appendChild(optgroup);
+        });
+    }
+
+    // --- 渲染帳戶列表的函式 ---
+    function renderAccounts() {
+        if (!accountsContainer) return;
+        accountsContainer.innerHTML = '';
+        if (holders.length === 0) {
+            accountsContainer.innerHTML = '<div class="col-12 text-center text-muted p-4">尚無資金持有人。</div>';
+            return;
+        }
+        holders.forEach(holder => {
+            const holderId = holder.id;
+            const holderName = holder.name;
+            const holderData = accountsByHolder[holderId];
+            let accountsHtml = '';
+            if (holderData && holderData.accounts && holderData.accounts.length > 0) {
+                holderData.accounts.forEach(acc => {
+                    accountsHtml += `<li class="list-group-item d-flex justify-content-between align-items-center ps-4"><div><i class="bi bi-caret-right-fill text-muted me-1"></i><span>${acc.name} <span class="badge bg-secondary rounded-pill">${acc.currency}</span></span></div><div class="d-flex align-items-center"><strong class="me-3 ${acc.balance >= 0 ? 'text-dark' : 'text-danger'}">${acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong><div class="btn-group btn-group-sm"><button class="btn btn-outline-primary btn-movement" data-account-id="${acc.id}" data-account-name="${acc.name}" title="存入/提出"><i class="bi bi-arrow-down-up"></i></button><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此帳戶嗎？');"><input type="hidden" name="action" value="delete_account"><input type="hidden" name="account_id" value="${acc.id}"><button type="submit" class="btn btn-outline-danger" title="刪除帳戶">&times;</button></form></div></div></li>`;
                 });
-            })
-            .catch(error => {
-                Swal.fire('操作失敗', error.message || '伺服器錯誤', 'error');
+            } else {
+                accountsHtml = '<li class="list-group-item text-muted text-center">-- 尚無帳戶 --</li>';
+            }
+            const subtotalFooter = `<div class="card-footer bg-light d-flex justify-content-around p-2"><div><small class="text-muted">TWD 小計:</small> <strong class="text-primary">${(holderData ? holderData.total_twd : 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div><div><small class="text-muted">RMB 小計:</small> <strong class="text-success">${(holderData ? holderData.total_rmb : 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div></div>`;
+            accountsContainer.innerHTML += `<div class="col-lg-6 mb-4"><div class="card h-100 shadow-sm"><div class="card-header d-flex justify-content-between align-items-center"><strong>${holderName}</strong><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此持有人及其所有帳戶嗎？');"><input type="hidden" name="action" value="delete_holder"><input type="hidden" name="holder_id" value="${holderId}"><button type="submit" class="btn btn-danger btn-sm py-0">刪除持有人</button></form></div><ul class="list-group list-group-flush">${accountsHtml}</ul>${subtotalFooter}</div></div>`;
+        });
+        document.querySelectorAll('.btn-movement').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const accountId = this.dataset.accountId;
+                const accountName = this.dataset.accountName;
+                if(movementModalTitle) movementModalTitle.textContent = `為「${accountName}」進行資金操作`;
+                if(movementAccountIdInput) movementAccountIdInput.value = accountId;
+                if(movementModal) movementModal.show();
             });
         });
     }
-    
-    handleFormSubmit('balanceForm', balanceModal);
-    handleFormSubmit('movementForm', movementModal);
-    handleFormSubmit('transferForm', transferModal);
-    
-    // --- 使用事件委派來設定 Modal 的內容 ---
-    accountsContainer.addEventListener('click', function(e) {
-        const target = e.target;
-        
-        // 修改餘額按鈕
-        if (target.closest('.btn-update-balance')) {
-            e.preventDefault();
-            const li = target.closest('li');
-            const accountId = li.dataset.accountId;
-            const accountName = li.querySelector('.account-name').textContent.trim();
-            const currentBalance = parseFloat(li.querySelector('.account-balance').textContent.replace(/,/g, ''));
-            
-            document.getElementById('balanceModalAccountName').textContent = accountName;
-            document.getElementById('balanceAccountId').value = accountId;
-            document.getElementById('new_balance').value = currentBalance;
-            balanceModal.show();
-        }
-        
-        // 存入/提出按鈕
-        if (target.closest('.btn-add-movement')) {
-            e.preventDefault();
-            const link = target.closest('.btn-add-movement');
-            const li = target.closest('li');
-            const accountId = li.dataset.accountId;
-            const accountName = li.querySelector('.account-name').textContent.trim();
-            const isDecrease = link.dataset.isDecrease === 'true';
 
-            document.getElementById('movementModalTitle').textContent = isDecrease ? '提出/支出' : '存入/收入';
-            document.getElementById('movementModalAccountName').textContent = accountName;
-            document.getElementById('movementAccountId').value = accountId;
-            document.getElementById('isDecrease').value = isDecrease;
-            // 清空舊的輸入並設定表單類型
-            const movementForm = document.getElementById('movementForm');
-            movementForm.reset();
-            movementForm.querySelector('input[name="account_id"]').value = accountId;
-            movementForm.querySelector('input[name="is_decrease"]').value = isDecrease;
-
-            movementModal.show();
+    // --- 渲染資金流水的函式 ---
+    function renderMovements() {
+        if (!movementsTbody) return;
+        movementsTbody.innerHTML = '';
+        if (movements.length === 0) {
+            movementsTbody.innerHTML = '<tr><td colspan="5" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            return;
         }
-    });
+        movements.forEach(m => {
+            const twdChange = parseFloat(m.twd_change) || 0;
+            const rmbChange = parseFloat(m.rmb_change) || 0;
+            movementsTbody.innerHTML += `<tr><td class="ps-3">${new Date(m.date).toLocaleDateString()}</td><td><span class="badge bg-info-subtle text-info-emphasis">${m.type}</span></td><td>${m.description}</td><td class="text-end fw-bold ${twdChange >= 0 ? 'text-success' : 'text-danger'}">${twdChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td class="text-end pe-3 fw-bold ${rmbChange >= 0 ? 'text-success' : 'text-danger'}">${rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>`;
+        });
+    }
+
+    // --- 頁面初始化 ---
+    renderAccounts();
+    renderMovements();
+    
+    if (Array.isArray(holders)) {
+        populateSelect('accountHolder', holders.map(h => ({text: h.name, value: h.id})));
+    }
+    
+    const groupedAccounts = [];
+    if (Array.isArray(holders) && Array.isArray(allAccounts)) {
+        holders.forEach(holder => {
+            const accountsInGroup = allAccounts.filter(acc => acc.holder_id === holder.id);
+            if (accountsInGroup.length > 0) {
+                groupedAccounts.push({
+                    holder_name: holder.name,
+                    accounts: accountsInGroup
+                });
+            }
+        });
+    }
+
+    populateGroupedSelect('fromAccount', groupedAccounts);
+    populateGroupedSelect('toAccount', groupedAccounts);
 });
 </script>
 {% endblock %}

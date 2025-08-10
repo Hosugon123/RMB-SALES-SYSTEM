@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- ****** 左側：輸入表單 ****** -->
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <h2 class="card-title fw-light text-dark mb-1">刷卡進貨登錄</h2>
+                    <p class="text-muted small">請依序輸入本次進貨的所有相關資訊</p>
+                </div>
+
+                <form method="POST" action="{{ url_for('card_purchase') }}" id="cardPurchaseForm">
+                    <!-- PART 1: 刷卡資訊 -->
+                    <div class="p-3 rounded mb-3" style="background-color: #f8f9fa;">
+                        <h5 class="fw-normal text-primary mb-3"><i class="bi bi-pencil-square me-2"></i>刷卡資訊</h5>
+
+                        <div class="mb-3">
+                            <label for="purchase_date" class="form-label">刷卡日期</label>
+                            <input type="date" class="form-control" id="purchase_date" name="purchase_date" value="{{ today }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="supplier" class="form-label">刷卡對象 / 供應商</label>
+                            <input type="text" class="form-control" id="supplier" name="supplier" placeholder="例如：淘寶賣家A" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="rmb_amount" class="form-label">刷卡金額 (RMB)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">¥</span>
+                                <input type="number" class="form-control" id="rmb_amount" name="rmb_amount" step="0.01" min="0.01" required placeholder="例如: 2000">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="twd_equivalent" class="form-label">信用卡帳單 (TWD)</label>
+                             <div class="input-group">
+                                <span class="input-group-text">NT$</span>
+                                <input type="number" class="form-control" id="twd_equivalent" name="twd_equivalent" step="1" min="1" required placeholder="例如: 8500">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PART 2: 計算結果預覽 -->
+                    <div class="p-3 rounded" style="background-color: #f8f9fa;">
+                         <h5 class="fw-normal text-success mb-3"><i class="bi bi-calculator me-2"></i>計算結果預覽</h5>
+                         <div class="row g-3 text-center">
+                            <div class="col-6">
+                               <p class="mb-1 text-muted small">含3%手續費 (RMB)</p>
+                               <p class="fs-5 fw-bold mb-0" id="rmb_with_fee">0.00</p>
+                            </div>
+                            <div class="col-6">
+                               <p class="mb-1 text-muted small">成本匯率</p>
+                               <p class="fs-5 fw-bold text-success mb-0" id="calculated_rate_display">0.0000</p>
+                            </div>
+                         </div>
+                    </div>
+
+                    <!-- PART 3: 最終操作 -->
+                    <div class="mt-4 pt-3 border-top">
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-check-circle me-2"></i>確認登錄此筆進貨
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ****** 右側：近期刷卡紀錄 ****** -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body p-4">
+                <h5 class="card-title fw-normal mb-3"><i class="bi bi-clock-history me-2"></i>近期刷卡紀錄</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">刷卡日期</th>
+                                <th scope="col">供應商</th>
+                                <th scope="col" class="text-end">刷卡(RMB)</th>
+                                <th scope="col" class="text-end">帳單(TWD)</th>
+                                <th scope="col" class="text-end">成本匯率</th>
+                                <th scope="col" class="text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for purchase in purchases.items %}
+                            <tr>
+                                <td>{{ purchase.purchase_date.strftime('%Y-%m-%d') }}</td>
+                                <td class="text-truncate" style="max-width: 150px;">{{ purchase.supplier }}</td>
+                                <td class="text-end">¥ {{ "%.2f"|format(purchase.rmb_amount) }}</td>
+                                <td class="text-end">NT$ {{ purchase.twd_equivalent }}</td>
+                                <td class="text-end text-success">{{ "%.4f"|format(purchase.calculated_rate) }}</td>
+                                <td class="text-center">
+                                     <button class="btn btn-sm btn-outline-danger" disabled>
+                                        <i class="bi bi-trash"></i>
+                                     </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted p-4">還沒有任何刷卡紀錄。</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 分頁導覽 -->
+                {% if purchases.pages > 1 %}
+                <nav aria-label="Page navigation" class="mt-3">
+                    <ul class="pagination justify-content-center mb-0">
+                        <!-- 上一頁 -->
+                        <li class="page-item {% if not purchases.has_prev %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('card_purchase', page=purchases.prev_num) if purchases.has_prev else '#' }}">
+                                <span aria-hidden="true">«</span>
+                            </a>
+                        </li>
+                        <!-- 頁碼 -->
+                        {% for page_num in purchases.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+                            {% if page_num %}
+                                <li class="page-item {% if purchases.page == page_num %}active{% endif %}">
+                                    <a class="page-link" href="{{ url_for('card_purchase', page=page_num) }}">{{ page_num }}</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">…</span></li>
+                            {% endif %}
+                        {% endfor %}
+                        <!-- 下一頁 -->
+                        <li class="page-item {% if not purchases.has_next %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('card_purchase', page=purchases.next_num) if purchases.has_next else '#' }}">
+                                <span aria-hidden="true">»</span>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // 獲取所有需要操作的元件
+    const rmbAmountInput = document.getElementById('rmb_amount');
+    const twdEquivalentInput = document.getElementById('twd_equivalent');
+    const rmbWithFeeDisplay = document.getElementById('rmb_with_fee');
+    const calculatedRateDisplay = document.getElementById('calculated_rate_display');
+    const form = document.getElementById('cardPurchaseForm');
+
+    function formatNumber(num, digits = 2) {
+        return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits
+        }).format(num);
+    }
+
+    function calculateAndUpdate() {
+        const rmb = parseFloat(rmbAmountInput.value) || 0;
+        const twd = parseFloat(twdEquivalentInput.value) || 0;
+
+        if (rmb > 0) {
+            const rmbWithFee = rmb * 1.03;
+            rmbWithFeeDisplay.textContent = formatNumber(rmbWithFee, 2);
+
+            if (twd > 0) {
+                const rate = twd / rmbWithFee;
+                calculatedRateDisplay.textContent = rate.toFixed(4);
+            } else {
+                calculatedRateDisplay.textContent = '0.0000';
+            }
+        } else {
+            rmbWithFeeDisplay.textContent = '0.00';
+            calculatedRateDisplay.textContent = '0.0000';
+        }
+    }
+
+    rmbAmountInput.addEventListener('input', calculateAndUpdate);
+    twdEquivalentInput.addEventListener('input', calculateAndUpdate);
+
+    // 表單提交前做最後一次計算，確保送出的是最新資料
+    form.addEventListener('submit', function(e) {
+        calculateAndUpdate();
+    });
+
+    // 頁面載入時先執行一次
+    calculateAndUpdate();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}採購與入庫操作台{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- ****** 左側：買入操作表單 ****** -->
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-primary text-white"><h5 class="mb-0"><i class="bi bi-keyboard-fill me-2"></i>建立一筆買入交易</h5></div>
+            <div class="card-body p-4">
+                <form id="purchaseForm">
+                    <!-- 渠道區塊 -->
+                    <div class="mb-3">
+                        <label class="form-label"><strong>步驟 1:</strong> 選擇或輸入購買渠道</label>
+                        <div class="input-group">
+                            <select class="form-select" id="channelSelect">
+                                <option value="" selected>從常用列表選擇...</option>
+                                {% for channel in channels %}<option value="{{ channel.id }}">{{ channel.name }}</option>{% endfor %}
+                            </select>
+                            <button class="btn btn-outline-secondary" type="button" id="manageChannelsBtn">管理</button>
+                        </div>
+                        <div class="form-text">或直接在下方手動輸入新渠道:</div>
+                        <input type="text" class="form-control mt-1" id="channelNameManual" placeholder="手動輸入渠道名稱...">
+                    </div>
+                    <hr class="my-4">
+                    <!-- 付款區塊 -->
+                    <div class="p-3 mb-3 border rounded">
+                        <h6 class="text-danger"><i class="bi bi-box-arrow-up-right me-2"></i>付款資訊</h6>
+                        <div class="mb-2">
+                            <label for="paymentHolderSelect" class="form-label">付款持有人</label>
+                            <select class="form-select form-select-sm" id="paymentHolderSelect" required>
+                                <option value="" selected>請選擇...</option>
+                                {% for holder in holders %}<option value="{{ holder.id }}">{{ holder.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="paymentAccountSelect" class="form-label">付款的TWD帳戶</label>
+                            <select class="form-select form-select-sm" id="paymentAccountSelect" name="payment_account_id" required disabled>
+                                <option value="">請先選擇持有人...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- 入庫區塊 -->
+                    <div class="p-3 mb-3 border rounded">
+                        <h6 class="text-success"><i class="bi bi-box-arrow-in-down-left me-2"></i>入庫資訊</h6>
+                        <div class="mb-2">
+                            <label for="depositHolderSelect" class="form-label">將RMB存入哪個持有人？</label>
+                            <select class="form-select form-select-sm" id="depositHolderSelect" required>
+                                <option value="" selected>請選擇...</option>
+                                {% for holder in holders %}<option value="{{ holder.id }}">{{ holder.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="depositAccountSelect" class="form-label">存入哪個RMB帳戶？</label>
+                            <select class="form-select form-select-sm" id="depositAccountSelect" name="deposit_account_id" required disabled>
+                                <option value="">請先選擇持有人...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <hr class="my-4">
+                    <!-- 金額與匯率區塊 -->
+                    <div class="row g-3">
+                        <div class="col-md-6 mb-3">
+                            <label for="rmbAmount" class="form-label">買入金額 (RMB)</label>
+                            <input type="number" class="form-control" id="rmbAmount" name="rmb_amount" step="0.01" min="0.01" required placeholder="¥">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="exchangeRate" class="form-label">買入匯率</label>
+                            <input type="number" class="form-control" id="exchangeRate" name="exchange_rate" step="0.0001" min="0.0001" required placeholder="NT$">
+                        </div>
+                    </div>
+                    <div class="alert alert-info text-center">
+                        預計花費成本 (TWD): <strong id="twdCostDisplay">NT$ 0.00</strong>
+                    </div>
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-check-circle-fill me-2"></i>確認執行交易</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- ****** 右側：近期買入紀錄 ****** -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+             <div class="card-header bg-light"><h5 class="mb-0 fw-normal"><i class="bi bi-clock-history me-2"></i>近期買入紀錄</h5></div>
+            <div class="card-body">
+                <table class="table table-sm table-hover">
+                    <thead><tr><th>日期</th><th>渠道</th><th>付款帳戶</th><th class="text-end">買入RMB</th><th class="text-end">成本TWD</th></tr></thead>
+                    <tbody>
+                        {% for record in records %}
+                        <tr>
+                            <td><small>{{ record.purchase_date.strftime('%Y-%m-%d %H:%M') }}</small></td>
+                            <td>{{ record.channel_name }}</td>
+                            <td><small>{{ record.payment_account }}</small></td>
+                            <td class="text-end">¥ {{ "%.2f"|format(record.rmb_amount) }}</td>
+                            <td class="text-end fw-bold">NT$ {{ "%.2f"|format(record.twd_cost) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center p-4">尚無紀錄。</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if pagination and pagination.pages > 1 %}<nav class="mt-3"><ul class="pagination justify-content-center">
+                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}"><a class="page-link" href="{{ url_for('buy_in', page=pagination.prev_num) }}">&laquo;</a></li>
+                    {% for p in pagination.iter_pages() %}{% if p %}<li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('buy_in', page=p) }}">{{ p }}</a></li>{% else %}<li class="page-item disabled"><a class="page-link" href="#">…</a></li>{% endif %}{% endfor %}
+                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}"><a class="page-link" href="{{ url_for('buy_in', page=pagination.next_num) }}">&raquo;</a></li>
+                </ul></nav>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ****** 渠道管理 Modal ****** -->
+<div class="modal fade" id="channelsModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">管理常用渠道</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+        <div class="input-group mb-3">
+            <input type="text" id="newChannelName" class="form-control" placeholder="輸入新渠道名稱..."><button class="btn btn-success" type="button" id="addChannelBtn">新增</button>
+        </div>
+        <ul class="list-group" id="channelListModal"></ul>
+    </div>
+</div></div></div>
+{% endblock %}
+
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // === 1. 獲取所有需要的 HTML 元件 ===
+    const purchaseForm = document.getElementById('purchaseForm');
+    const channelSelect = document.getElementById('channelSelect');
+    const channelNameManual = document.getElementById('channelNameManual');
+    const paymentHolderSelect = document.getElementById('paymentHolderSelect');
+    const paymentAccountSelect = document.getElementById('paymentAccountSelect');
+    const depositHolderSelect = document.getElementById('depositHolderSelect');
+    const depositAccountSelect = document.getElementById('depositAccountSelect');
+    const rmbAmountInput = document.getElementById('rmbAmount');
+    const exchangeRateInput = document.getElementById('exchangeRate');
+    const twdCostDisplay = document.getElementById('twdCostDisplay');
+    const manageChannelsBtn = document.getElementById('manageChannelsBtn');
+    const channelsModal = new bootstrap.Modal(document.getElementById('channelsModal'));
+    const channelListModal = document.getElementById('channelListModal');
+    const addChannelBtn = document.getElementById('addChannelBtn');
+    const newChannelNameInput = document.getElementById('newChannelName');
+
+    // === 2. 定義統一的 API 地址 ===
+    // 我們之前已經為「買入」頁面創建了專屬的 API，這裡直接使用
+    const BUY_IN_API_ENDPOINT = "{{ url_for('buy_in_operations_api') }}"; 
+
+    // === 3. 通用的 API 呼叫函式 ===
+    async function callBuyInApi(data) {
+        try {
+            const response = await fetch(BUY_IN_API_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || '伺服器發生錯誤');
+            }
+            return result;
+        } catch (error) {
+            console.error('API Call Error:', error);
+            throw new Error(error.message || '無法連接到伺服器');
+        }
+    }
+    
+    // === 4. 功能函式與事件監聽 ===
+
+    function updateCost() {
+        const rmb = parseFloat(rmbAmountInput.value) || 0;
+        const rate = parseFloat(exchangeRateInput.value) || 0;
+        twdCostDisplay.textContent = `NT$ ${(rmb * rate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    }
+    [rmbAmountInput, exchangeRateInput].forEach(el => el.addEventListener('input', updateCost));
+
+    channelSelect.addEventListener('change', function() {
+        if (this.value) {
+            channelNameManual.value = '';
+            channelNameManual.disabled = true;
+        }
+    });
+    channelNameManual.addEventListener('input', function() {
+        if (this.value) {
+            channelSelect.value = '';
+            channelNameManual.disabled = false;
+        }
+    });
+    
+    // 這個函式用於處理級聯下拉選單，與後端 get_accounts_by_holder_api 配合
+    function setupLinkedSelects(holderSelect, accountSelect, currencyFilter) {
+        holderSelect.addEventListener('change', async function() {
+            const holderId = this.value;
+            accountSelect.innerHTML = '<option value="">載入中...</option>';
+            accountSelect.disabled = true;
+            if (!holderId) {
+                accountSelect.innerHTML = `<option value="">請先選擇持有人...</option>`;
+                return;
+            }
+            try {
+                const accounts = await fetch(`{{ url_for('get_accounts_by_holder_api', holder_id=0) }}`.slice(0, -1) + holderId).then(res => res.json());
+                accountSelect.innerHTML = `<option value="" disabled selected>--- 請選擇${currencyFilter}帳戶 ---</option>`;
+                const filteredAccounts = accounts.filter(acc => acc.currency === currencyFilter);
+                if (filteredAccounts.length === 0) {
+                    accountSelect.innerHTML = `<option value="">此持有人無${currencyFilter}帳戶</option>`;
+                    return;
+                }
+                filteredAccounts.forEach(acc => {
+                    const option = new Option(`${acc.name} (餘額: ${acc.balance.toLocaleString()})`, acc.id);
+                    accountSelect.appendChild(option);
+                });
+                accountSelect.disabled = false;
+            } catch (error) {
+                accountSelect.innerHTML = `<option value="">帳戶載入失敗</option>`;
+            }
+        });
+    }
+    setupLinkedSelects(paymentHolderSelect, paymentAccountSelect, 'TWD');
+    setupLinkedSelects(depositHolderSelect, depositAccountSelect, 'RMB');
+
+    // 提交「買入」表單
+    purchaseForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const dataToSend = {
+            action: 'record_purchase',
+            payment_account_id: paymentAccountSelect.value,
+            deposit_account_id: depositAccountSelect.value,
+            rmb_amount: rmbAmountInput.value,
+            exchange_rate: exchangeRateInput.value,
+            channel_id: channelSelect.value,
+            channel_name_manual: channelNameManual.value
+        };
+
+        try {
+            const result = await callBuyInApi(dataToSend);
+            await Swal.fire({ icon: 'success', title: '交易成功！', text: result.message, timer: 2000, showConfirmButton: false });
+            window.location.reload();
+        } catch (error) {
+            Swal.fire('操作失敗', error.message, 'error');
+        }
+    });
+
+    // --- 渠道管理相關 (Modal) ---
+    
+    manageChannelsBtn.addEventListener('click', () => {
+        renderChannelsInModal();
+        channelsModal.show();
+    });
+    
+    function renderChannelsInModal() {
+        // 這裡我們直接使用從後端 Jinja2 傳來的 channels 變數
+        const channelsData = {{ channels|tojson }};
+        channelListModal.innerHTML = '';
+        channelsData.forEach(c => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+            li.innerHTML = `<span>${c.name}</span><button class="btn btn-sm btn-outline-danger btn-delete-channel" data-id="${c.id}">&times;</button>`;
+            channelListModal.appendChild(li);
+        });
+    }
+
+    addChannelBtn.addEventListener('click', async () => {
+        const name = newChannelNameInput.value.trim();
+        if (!name) return;
+        try {
+            const result = await callBuyInApi({ action: 'add_channel', name: name });
+            await Swal.fire({ icon: 'success', title: result.message, timer: 1500, showConfirmButton: false });
+            window.location.reload();
+        } catch(error) { Swal.fire('新增失敗', error.message, 'error'); }
+    });
+
+    channelListModal.addEventListener('click', async function(e) {
+        if (e.target.classList.contains('btn-delete-channel')) {
+            const id = e.target.dataset.id;
+            const confirmResult = await Swal.fire({
+                title: '確定要刪除嗎？',
+                text: "這只會將其從常用列表隱藏。",
+                icon: 'warning',
+                showCancelButton: true
+            });
+            if (confirmResult.isConfirmed) {
+                 try {
+                    const apiResult = await callBuyInApi({ action: 'delete_channel', channel_id: id });
+                    await Swal.fire('已刪除!', apiResult.message, 'success');
+                    window.location.reload();
+                } catch(error) { Swal.fire('刪除失敗', error.message, 'error'); }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}
