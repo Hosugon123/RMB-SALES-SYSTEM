@@ -885,7 +885,7 @@ def create_admin_command():
 def index():
     if current_user.is_authenticated:
         return redirect(
-            url_for("admin_dashboard" if current_user.is_admin else "cash_management")
+            url_for("admin_dashboard" if current_user.is_admin else "dashboard")
         )
     return redirect(url_for("login"))
 
@@ -918,7 +918,88 @@ def logout():
 # 7. 主要功能頁面路由 (重構並簡化)
 # ===================================================================
 @app.route("/dashboard")
-@admin_required
+@login_required
+def dashboard():
+    """普通用戶的儀表板頁面"""
+    try:
+        # 獲取基本財務數據
+        total_twd_cash = (
+            db.session.execute(
+                db.select(func.sum(CashAccount.balance)).filter(
+                    CashAccount.currency == "TWD"
+                )
+            ).scalar()
+            or 0.0
+        )
+        total_rmb_stock = (
+            db.session.execute(
+                db.select(func.sum(CashAccount.balance)).filter(
+                    CashAccount.currency == "RMB"
+                )
+            ).scalar()
+            or 0.0
+        )
+
+        # 計算總應收帳款
+        customers_with_receivables = (
+            db.session.execute(
+                db.select(Customer)
+                .filter_by(is_active=True)
+                .filter(Customer.total_receivables_twd > 0)
+                .order_by(Customer.total_receivables_twd.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+
+        # 獲取最近的交易記錄
+        recent_purchases = (
+            db.session.execute(
+                db.select(PurchaseRecord)
+                .order_by(PurchaseRecord.purchase_date.desc())
+                .limit(5)
+            )
+            .scalars()
+            .all()
+        )
+
+        recent_sales = (
+            db.session.execute(
+                db.select(SalesRecord)
+                .order_by(SalesRecord.created_at.desc())
+                .limit(5)
+            )
+            .scalars()
+            .all()
+        )
+
+        return render_template(
+            "dashboard.html",
+            total_twd=total_twd_cash,
+            total_rmb=total_rmb_stock,
+            total_receivables=total_receivables,
+            recent_purchases=recent_purchases,
+            recent_sales=recent_sales,
+            is_admin=False
+        )
+
+    except Exception as e:
+        flash(f"載入儀表板時發生錯誤: {e}", "danger")
+        return render_template(
+            "dashboard.html",
+            total_twd=0.0,
+            total_rmb=0.0,
+            total_receivables=0.0,
+            recent_purchases=[],
+            recent_sales=[],
+            is_admin=False
+        )
+
+
+@app.route("/admin/dashboard")
+@login_required
 def admin_dashboard():
     """儀表板頁面"""
     try:
@@ -1287,8 +1368,222 @@ def api_sales_entry():
         )
 
 
+@app.route("/cash_management")
+@login_required
+def cash_management_operator():
+    """非管理員用戶的現金管理頁面"""
+    try:
+        page = request.args.get("page", 1, type=int)
+
+        holders_obj = (
+            db.session.execute(db.select(Holder).filter_by(is_active=True))
+            .scalars()
+            .all()
+        )
+        # 轉換為可序列化的字典格式
+        holders_data = [
+            {
+                "id": holder.id,
+                "name": holder.name,
+                "is_active": holder.is_active
+            }
+            for holder in holders_obj
+        ]
+        
+        all_accounts_obj = (
+            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            .scalars()
+            .all()
+        )
+
+        total_twd = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+        )
+        total_rmb = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+        )
+
+        # 查詢應收帳款數據
+        customers_with_receivables = (
+            db.session.execute(
+                db.select(Customer)
+                .filter_by(is_active=True)
+                .filter(Customer.total_receivables_twd > 0)
+                .order_by(Customer.total_receivables_twd.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+
+        accounts_by_holder = {}
+        # 先為所有持有人創建條目，即使沒有帳戶
+        for holder in holders_obj:
+            accounts_by_holder[holder.id] = {
+                "holder_name": holder.name,
+                "accounts": [],
+                "total_twd": 0,
+                "total_rmb": 0,
+            }
+        
+        # 然後添加帳戶信息
+        for acc in all_accounts_obj:
+            if acc.holder_id in accounts_by_holder:
+                accounts_by_holder[acc.holder_id]["accounts"].append(
+                    {
+                        "id": acc.id,
+                        "name": acc.name,
+                        "currency": acc.currency,
+                        "balance": acc.balance,
+                    }
+                )
+                if acc.currency == "TWD":
+                    accounts_by_holder[acc.holder_id]["total_twd"] += acc.balance
+                elif acc.currency == "RMB":
+                    accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
+
+        purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
+        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+
+        unified_stream = []
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                # 獲取渠道名稱
+                channel_name = "未知渠道"
+                if p.channel:
+                    channel_name = p.channel.name
+                elif hasattr(p, 'channel_name_manual') and p.channel_name_manual:
+                    channel_name = p.channel_name_manual
+                
+                unified_stream.append(
+                    {
+                        "type": "買入",
+                        "date": p.purchase_date.isoformat(),
+                        "description": f"向 {channel_name} 買入",
+                        "twd_change": -p.twd_cost,
+                        "rmb_change": p.rmb_amount,
+                        "operator": p.operator.username if p.operator else "未知",
+                        "payment_account": p.payment_account.name if p.payment_account else "N/A",
+                        "deposit_account": p.deposit_account.name if p.deposit_account else "N/A",
+                        "note": p.note if hasattr(p, 'note') and p.note else None,
+                    }
+                )
+        for s in sales:
+            if s.customer:
+                # 計算銷售利潤
+                profit_info = FIFOService.calculate_profit_for_sale(s)
+                profit_twd = profit_info.get('profit_twd', 0.0) if profit_info else 0.0
+                
+                unified_stream.append(
+                    {
+                        "type": "售出",
+                        "date": s.created_at.isoformat(),
+                        "description": f"向 {s.customer.name} 售出",
+                        "twd_change": 0,  # 銷售時不顯示TWD變動
+                        "rmb_change": -s.rmb_amount,
+                        "operator": s.operator.username if s.operator else "未知",
+                        "payment_account": "N/A",
+                        "deposit_account": "N/A",
+                        "note": f"利潤: {profit_twd:.2f} TWD" if profit_twd > 0 else None,
+                    }
+                )
+        for entry in misc_entries:
+            unified_stream.append(
+                {
+                    "type": "記帳",
+                    "date": entry.entry_date.isoformat(),
+                    "description": entry.description,
+                    "twd_change": entry.amount if entry.entry_type == "TWD" else 0,
+                    "rmb_change": entry.amount if entry.entry_type == "RMB" else 0,
+                    "operator": entry.operator.username if entry.operator else "未知",
+                    "payment_account": entry.account.name if entry.account else "N/A",
+                    "deposit_account": "N/A",
+                    "note": entry.description,
+                }
+            )
+        for log in cash_logs:
+            unified_stream.append(
+                {
+                    "type": "現金日誌",
+                    "date": log.time.isoformat(),
+                    "description": log.description,
+                    "twd_change": log.amount if log.type == "TWD" else 0,
+                    "rmb_change": log.amount if log.type == "RMB" else 0,
+                    "operator": log.operator.username if log.operator else "未知",
+                    "payment_account": "N/A",
+                    "deposit_account": "N/A",
+                    "note": log.description,
+                }
+            )
+
+        # 按日期排序，最新的在前面
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+
+        # 計算累積餘額
+        running_twd_balance = total_twd
+        running_rmb_balance = total_rmb
+        
+        for movement in unified_stream:
+            movement["running_twd_balance"] = running_twd_balance
+            movement["running_rmb_balance"] = running_rmb_balance
+            
+            # 更新餘額（注意：買入是減少TWD，增加RMB；售出是減少RMB）
+            if movement["type"] == "買入":
+                running_twd_balance += movement["twd_change"]  # twd_change是負數
+                running_rmb_balance += movement["rmb_change"]
+            elif movement["type"] == "售出":
+                running_rmb_balance += movement["rmb_change"]  # rmb_change是負數
+            elif movement["type"] in ["記帳", "現金日誌"]:
+                if movement["twd_change"] != 0:
+                    running_twd_balance += movement["twd_change"]
+                if movement["rmb_change"] != 0:
+                    running_rmb_balance += movement["rmb_change"]
+
+        # 分頁處理
+        items_per_page = 20
+        total_items = len(unified_stream)
+        total_pages = (total_items + items_per_page - 1) // items_per_page
+        
+        start_idx = (page - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        paginated_stream = unified_stream[start_idx:end_idx]
+
+        return render_template(
+            "cash_management.html",
+            holders=holders_data,
+            accounts_by_holder=accounts_by_holder,
+            total_twd=total_twd,
+            total_rmb=total_rmb,
+            total_receivables=total_receivables,
+            movements=paginated_stream,
+            current_page=page,
+            total_pages=total_pages,
+            total_items=total_items,
+            items_per_page=items_per_page,
+        )
+
+    except Exception as e:
+        flash(f"載入現金管理頁面時發生錯誤: {e}", "danger")
+        return render_template(
+            "cash_management.html",
+            holders=[],
+            accounts_by_holder={},
+            total_twd=0.0,
+            total_rmb=0.0,
+            total_receivables=0.0,
+            movements=[],
+            current_page=1,
+            total_pages=1,
+            total_items=0,
+            items_per_page=20,
+        )
+
+
 @app.route("/admin/cash_management")
-@admin_required
+@login_required
 def cash_management():
     try:
         page = request.args.get("page", 1, type=int)
@@ -2313,7 +2608,7 @@ def api_reverse_card_purchase(card_purchase_id):
 
 
 @app.route("/admin/update_cash_account", methods=["POST"])
-@admin_required
+@login_required
 def admin_update_cash_account():
     action = request.form.get("action")
     try:
@@ -3149,7 +3444,7 @@ def manage_channel():
 
 # API 2: 根據持有人 ID，查詢其名下的帳戶
 @app.route("/api/cash_management/accounts_by_holder/<int:holder_id>", methods=["GET"])
-@admin_required
+@login_required
 def get_accounts_by_holder_api(holder_id):
     # --- 偵錯印記 1：看看我們收到了什麼請求 ---
     print("\n" + "=" * 20 + " 開始執行 get_accounts_by_holder_api " + "=" * 20)

@@ -141,11 +141,11 @@
             </div>
 
             <ul class="list-unstyled components">
-                <li class="{% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
-                    <a href="{{ url_for('admin_dashboard') }}"><i class="bi bi-grid-1x2-fill me-3"></i>儀表板</a>
+                <li class="{% if request.endpoint in ['dashboard', 'admin_dashboard'] %}active{% endif %}">
+                    <a href="{{ url_for('dashboard' if not current_user.is_admin else 'admin_dashboard') }}"><i class="bi bi-grid-1x2-fill me-3"></i>儀表板</a>
                 </li>
-                <li class="{% if request.endpoint == 'cash_management' %}active{% endif %}">
-                    <a href="{{ url_for('cash_management') }}"><i class="bi bi-wallet2 me-3"></i>現金管理</a>
+                <li class="{% if request.endpoint in ['cash_management', 'cash_management_operator'] %}active{% endif %}">
+                    <a href="{{ url_for('cash_management_operator' if not current_user.is_admin else 'cash_management') }}"><i class="bi bi-wallet2 me-3"></i>現金管理</a>
                 </li>
                 <li class="{% if request.endpoint == 'buy_in' %}active{% endif %}">
                     <a href="{{ url_for('buy_in') }}"><i class="bi bi-bag-plus-fill me-3"></i>買入頁面</a>

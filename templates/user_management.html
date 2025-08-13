@@ -3,6 +3,7 @@
 {% block title %}使用者管理{% endblock %}
 
 {% block content %}
+{% if current_user.is_admin %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-4 border-bottom">
     <h1 class="h2"><i class="bi bi-people-fill me-2"></i>使用者管理</h1>
 </div>
@@ -12,7 +13,7 @@
     <div class="col-lg-4">
         <div class="card shadow-sm">
             <div class="card-header bg-success text-white">
-                <h5 class="mb-0 fw-light"><i class="bi bi-person-plus-fill me-2"></i>新增使用者</h4>
+                <h5 class="mb-0 fw-light"><i class="bi bi-person-plus-fill me-2"></i>新增使用者</h5>
             </div>
             <div class="card-body p-4">
                 <form id="add-user-form">
@@ -82,71 +83,77 @@
         </div>
     </div>
 </div>
+{% else %}
+<!-- 非管理員用戶看到的權限不足訊息 -->
+<div class="d-flex justify-content-center align-items-center" style="min-height: 400px;">
+    <div class="text-center">
+        <i class="bi bi-shield-exclamation text-warning" style="font-size: 4rem;"></i>
+        <h2 class="mt-3 text-muted">權限不足</h2>
+        <p class="text-muted">您沒有權限訪問此頁面。</p>
+        <a href="{{ url_for('cash_management') }}" class="btn btn-primary">
+            <i class="bi bi-arrow-left me-2"></i>返回首頁
+        </a>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+// 將管理員狀態傳遞給JavaScript
+const isAdmin = {{ 'true' if current_user.is_admin else 'false' }};
+
 document.addEventListener('DOMContentLoaded', function() {
-    const addUserForm = document.getElementById('add-user-form');
+    // 檢查用戶是否為管理員
+    if (isAdmin) {
+        const addUserForm = document.getElementById('add-user-form');
 
-    addUserForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
+        addUserForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
 
-        const formData = new FormData(addUserForm);
-        const dataToSend = {
-            username: formData.get('username'),
-            password: formData.get('password')
-        };
-        
-        // 簡單的前端驗證
-        if (!dataToSend.username || !dataToSend.password) {
-            Swal.fire('資料不完整', '用戶名和密碼皆為必填項。', 'warning');
-            return;
-        }
+            const formData = new FormData(addUserForm);
+            const dataToSend = {
+                username: formData.get('username'),
+                password: formData.get('password')
+            };
+            
+            // 簡單的前端驗證
+            if (!dataToSend.username || !dataToSend.password) {
+                Swal.fire('資料不完整', '用戶名和密碼皆為必填項。', 'warning');
+                return;
+            }
 
-addUserForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
+            try {
+                const response = await fetch("{{ url_for('api_add_user') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataToSend)
+                });
+                const result = await response.json();
 
-    const formData = new FormData(addUserForm);
-    const dataToSend = {
-        username: formData.get('username'),
-        password: formData.get('password')
-    };
-    
-    if (!dataToSend.username || !dataToSend.password) {
-        Swal.fire('資料不完整', '用戶名和密碼皆為必填項。', 'warning');
-        return;
-    }
+                if (!response.ok) {
+                    throw new Error(result.message || '伺服器發生未知錯誤');
+                }
 
-    try {
-        const response = await fetch("{{ url_for('api_add_user') }}", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dataToSend)
+                await Swal.fire({
+                    icon: 'success',
+                    title: '新增成功！',
+                    text: result.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+                window.location.reload(); // 成功後刷新頁面，以在列表中看到新用戶
+
+            } catch (error) {
+                Swal.fire('新增失敗', error.message, 'error');
+            }
         });
-        const result = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.message || '伺服器發生未知錯誤');
-        }
-
-        await Swal.fire({
-            icon: 'success',
-            title: '新增成功！',
-            text: result.message,
-            timer: 2000,
-            showConfirmButton: false
-        });
-        window.location.reload(); // 成功後刷新頁面，以在列表中看到新用戶
-
-    } catch (error) {
-        Swal.fire('新增失敗', error.message, 'error');
+    } else {
+        // 非管理員用戶，不執行任何JavaScript功能
+        console.log('非管理員用戶，使用者管理功能已禁用');
     }
-});
-        Swal.fire('功能開發中', '處理新增使用者的後端 API 尚未完成。', 'info');
-    });
 });
 </script>
-{% endblock %}```
+{% endblock %}
 

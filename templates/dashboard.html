@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}儀表板{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .metric-card { 
+        border: none; 
+        border-radius: .75rem; 
+        box-shadow: 0 4px 15px rgba(0,0,0,.05); 
+        transition: all .2s ease-in-out; 
+    }
+    .metric-card:hover { 
+        transform: translateY(-5px); 
+        box-shadow: 0 8px 25px rgba(0,0,0,.08); 
+    }
+    .metric-card .card-body { 
+        display: flex; 
+        align-items: center; 
+    }
+    .metric-card .icon-circle { 
+        display: inline-flex; 
+        align-items: center; 
+        justify-content: center; 
+        width: 50px; 
+        height: 50px; 
+        border-radius: 50%; 
+        margin-right: 1.25rem; 
+    }
+    .metric-card .card-footer { 
+        background-color: #f8f9fa; 
+        border-top: 1px solid #dee2e6; 
+        font-weight: 500; 
+    }
+    
+    .recent-activity-card {
+        transition: all 0.3s ease;
+        border-radius: 12px;
+    }
+    
+    .recent-activity-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
+    <h1 class="h2">儀表板總覽</h1>
+    <small class="text-muted">歡迎回來，{{ current_user.username }}！</small>
+</div>
+
+<div class="row">
+    <!-- 台幣資產 -->
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-primary-subtle text-primary">
+                    <i class="bi bi-wallet2 fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">台幣資產 (TWD)</p>
+                    <h3 class="fw-bold mb-0">NT$ {{ "{:,.0f}".format(total_twd or 0) }}</h3>
+                </div>
+            </div>
+            <a href="{{ url_for('cash_management_operator') }}" class="card-footer text-decoration-none text-muted d-block">
+                查看現金 <i class="bi bi-arrow-right-circle float-end"></i>
+            </a>
+        </div>
+    </div>
+    
+    <!-- 人民幣資產 -->
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-success-subtle text-success">
+                    <i class="bi bi-currency-yen fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">人民幣資產 (RMB)</p>
+                    <h3 class="fw-bold mb-0">¥ {{ "{:,.0f}".format(total_rmb or 0) }}</h3>
+                </div>
+            </div>
+            <a href="{{ url_for('fifo_inventory') }}" class="card-footer text-decoration-none text-muted d-block">
+                管理庫存 <i class="bi bi-arrow-right-circle float-end"></i>
+            </a>
+        </div>
+    </div>
+    
+    <!-- 應收帳款 -->
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-danger-subtle text-danger">
+                    <i class="bi bi-receipt-cutoff fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">應收帳款 (TWD)</p>
+                    <h3 class="fw-bold mb-0">NT$ {{ "{:,.0f}".format(total_receivables or 0) }}</h3>
+                </div>
+            </div>
+            <a href="{{ url_for('cash_management_operator') }}" class="card-footer text-decoration-none text-muted d-block">
+                查看帳款 <i class="bi bi-arrow-right-circle float-end"></i>
+            </a>
+        </div>
+    </div>
+    
+    <!-- 快速操作 -->
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="icon-circle bg-info-subtle text-info">
+                    <i class="bi bi-lightning-charge fs-3"></i>
+                </div>
+                <div>
+                    <p class="text-muted mb-1 small">快速操作</p>
+                    <h3 class="fw-bold mb-0">開始工作</h3>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('buy_in') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-bag-plus me-1"></i>買入
+                    </a>
+                    <a href="{{ url_for('sales_entry') }}" class="btn btn-sm btn-outline-success">
+                        <i class="bi bi-cash-coin me-1"></i>銷售
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 最近買入記錄 -->
+    <div class="col-lg-6 mb-4">
+        <div class="card recent-activity-card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-bag-plus-fill me-2 text-primary"></i>最近買入記錄
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_purchases %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>金額 (RMB)</th>
+                                <th>匯率</th>
+                                <th>成本 (TWD)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for purchase in recent_purchases %}
+                            <tr>
+                                <td>{{ purchase.purchase_date.strftime('%m-%d') }}</td>
+                                <td class="text-success">¥{{ "{:,.0f}".format(purchase.rmb_amount) }}</td>
+                                <td>{{ "{:.4f}".format(purchase.exchange_rate) }}</td>
+                                <td class="text-primary">NT${{ "{:,.0f}".format(purchase.twd_cost) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-inbox fs-1"></i>
+                    <p class="mt-2">尚無買入記錄</p>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('buy_in') }}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-plus-circle me-1"></i>新增買入
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 最近銷售記錄 -->
+    <div class="col-lg-6 mb-4">
+        <div class="card recent-activity-card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-cash-coin-fill me-2 text-success"></i>最近銷售記錄
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_sales %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>客戶</th>
+                                <th>金額 (RMB)</th>
+                                <th>收款 (TWD)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sale in recent_sales %}
+                            <tr>
+                                <td>{{ sale.created_at.strftime('%m-%d') }}</td>
+                                <td>{{ sale.customer.name if sale.customer else 'N/A' }}</td>
+                                <td class="text-success">¥{{ "{:,.0f}".format(sale.rmb_amount) }}</td>
+                                <td class="text-primary">NT${{ "{:,.0f}".format(sale.twd_amount) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-cart fs-1"></i>
+                    <p class="mt-2">尚無銷售記錄</p>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('sales_entry') }}" class="btn btn-success btn-sm">
+                    <i class="bi bi-plus-circle me-1"></i>新增銷售
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 系統狀態提示 -->
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>系統狀態：</strong> 您目前以 <strong>{{ current_user.role }}</strong> 身份登入系統。
+            {% if not current_user.is_admin %}
+            如需管理員功能，請聯繫系統管理員。
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
