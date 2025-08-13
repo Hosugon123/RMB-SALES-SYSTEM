@@ -933,15 +933,22 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("index"))
+        return redirect(url_for("dashboard"))
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
+        print(f"🔍 登入嘗試: username={username}")  # 調試日誌
+        
         user = User.query.filter_by(username=username).first()
+        print(f"🔍 用戶查詢結果: {user}")  # 調試日誌
+        
         if user and user.check_password(password):
+            print(f"✅ 登入成功: {username}")  # 調試日誌
             login_user(user, remember=True)
-            return redirect(url_for("index"))
+            flash(f"歡迎回來，{username}！", "success")
+            return redirect(url_for("dashboard"))
         else:
+            print(f"❌ 登入失敗: {username}")  # 調試日誌
             flash("無效的使用者名稱或密碼。", "danger")
     return render_template("login.html")
 
