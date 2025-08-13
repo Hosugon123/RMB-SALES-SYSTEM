@@ -3575,4 +3575,9 @@ def api_add_user():
 # 8. 啟動器
 # ===================================================================
 if __name__ == "__main__":
+    # 確保資料庫表格存在
+    with app.app_context():
+        db.create_all()
+        print("✅ 資料庫表格已創建")
+    
     app.run(debug=True)
