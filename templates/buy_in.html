@@ -294,6 +294,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => {
                     window.location.reload();
                 }, 1500);
+                
+                // 通知FIFO庫存頁面更新（如果存在）
+                if (window.opener && window.opener.postMessage) {
+                    window.opener.postMessage({ type: 'inventory_updated' }, '*');
+                }
             } else {
                 Swal.fire('錯誤', responseData.message, 'error');
             }

@@ -36,7 +36,7 @@
             <div class="card shadow-sm text-center h-100">
                 <div class="card-body">
                     <p class="text-muted mb-1">總應收帳款 (TWD)</p>
-                    <h2 class="fw-bold text-warning">NT$ {{ "{:,.2f}".format(total_receivables or 0) }}</h2>
+                                             <h2 class="fw-bold text-danger">NT$ {{ "{:,.2f}".format(total_receivables or 0) }}</h2>
                 </div>
             </div>
         </div>
@@ -70,13 +70,19 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for customer in customers_with_receivables %}
+                                                {% for customer in customers_with_receivables %}
                         <tr>
                             <td class="ps-3">
-                                <strong>{{ customer.name }}</strong>
+                                <a href="#" class="text-decoration-none fw-bold text-primary customer-transactions" 
+                                   data-customer-id="{{ customer.id }}" 
+                                   data-customer-name="{{ customer.name }}"
+                                   title="點擊查看交易紀錄">
+                                    {{ customer.name }}
+                                    <i class="bi bi-arrow-right-circle ms-1 text-muted"></i>
+                                </a>
                             </td>
                             <td class="text-end">
-                                <span class="fw-bold text-warning">NT$ {{ "{:,.2f}".format(customer.total_receivables_twd) }}</span>
+                                <span class="fw-bold text-danger">NT$ {{ "{:,.2f}".format(customer.total_receivables_twd) }}</span>
                             </td>
                             <td class="text-center">
                                 <button class="btn btn-success btn-sm" 
@@ -85,7 +91,7 @@
                                 </button>
                             </td>
                             <td class="pe-3">
-                                <small class="text-muted">點擊銷帳按鈕進行收款</small>
+                                <small class="text-muted">點擊客戶名稱查看交易紀錄</small>
                             </td>
                         </tr>
                         {% endfor %}
@@ -103,18 +109,18 @@
 
     <!-- 獨立的流水帳區塊 -->
     <div class="card shadow-sm mt-4">
-        <div class="card-header"><h5 class="mb-0 fw-light"><i class="bi bi-graph-up-arrow me-2"></i>近期資金流水</h5></div>
+        <div class="card-header"><h5 class="mb-0 fw-light"><i class="bi bi-graph-up-arrow me-2"></i>近期交易記錄</h5></div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
-                    <thead>
+                    <thead id="movements-thead">
                         <tr>
                             <th class="ps-3">時間</th>
-                            <th>操作人員</th>
                             <th>類型</th>
                             <th>描述</th>
-                            <th class="text-end">TWD 變動</th>
-                            <th class="text-end pe-3">RMB 變動</th>
+                            <th class="text-end" id="twd-header">TWD 變動</th>
+                            <th class="text-end" id="rmb-header">RMB 變動</th>
+                            <th class="text-end pe-3">利潤</th>
                         </tr>
                     </thead>
                     <tbody id="movements-tbody">
@@ -217,18 +223,22 @@ document.addEventListener('DOMContentLoaded', function () {
             let totalRmb = 0;
             if (holderData && holderData.accounts && holderData.accounts.length > 0) {
                 holderData.accounts.forEach(acc => {
-                    accountsHtml += `<li class="list-group-item d-flex justify-content-between align-items-center ps-4"><div><i class="bi bi-caret-right-fill text-muted me-1"></i><span>${acc.name} <span class="badge bg-secondary rounded-pill">${acc.currency}</span></span></div><div class="d-flex align-items-center"><strong class="me-3 ${acc.balance >= 0 ? 'text-dark' : 'text-danger'}">${acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong><div class="btn-group btn-group-sm"><button class="btn btn-outline-primary btn-movement" data-account-id="${acc.id}" data-account-name="${acc.name}" title="存入/提出"><i class="bi bi-arrow-down-up"></i></button><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此帳戶嗎？');"><input type="hidden" name="action" value="delete_account"><input type="hidden" name="account_id" value="${acc.id}"><button type="submit" class="btn btn-outline-danger" title="刪除帳戶">&times;</button></form></div></div></li>`;
+                    // 根據貨幣類型設置不同的顏色
+                    const currencyBadgeClass = acc.currency === 'TWD' ? 'bg-primary' : 'bg-success';
+                    const currencyTextClass = acc.currency === 'TWD' ? 'text-primary' : 'text-success';
+                    
+                    accountsHtml += `<li class="list-group-item py-2 d-flex justify-content-between align-items-center ps-3"><div><i class="bi bi-caret-right-fill text-muted me-1"></i><span>${acc.name} <span class="badge ${currencyBadgeClass} rounded-pill">${acc.currency}</span></span></div><div class="d-flex align-items-center"><strong class="me-2 ${currencyTextClass}">${acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong><div class="btn-group btn-group-sm"><button class="btn btn-outline-primary btn-movement btn-sm" data-account-id="${acc.id}" data-account-name="${acc.name}" title="存入/提出"><i class="bi bi-arrow-down-up"></i></button><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此帳戶嗎？');"><input type="hidden" name="action" value="delete_account"><input type="hidden" name="account_id" value="${acc.id}"><button type="submit" class="btn btn-outline-danger btn-sm" title="刪除帳戶">&times;</button></form></div></div></li>`;
                 });
                 totalTwd = holderData.total_twd || 0;
                 totalRmb = holderData.total_rmb || 0;
             } else {
                 // 強制顯示持有人，即使沒有帳戶
-                accountsHtml = '<li class="list-group-item text-muted text-center">-- 尚無帳戶 --</li>';
+                accountsHtml = '<li class="list-group-item py-1 text-muted text-center small">-- 尚無帳戶 --</li>';
                 totalTwd = 0;
                 totalRmb = 0;
             }
-            const subtotalFooter = `<div class="card-footer bg-light d-flex justify-content-around p-2"><div><small class="text-muted">TWD 小計:</small> <strong class="text-primary">${totalTwd.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div><div><small class="text-muted">RMB 小計:</small> <strong class="text-success">${totalRmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div></div>`;
-            accountsContainer.innerHTML += `<div class="col-lg-6 mb-4"><div class="card h-100 shadow-sm"><div class="card-header d-flex justify-content-between align-items-center"><strong>${holderName}</strong><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此持有人及其所有帳戶嗎？');"><input type="hidden" name="action" value="delete_holder"><input type="hidden" name="holder_id" value="${holderId}"><button type="submit" class="btn btn-danger btn-sm py-0">刪除持有人</button></form></div><ul class="list-group list-group-flush">${accountsHtml}</ul>${subtotalFooter}</div></div>`;
+            const subtotalFooter = `<div class="card-footer bg-light d-flex justify-content-around py-1"><div><small class="text-muted">TWD:</small> <strong class="text-primary">${totalTwd.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div><div><small class="text-muted">RMB:</small> <strong class="text-success">${totalRmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div></div>`;
+            accountsContainer.innerHTML += `<div class="col-lg-4 col-md-6 mb-2"><div class="card shadow-sm h-100"><div class="card-header py-2 d-flex justify-content-between align-items-center"><strong class="h6 mb-0">${holderName}</strong><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此持有人及其所有帳戶嗎？');"><input type="hidden" name="action" value="delete_holder"><input type="hidden" name="holder_id" value="${holderId}"><button type="submit" class="btn btn-danger btn-sm py-0 px-2">刪除</button></form></div><ul class="list-group list-group-flush">${accountsHtml}</ul>${subtotalFooter}</div></div>`;
         });
         document.querySelectorAll('.btn-movement').forEach(btn => {
             btn.addEventListener('click', function() {
@@ -246,20 +256,81 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!movementsTbody) return;
         movementsTbody.innerHTML = '';
         if (movements.length === 0) {
-            movementsTbody.innerHTML = '<tr><td colspan="6" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="7" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
+        
+        // 檢查是否有TWD或RMB變動，動態隱藏/顯示標題
+        let hasTwdChange = false;
+        let hasRmbChange = false;
+        
+        movements.forEach(m => {
+            if (parseFloat(m.twd_change) !== 0) hasTwdChange = true;
+            if (parseFloat(m.rmb_change) !== 0) hasRmbChange = true;
+        });
+        
+        // 動態隱藏/顯示標題
+        const twdHeader = document.getElementById('twd-header');
+        const rmbHeader = document.getElementById('rmb-header');
+        if (twdHeader) twdHeader.style.display = hasTwdChange ? 'table-cell' : 'none';
+        if (rmbHeader) rmbHeader.style.display = hasRmbChange ? 'table-cell' : 'none';
         movements.forEach(m => {
             const twdChange = parseFloat(m.twd_change) || 0;
             const rmbChange = parseFloat(m.rmb_change) || 0;
-            movementsTbody.innerHTML += `<tr>
+            const profit = m.profit || 0;
+            
+            // 將類型轉換為中文顯示
+            let typeDisplay = m.type;
+            let typeClass = 'bg-info-subtle text-info-emphasis';
+            
+            switch(m.type) {
+                case '售出':
+                    typeDisplay = '售出';
+                    typeClass = 'bg-success-subtle text-success-emphasis';
+                    break;
+                case 'SETTLEMENT':
+                    typeDisplay = '銷帳';
+                    typeClass = 'bg-primary-subtle text-primary-emphasis';
+                    break;
+                case '買入':
+                    typeDisplay = '買入';
+                    typeClass = 'bg-warning-subtle text-warning-emphasis';
+                    break;
+                case 'CARD_PURCHASE':
+                    typeDisplay = '刷卡';
+                    typeClass = 'bg-secondary-subtle text-secondary-emphasis';
+                    break;
+                default:
+                    typeDisplay = m.type;
+                    typeClass = 'bg-info-subtle text-info-emphasis';
+            }
+            
+            let profitHtml = '';
+            if (m.type === '售出' && profit !== undefined) {
+                const profitClass = profit >= 0 ? 'text-success' : 'text-danger';
+                profitHtml = `<td class="text-end pe-3 fw-bold ${profitClass}">NT$ ${profit.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>`;
+            } else {
+                profitHtml = `<td class="text-end pe-3 text-muted">-</td>`;
+            }
+            
+            // 動態生成表格行，只包含有變動的欄位
+            let rowHtml = `<tr>
                 <td class="ps-3">${new Date(m.date).toLocaleDateString()}</td>
-                <td>${m.operator || ''}</td>
-                <td><span class="badge bg-info-subtle text-info-emphasis">${m.type}</span></td>
-                <td>${m.description}</td>
-                <td class="text-end fw-bold ${twdChange >= 0 ? 'text-success' : 'text-danger'}">${twdChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                <td class="text-end pe-3 fw-bold ${rmbChange >= 0 ? 'text-success' : 'text-danger'}">${rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-            </tr>`;
+                <td><span class="badge ${typeClass}">${typeDisplay}</span></td>
+                <td>${m.description}</td>`;
+            
+            // 只有TWD有變動時才添加TWD欄位
+            if (twdChange !== 0) {
+                rowHtml += `<td class="text-end fw-bold ${twdChange > 0 ? 'text-success' : 'text-danger'}">${twdChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>`;
+            }
+            
+            // 只有RMB有變動時才添加RMB欄位
+            if (rmbChange !== 0) {
+                rowHtml += `<td class="text-end fw-bold ${rmbChange > 0 ? 'text-success' : 'text-danger'}">${rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>`;
+            }
+            
+            rowHtml += profitHtml + '</tr>';
+            movementsTbody.innerHTML += rowHtml;
         });
     }
     
@@ -282,64 +353,115 @@ document.addEventListener('DOMContentLoaded', function () {
     // 填充新增帳戶模態框中的持有人下拉選單
     populateSelect('accountHolder', holders.map(h => ({ value: h.id, text: h.name })));
     
-    // 填充銷帳模態框中的收款帳戶下拉選單
-    populateGroupedSelect('settlementAccount', groupedAccounts);
+    // 填充銷帳模態框中的收款帳戶下拉選單 - 只顯示TWD帳戶
+    const twdAccounts = [];
+    if (Array.isArray(holders) && Array.isArray(allAccounts)) {
+        holders.forEach(holder => {
+            const twdAccountsInGroup = allAccounts.filter(acc => acc.holder_id === holder.id && acc.currency === 'TWD');
+            if (twdAccountsInGroup.length > 0) {
+                twdAccounts.push({
+                    holder_name: holder.name,
+                    accounts: twdAccountsInGroup
+                });
+            }
+        });
+    }
+    populateGroupedSelect('settlementAccount', twdAccounts);
     
     // 調用渲染函數來顯示持有人和帳戶
     renderAccounts();
     renderMovements();
+    
+    // 設置客戶交易紀錄點擊事件監聽器
+    setupCustomerTransactionsListeners();
     
     // 銷帳模態框相關功能
     const settlementModal = new bootstrap.Modal(document.getElementById('settlementModal'));
     const settlementForm = document.getElementById('settlementForm');
     
     // 銷帳表單提交處理
-    settlementForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const customerId = document.querySelector('input[name="customer_id"]').value;
-        const amount = parseFloat(document.getElementById('settlementAmount').value);
-        const accountId = document.getElementById('settlementAccount').value;
-        const note = document.getElementById('settlementNote').value;
-        
-        try {
-            const response = await fetch('/api/settlement', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    customer_id: customerId,
-                    amount: amount,
-                    account_id: accountId,
-                    note: note
-                })
-            });
+    if (settlementForm) {
+        settlementForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
             
-            const result = await response.json();
+            const customerId = document.querySelector('input[name="customer_id"]').value;
+            const amount = parseFloat(document.getElementById('settlementAmount').value);
+            const accountId = document.querySelector('input[name="account_id"]').value;
+            const note = document.getElementById('settlementNote').value;
             
-            if (result.status === 'success') {
-                Swal.fire({
-                    icon: 'success',
-                    title: '銷帳成功！',
-                    text: result.message,
-                    timer: 2000,
-                    showConfirmButton: false
+            // 驗證必填欄位
+            if (!customerId || !amount || !accountId) {
+                Swal.fire('錯誤', '請填寫所有必填欄位', 'error');
+                return;
+            }
+            
+            console.log('銷帳表單提交:', { customerId, amount, accountId, note });
+            
+            try {
+                const response = await fetch('/api/settlement', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        customer_id: customerId,
+                        amount: amount,
+                        account_id: accountId,
+                        note: note
+                    })
                 });
                 
-                // 關閉模態框並重新載入頁面
-                settlementModal.hide();
-                window.location.reload();
-            } else {
-                Swal.fire('錯誤', result.message, 'error');
+                const result = await response.json();
+                console.log('銷帳回應:', result);
+                
+                if (result.status === 'success') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '銷帳成功！',
+                        text: result.message,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    
+                    // 關閉模態框並重新載入頁面
+                    console.log('準備關閉模態框...');
+                    const modalElement = document.getElementById('settlementModal');
+                    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+                    console.log('模態框元素:', modalElement);
+                    console.log('模態框實例:', modalInstance);
+                    
+                    if (modalInstance) {
+                        console.log('關閉模態框...');
+                        modalInstance.hide();
+                    } else {
+                        console.log('無法獲取模態框實例，嘗試直接隱藏...');
+                        // 備用方案：直接隱藏模態框
+                        modalElement.style.display = 'none';
+                        modalElement.classList.remove('show');
+                        document.body.classList.remove('modal-open');
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+                    }
+                    
+                    // 延遲重新載入頁面，確保模態框有時間關閉
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    Swal.fire('錯誤', result.message, 'error');
+                }
+            } catch (error) {
+                console.error('銷帳錯誤:', error);
+                Swal.fire('錯誤', '銷帳時發生錯誤', 'error');
             }
-        } catch (error) {
-            Swal.fire('錯誤', '銷帳時發生錯誤', 'error');
-            console.error('銷帳錯誤:', error);
-        }
-    });
+        });
+    }
 });
 
 // 全局函數：打開銷帳模態框
 function openSettlementModal(customerId, customerName, totalReceivable) {
+    console.log('打開銷帳模態框:', { customerId, customerName, totalReceivable });
+    
     // 設置模態框數據
     document.getElementById('settlementCustomerName').value = customerName;
     document.getElementById('settlementTotalReceivable').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
@@ -356,17 +478,155 @@ function openSettlementModal(customerId, customerName, totalReceivable) {
     }
     customerIdInput.value = customerId;
     
-    let accountIdInput = document.getElementById('settlementForm').querySelector('input[name="account_id"]');
-    if (!accountIdInput) {
-        accountIdInput = document.createElement('input');
-        accountIdInput.type = 'hidden';
-        accountIdInput.name = 'account_id';
-        document.getElementById('settlementForm').appendChild(accountIdInput);
+    // 移除舊的隱藏帳戶ID欄位（如果存在）
+    let oldAccountIdInput = document.getElementById('settlementForm').querySelector('input[name="account_id"]');
+    if (oldAccountIdInput) {
+        oldAccountIdInput.remove();
+    }
+    
+    // 添加新的隱藏帳戶ID欄位
+    let accountIdInput = document.createElement('input');
+    accountIdInput.type = 'hidden';
+    accountIdInput.name = 'account_id';
+    accountIdInput.id = 'hiddenAccountId';
+    document.getElementById('settlementForm').appendChild(accountIdInput);
+    
+    // 監聽收款帳戶下拉選單的變化，自動更新隱藏的帳戶ID
+    const settlementAccountSelect = document.getElementById('settlementAccount');
+    if (settlementAccountSelect) {
+        settlementAccountSelect.addEventListener('change', function() {
+            document.getElementById('hiddenAccountId').value = this.value;
+        });
     }
     
     // 顯示模態框
-    const settlementModal = new bootstrap.Modal(document.getElementById('settlementModal'));
-    settlementModal.show();
+    const modalElement = document.getElementById('settlementModal');
+    let modalInstance = bootstrap.Modal.getInstance(modalElement);
+    if (!modalInstance) {
+        modalInstance = new bootstrap.Modal(modalElement);
+    }
+    modalInstance.show();
+}
+
+// --- 客戶交易紀錄相關功能 ---
+function setupCustomerTransactionsListeners() {
+    console.log('🔧 設置客戶交易紀錄點擊事件監聽器...');
+    
+    // 使用事件委託，監聽整個應收帳款表格的點擊事件
+    document.addEventListener('click', function(event) {
+        console.log('🖱️ 點擊事件:', event.target);
+        
+        if (event.target.closest('.customer-transactions')) {
+            const customerLink = event.target.closest('.customer-transactions');
+            const customerId = customerLink.dataset.customerId;
+            const customerName = customerLink.dataset.customerName;
+            
+            console.log('👤 點擊客戶:', { customerId, customerName });
+            
+            if (customerId && customerName) {
+                openCustomerTransactionsModal(customerId, customerName);
+            } else {
+                console.error('❌ 客戶ID或名稱缺失:', { customerId, customerName });
+            }
+        }
+    });
+    
+    console.log('✅ 客戶交易紀錄點擊事件監聽器設置完成');
+}
+
+function openCustomerTransactionsModal(customerId, customerName) {
+    // 更新模態框標題
+    document.getElementById('customerTransactionsTitle').textContent = `${customerName} 的交易紀錄`;
+    document.getElementById('customerTransactionsName').textContent = customerName;
+    
+    // 顯示載入狀態
+    document.getElementById('customerTransactionsTable').innerHTML = '<tr><td colspan="7" class="text-center p-3"><div class="spinner-border spinner-border-sm me-2"></div>載入中...</td></tr>';
+    document.getElementById('customerTransactionsEmpty').style.display = 'none';
+    
+    // 顯示模態框
+    const modal = new bootstrap.Modal(document.getElementById('customerTransactionsModal'));
+    modal.show();
+    
+    // 獲取客戶交易紀錄
+    fetchCustomerTransactions(customerId);
+}
+
+function fetchCustomerTransactions(customerId) {
+    fetch(`/api/customer/transactions/${customerId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                displayCustomerTransactions(data);
+            } else {
+                console.error('獲取客戶交易紀錄失敗:', data.message);
+                document.getElementById('customerTransactionsTable').innerHTML = 
+                    '<tr><td colspan="7" class="text-center text-danger">載入失敗</td></tr>';
+            }
+        })
+        .catch(error => {
+            console.error('獲取客戶交易紀錄失敗:', error);
+            document.getElementById('customerTransactionsTable').innerHTML = 
+                '<tr><td colspan="7" class="text-center text-danger">載入失敗</td></tr>';
+        });
+}
+
+function displayCustomerTransactions(data) {
+    const tableBody = document.getElementById('customerTransactionsTable');
+    const emptyDiv = document.getElementById('customerTransactionsEmpty');
+    
+    // 更新應收帳款信息
+    document.getElementById('customerTransactionsReceivable').textContent = 
+        `NT$ ${parseFloat(data.total_receivables).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    
+    if (!data.transactions || data.transactions.length === 0) {
+        tableBody.style.display = 'none';
+        emptyDiv.style.display = 'block';
+        return;
+    }
+    
+    tableBody.style.display = 'table-row-group';
+    emptyDiv.style.display = 'none';
+    
+    let html = '';
+    data.transactions.forEach(transaction => {
+        // 根據類型設置不同的樣式
+        let typeClass = 'badge bg-secondary';
+        let typeText = transaction.type;
+        
+        switch(transaction.type) {
+            case '售出':
+                typeClass = 'badge bg-success';
+                break;
+            case '銷帳':
+                typeClass = 'badge bg-primary';
+                break;
+            default:
+                typeClass = 'badge bg-info';
+        }
+        
+        // 格式化金額顯示
+        const rmbAmount = transaction.rmb_amount > 0 ? `¥ ${transaction.rmb_amount.toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
+        const twdAmount = transaction.twd_amount > 0 ? `NT$ ${transaction.twd_amount.toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
+        const profitAmount = transaction.profit_twd !== 0 ? `NT$ ${transaction.profit_twd.toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
+        
+        // 設置利潤顏色
+        const profitClass = transaction.profit_twd > 0 ? 'text-success' : 
+                           transaction.profit_twd < 0 ? 'text-danger' : 'text-muted';
+        
+        html += `
+            <tr>
+                <td><small>${transaction.date}</small></td>
+                <td><span class="${typeClass}">${typeText}</span></td>
+                <td>${transaction.description}</td>
+                <td class="text-end text-success">${rmbAmount}</td>
+                <td class="text-end text-primary">${twdAmount}</td>
+                <td class="text-end fw-bold ${profitClass}">${profitAmount}</td>
+                <td><span class="badge bg-light text-dark">${transaction.status}</span></td>
+            </tr>
+        `;
+    });
+    
+    tableBody.innerHTML = html;
 }
 </script>
 {% endblock %}

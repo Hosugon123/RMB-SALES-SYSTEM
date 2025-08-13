@@ -21,7 +21,7 @@
 
     <!-- 庫存總覽卡片 -->
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-body text-center">
                     <h5 class="card-title text-muted">總庫存 (RMB)</h5>
@@ -29,11 +29,20 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-body text-center">
                     <h5 class="card-title text-muted">庫存總價值 (TWD)</h5>
                     <h2 class="text-primary mb-0">NT$ {{ "%.2f"|format(total_value_twd) }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-muted">平均成本 (TWD/RMB)</h5>
+                    <h2 class="text-warning mb-0">NT$ {{ "%.4f"|format(average_cost_twd) }}</h2>
+                    <small class="text-muted">每1元人民幣的平均台幣成本</small>
                 </div>
             </div>
         </div>
@@ -53,38 +62,42 @@
                     {% if inventory_data %}
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>買入日期</th>
-                                    <th>渠道</th>
-                                    <th class="text-end">原始數量</th>
-                                    <th class="text-end">剩餘數量</th>
-                                    <th class="text-end">單位成本</th>
-                                    <th class="text-end">匯率</th>
-                                    <th class="text-end">庫存價值</th>
-                                </tr>
-                            </thead>
+                                                         <thead class="table-light">
+                                 <tr>
+                                     <th>買入日期</th>
+                                     <th>渠道</th>
+                                     <th class="text-end">原始數量</th>
+                                     <th class="text-end">剩餘數量</th>
+                                     <th class="text-end">已出帳數量</th>
+                                     <th class="text-end">單位成本</th>
+                                     <th class="text-end">匯率</th>
+                                     <th class="text-end">庫存價值</th>
+                                 </tr>
+                             </thead>
                             <tbody>
                                 {% for item in inventory_data %}
-                                <tr>
-                                    <td><small>{{ item.purchase_date }}</small></td>
-                                    <td>{{ item.channel }}</td>
-                                    <td class="text-end text-muted">
-                                        ¥ {{ "%.2f"|format(item.original_rmb) }}
-                                    </td>
-                                    <td class="text-end text-success fw-bold">
-                                        ¥ {{ "%.2f"|format(item.remaining_rmb) }}
-                                    </td>
-                                    <td class="text-end text-info">
-                                        NT$ {{ "%.4f"|format(item.unit_cost_twd) }}
-                                    </td>
-                                    <td class="text-end text-muted">
-                                        {{ "%.4f"|format(item.exchange_rate) }}
-                                    </td>
-                                    <td class="text-end text-primary fw-bold">
-                                        NT$ {{ "%.2f"|format(item.total_value_twd) }}
-                                    </td>
-                                </tr>
+                                                                 <tr>
+                                     <td><small>{{ item.purchase_date }}</small></td>
+                                     <td>{{ item.channel }}</td>
+                                     <td class="text-end text-muted">
+                                         ¥ {{ "%.2f"|format(item.original_rmb) }}
+                                     </td>
+                                     <td class="text-end text-success fw-bold">
+                                         ¥ {{ "%.2f"|format(item.remaining_rmb) }}
+                                     </td>
+                                     <td class="text-end text-warning">
+                                         ¥ {{ "%.2f"|format(item.sold_rmb) }}
+                                     </td>
+                                     <td class="text-end text-info">
+                                         NT$ {{ "%.4f"|format(item.unit_cost_twd) }}
+                                     </td>
+                                     <td class="text-end text-muted">
+                                         {{ "%.4f"|format(item.exchange_rate) }}
+                                     </td>
+                                     <td class="text-end text-primary fw-bold">
+                                         NT$ {{ "%.2f"|format(item.total_value_twd) }}
+                                     </td>
+                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -133,12 +146,12 @@
                                     <td class="text-end text-primary">
                                         NT$ {{ "%.2f"|format(sale.twd_amount) }}
                                     </td>
-                                    <td class="text-end {% if sale.profit >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                        NT$ {{ "%.2f"|format(sale.profit) }}
-                                    </td>
-                                    <td class="text-end {% if sale.profit_margin >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                        {{ "%.1f"|format(sale.profit_margin) }}%
-                                    </td>
+                                                                <td class="text-end {% if sale.profit_twd >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                NT$ {{ "%.2f"|format(sale.profit_twd) }}
+                            </td>
+                            <td class="text-end {% if sale.profit_margin >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {{ "%.1f"|format(sale.profit_margin) }}%
+                            </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -175,4 +188,170 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// FIFO庫存頁面實時更新功能
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // 獲取需要更新的DOM元素 - 使用更精確的選擇器
+    const totalRmbElement = document.querySelector('h2.text-success.mb-0');
+    const totalValueTwdElement = document.querySelector('h2.text-primary.mb-0');
+    const averageCostTwdElement = document.querySelector('h2.text-warning.mb-0');
+    const inventoryTableBody = document.querySelector('.table.table-hover tbody');
+    const salesTableBody = document.querySelector('.table.table-sm tbody');
+    
+    console.log('🔍 初始化時找到的DOM元素:', {
+        totalRmbElement: totalRmbElement?.textContent,
+        totalValueTwdElement: totalValueTwdElement?.textContent,
+        averageCostTwdElement: averageCostTwdElement?.textContent,
+        inventoryTableBody: !!inventoryTableBody,
+        salesTableBody: !!salesTableBody
+    });
+    
+    // 實時更新函數
+    function updateInventoryData() {
+        console.log('🔄 開始更新庫存數據...');
+        console.log('📊 找到的DOM元素:', {
+            totalRmbElement: !!totalRmbElement,
+            totalValueTwdElement: !!totalValueTwdElement,
+            averageCostTwdElement: !!averageCostTwdElement,
+            inventoryTableBody: !!inventoryTableBody,
+            salesTableBody: !!salesTableBody
+        });
+        
+        fetch('/api/fifo-inventory/status')
+            .then(response => response.json())
+            .then(data => {
+                console.log('📡 收到API響應:', data);
+                if (data.status === 'success') {
+                    // 更新總覽卡片
+                    if (totalRmbElement) {
+                        totalRmbElement.textContent = `¥ ${parseFloat(data.total_rmb).toFixed(2)}`;
+                        console.log('✅ 已更新總庫存RMB');
+                    }
+                    if (totalValueTwdElement) {
+                        totalValueTwdElement.textContent = `NT$ ${parseFloat(data.total_value_twd).toFixed(2)}`;
+                        console.log('✅ 已更新庫存總價值TWD');
+                    }
+                    if (averageCostTwdElement) {
+                        averageCostTwdElement.textContent = `NT$ ${parseFloat(data.average_cost_twd).toFixed(4)}`;
+                        console.log('✅ 已更新平均成本');
+                    }
+                    
+                    // 更新庫存明細表格
+                    if (inventoryTableBody && data.inventory_data) {
+                        let inventoryHtml = '';
+                                                 data.inventory_data.forEach(item => {
+                             inventoryHtml += `
+                                 <tr>
+                                     <td><small>${item.purchase_date}</small></td>
+                                     <td>${item.channel}</td>
+                                     <td class="text-end text-muted">
+                                         ¥ ${parseFloat(item.original_rmb).toFixed(2)}
+                                     </td>
+                                     <td class="text-end text-success fw-bold">
+                                         ¥ ${parseFloat(item.remaining_rmb).toFixed(2)}
+                                     </td>
+                                     <td class="text-end text-warning">
+                                         ¥ ${parseFloat(item.sold_rmb || 0).toFixed(2)}
+                                     </td>
+                                     <td class="text-end text-info">
+                                         NT$ ${parseFloat(item.unit_cost_twd).toFixed(4)}
+                                     </td>
+                                     <td class="text-end text-muted">
+                                         ${parseFloat(item.exchange_rate).toFixed(4)}
+                                     </td>
+                                     <td class="text-end text-primary fw-bold">
+                                         NT$ ${parseFloat(item.total_value_twd).toFixed(2)}
+                                     </td>
+                                 </tr>
+                             `;
+                         });
+                        inventoryTableBody.innerHTML = inventoryHtml;
+                    }
+                    
+                    // 更新銷售利潤分析表格
+                    if (salesTableBody && data.sales_with_profit) {
+                        let salesHtml = '';
+                        data.sales_with_profit.forEach(sale => {
+                            const profitClass = sale.profit_twd >= 0 ? 'text-success' : 'text-danger';
+                            const marginClass = sale.profit_margin >= 0 ? 'text-success' : 'text-danger';
+                            salesHtml += `
+                                <tr>
+                                    <td><small>${sale.customer_name}</small></td>
+                                    <td class="text-end text-success">
+                                        ¥ ${parseFloat(sale.rmb_amount).toFixed(2)}
+                                    </td>
+                                    <td class="text-end text-primary">
+                                        NT$ ${parseFloat(sale.twd_amount).toFixed(2)}
+                                    </td>
+                                    <td class="text-end fw-bold ${profitClass}">
+                                        NT$ ${parseFloat(sale.profit_twd).toFixed(2)}
+                                    </td>
+                                    <td class="text-end fw-bold ${marginClass}">
+                                        ${parseFloat(sale.profit_margin).toFixed(1)}%
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        salesTableBody.innerHTML = salesHtml;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('更新庫存數據失敗:', error);
+            });
+    }
+    
+    // 頁面載入時立即更新一次
+    updateInventoryData();
+    
+    // 設置定時器，每30秒自動更新一次
+    setInterval(updateInventoryData, 30000);
+    
+    // 頁面獲得焦點時也更新一次
+    window.addEventListener('focus', updateInventoryData);
+    
+    // 監聽來自其他頁面的消息（如果使用postMessage）
+    window.addEventListener('message', function(event) {
+        if (event.data.type === 'inventory_updated') {
+            console.log('📨 收到庫存更新消息');
+            updateInventoryData();
+        }
+    });
+    
+    // 監聽頁面可見性變化
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            console.log('👁️ 頁面變為可見，更新數據');
+            updateInventoryData();
+        }
+    });
+    
+    // 監聽URL變化（如果使用SPA路由）
+    let currentUrl = window.location.href;
+    setInterval(() => {
+        if (window.location.href !== currentUrl) {
+            currentUrl = window.location.href;
+            console.log('🔗 URL變化，更新數據');
+            updateInventoryData();
+        }
+    }, 1000);
+    
+    // 添加手動刷新按鈕（可選）
+    const refreshButton = document.createElement('button');
+    refreshButton.className = 'btn btn-outline-primary btn-sm ms-2';
+    refreshButton.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+    refreshButton.title = '刷新數據';
+    refreshButton.onclick = updateInventoryData;
+    
+    // 將刷新按鈕添加到頁面標題旁邊
+    const pageTitle = document.querySelector('h2.mb-0');
+    if (pageTitle) {
+        pageTitle.appendChild(refreshButton);
+    }
+});
+</script>
 {% endblock %}

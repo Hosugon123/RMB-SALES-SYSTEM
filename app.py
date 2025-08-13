@@ -397,12 +397,16 @@ class FIFOService:
             
             inventory_summary = []
             for inv in inventory:
+                # 計算已出帳數量（原始數量 - 剩餘數量）
+                sold_rmb = inv.rmb_amount - inv.remaining_rmb
+                
                 inventory_summary.append({
                     'id': inv.id,
                     'purchase_date': inv.purchase_date.strftime('%Y-%m-%d'),
                     'channel': inv.purchase_record.channel.name if inv.purchase_record.channel else 'N/A',
                     'original_rmb': inv.rmb_amount,
                     'remaining_rmb': inv.remaining_rmb,
+                    'sold_rmb': sold_rmb,  # 新增：已出帳數量
                     'unit_cost_twd': inv.unit_cost_twd,
                     'exchange_rate': inv.exchange_rate,
                     'total_value_twd': inv.remaining_rmb * inv.unit_cost_twd
@@ -429,7 +433,8 @@ class FIFOService:
             )
             
             if not allocations:
-                return None
+                # 如果沒有FIFO分配，使用預覽計算
+                return FIFOService.calculate_profit_preview_for_sale(sales_record)
             
             # 計算總成本
             total_cost = sum(allocation.allocated_cost_twd for allocation in allocations)
@@ -439,8 +444,8 @@ class FIFOService:
             
             return {
                 'sales_amount': sales_record.twd_amount,
-                'total_cost': total_cost,
-                'profit': profit,
+                'total_cost_twd': total_cost,
+                'profit_twd': profit,
                 'profit_margin': (profit / sales_record.twd_amount * 100) if sales_record.twd_amount > 0 else 0,
                 'allocations': [
                     {
@@ -455,6 +460,154 @@ class FIFOService:
             
         except Exception as e:
             print(f"❌ 計算利潤失敗: {e}")
+            return None
+    
+    @staticmethod
+    def calculate_profit_preview_for_sale(sales_record):
+        """為銷售記錄計算利潤預覽（基於FIFO庫存）"""
+        try:
+            rmb_amount = sales_record.rmb_amount
+            sales_exchange_rate = sales_record.twd_amount / sales_record.rmb_amount  # 售出匯率
+            
+            remaining_to_calculate = rmb_amount
+            total_cost_twd = 0
+            cost_breakdown = []
+            
+            # 按買入時間順序獲取有庫存的記錄（FIFO原則）
+            available_inventory = (
+                db.session.execute(
+                    db.select(FIFOInventory)
+                    .filter(FIFOInventory.remaining_rmb > 0)
+                    .order_by(FIFOInventory.purchase_date.asc())  # 最早的優先
+                )
+                .scalars()
+                .all()
+            )
+            
+            if not available_inventory:
+                return None
+            
+            for inventory in available_inventory:
+                if remaining_to_calculate <= 0:
+                    break
+                
+                # 計算從這批庫存中分配多少
+                allocate_from_this_batch = min(remaining_to_calculate, inventory.remaining_rmb)
+                
+                # 計算這批的成本
+                batch_cost_twd = allocate_from_this_batch * inventory.unit_cost_twd
+                
+                # 累計成本
+                total_cost_twd += batch_cost_twd
+                remaining_to_calculate -= allocate_from_this_batch
+                
+                # 記錄成本分解
+                cost_breakdown.append({
+                    'purchase_date': inventory.purchase_date.strftime('%Y-%m-%d'),
+                    'channel': inventory.purchase_record.channel.name if inventory.purchase_record.channel else 'N/A',
+                    'rmb_amount': allocate_from_this_batch,
+                    'unit_cost_twd': inventory.unit_cost_twd,
+                    'batch_cost_twd': batch_cost_twd,
+                    'purchase_exchange_rate': inventory.exchange_rate
+                })
+                
+                print(f"📊 預覽：從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {batch_cost_twd} TWD")
+            
+            if remaining_to_calculate > 0:
+                return None  # 庫存不足
+            
+            # 計算利潤：使用您的公式 (售出匯率 - 成本匯率) × 售出金額
+            # 這裡我們需要計算加權平均成本匯率
+            total_rmb_allocated = sum(item['rmb_amount'] for item in cost_breakdown)
+            weighted_avg_cost_rate = sum(
+                item['rmb_amount'] * item['purchase_exchange_rate'] 
+                for item in cost_breakdown
+            ) / total_rmb_allocated if total_rmb_allocated > 0 else 0
+            
+            # 利潤 = (售出匯率 - 成本匯率) × 售出金額
+            profit_twd = (sales_exchange_rate - weighted_avg_cost_rate) * rmb_amount
+            
+            # 計算利潤率
+            revenue_twd = rmb_amount * sales_exchange_rate
+            profit_margin = (profit_twd / revenue_twd * 100) if revenue_twd > 0 else 0
+            
+            return {
+                'total_cost_twd': total_cost_twd,
+                'profit_twd': profit_twd,
+                'profit_margin': profit_margin,
+                'weighted_avg_cost_rate': weighted_avg_cost_rate,
+                'sales_exchange_rate': sales_exchange_rate,
+                'cost_breakdown': cost_breakdown
+            }
+            
+        except Exception as e:
+            print(f"❌ 計算銷售利潤預覽失敗: {e}")
+            return None
+    
+    @staticmethod
+    def calculate_profit_preview(rmb_amount, exchange_rate):
+        """計算售出利潤預覽（不實際分配庫存）"""
+        try:
+            remaining_to_calculate = rmb_amount
+            total_cost_twd = 0
+            cost_breakdown = []
+            
+            # 按買入時間順序獲取有庫存的記錄（FIFO原則）
+            available_inventory = (
+                db.session.execute(
+                    db.select(FIFOInventory)
+                    .filter(FIFOInventory.remaining_rmb > 0)
+                    .order_by(FIFOInventory.purchase_date.asc())  # 最早的優先
+                )
+                .scalars()
+                .all()
+            )
+            
+            if not available_inventory:
+                return None
+            
+            for inventory in available_inventory:
+                if remaining_to_calculate <= 0:
+                    break
+                
+                # 計算從這批庫存中分配多少
+                allocate_from_this_batch = min(remaining_to_calculate, inventory.remaining_rmb)
+                
+                # 計算這批的成本
+                batch_cost_twd = allocate_from_this_batch * inventory.unit_cost_twd
+                
+                # 累計成本
+                total_cost_twd += batch_cost_twd
+                remaining_to_calculate -= allocate_from_this_batch
+                
+                # 記錄成本分解
+                cost_breakdown.append({
+                    'purchase_date': inventory.purchase_date.strftime('%Y-%m-%d'),
+                    'channel': inventory.purchase_record.channel.name if inventory.purchase_record.channel else 'N/A',
+                    'rmb_amount': allocate_from_this_batch,
+                    'unit_cost_twd': inventory.unit_cost_twd,
+                    'batch_cost_twd': batch_cost_twd
+                })
+                
+                print(f"📊 預覽：從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {batch_cost_twd} TWD")
+            
+            if remaining_to_calculate > 0:
+                return None  # 庫存不足
+            
+            # 計算收入和利潤
+            revenue_twd = rmb_amount * exchange_rate
+            profit_twd = revenue_twd - total_cost_twd
+            profit_margin = (profit_twd / revenue_twd * 100) if revenue_twd > 0 else 0
+            
+            return {
+                'total_cost_twd': total_cost_twd,
+                'profit_twd': profit_twd,
+                'profit_margin': profit_margin,
+                'cost_breakdown': cost_breakdown
+            }
+            
+        except Exception as e:
+            print(f"❌ 計算利潤預覽失敗: {e}")
             return None
 
 
@@ -655,6 +808,14 @@ def sales_entry():
             .scalars()
             .all()
         )
+        
+        # 4. 為每個銷售記錄計算利潤信息
+        for sale in recent_unsettled_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                sale.profit_info = profit_info
+            else:
+                sale.profit_info = None
 
         # --- 將所有查詢到的資料傳遞給前端模板 ---
         return render_template(
@@ -770,6 +931,23 @@ def api_sales_entry():
             operator_id=current_user.id,  # <--- V4.0 核心功能！記錄操作者
         )
         db.session.add(new_sale)
+        db.session.flush()  # 先獲取ID，但不提交
+        
+        # 4. 更新FIFO庫存（關鍵修復！）
+        try:
+            # 使用FIFO服務分配庫存
+            fifo_result = FIFOService.allocate_sales_to_inventory(new_sale, rmb_amount)
+            print(f"✅ FIFO庫存分配成功: {fifo_result}")
+        except Exception as e:
+            print(f"❌ FIFO庫存分配失敗: {e}")
+            # 如果FIFO分配失敗，回滾整個交易
+            db.session.rollback()
+            return jsonify({
+                "status": "error",
+                "message": f"庫存分配失敗: {e}"
+            }), 500
+        
+        # 提交所有更改
         db.session.commit()
 
         return jsonify(
@@ -884,6 +1062,10 @@ def cash_management():
                 )
         for s in sales:
             if s.customer:
+                # 計算銷售利潤
+                profit_info = FIFOService.calculate_profit_for_sale(s)
+                profit = profit_info['profit_twd'] if profit_info else 0
+                
                 unified_stream.append(
                     {
                         "type": "售出",
@@ -892,6 +1074,7 @@ def cash_management():
                         "twd_change": s.twd_amount,
                         "rmb_change": -s.rmb_amount,
                         "operator": s.operator.username if s.operator else "未知",
+                        "profit": profit,
                     }
                 )
         for entry in misc_entries:
@@ -903,11 +1086,12 @@ def cash_management():
             
             # 處理其他類型的記帳記錄
             if entry.account and entry.account.currency == "TWD":
-                twd_change = (
-                    entry.amount
-                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
-                    else -entry.amount
-                )
+                if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                    # 存款、轉入、銷帳都是增加TWD餘額
+                    twd_change = entry.amount
+                else:
+                    # 其他類型（如提款、轉出）是減少TWD餘額
+                    twd_change = -entry.amount
             elif entry.account and entry.account.currency == "RMB":
                 rmb_change = (
                     entry.amount
@@ -1534,13 +1718,21 @@ def fifo_inventory():
         total_rmb = sum(item['remaining_rmb'] for item in inventory_data)
         total_value_twd = sum(item['total_value_twd'] for item in inventory_data)
         
+        # 計算平均成本（加權平均）
+        if total_rmb > 0:
+            # 加權平均成本 = 總成本 / 總數量
+            total_cost_twd = sum(item['total_value_twd'] for item in inventory_data)
+            average_cost_twd = total_cost_twd / total_rmb
+        else:
+            average_cost_twd = 0
+        
         # 獲取最近的銷售記錄（用於展示利潤計算）
         recent_sales = (
             db.session.execute(
                 db.select(SalesRecord)
                 .options(db.selectinload(SalesRecord.customer))
                 .order_by(SalesRecord.created_at.desc())
-                .limit(10)
+                .limit(5)
             )
             .scalars()
             .all()
@@ -1557,9 +1749,9 @@ def fifo_inventory():
                     'rmb_amount': sale.rmb_amount,
                     'twd_amount': sale.twd_amount,
                     'created_at': sale.created_at.strftime('%Y-%m-%d'),
-                    'profit': profit_info['profit'],
+                    'profit_twd': profit_info['profit_twd'],
                     'profit_margin': profit_info['profit_margin'],
-                    'total_cost': profit_info['total_cost']
+                    'total_cost': profit_info['total_cost_twd']
                 })
         
         return render_template(
@@ -1567,6 +1759,7 @@ def fifo_inventory():
             inventory_data=inventory_data,
             total_rmb=total_rmb,
             total_value_twd=total_value_twd,
+            average_cost_twd=average_cost_twd,
             sales_with_profit=sales_with_profit
         )
         
@@ -1577,8 +1770,72 @@ def fifo_inventory():
             inventory_data=[],
             total_rmb=0,
             total_value_twd=0,
+            average_cost_twd=0,
             sales_with_profit=[]
         )
+
+@app.route("/api/fifo-inventory/status")
+@login_required
+def api_fifo_inventory_status():
+    """API端點：獲取FIFO庫存實時狀態"""
+    try:
+        # 獲取當前FIFO庫存狀態
+        inventory_data = FIFOService.get_current_inventory()
+        
+        # 計算總庫存價值
+        total_rmb = sum(item['remaining_rmb'] for item in inventory_data)
+        total_value_twd = sum(item['total_value_twd'] for item in inventory_data)
+        
+        # 計算平均成本（加權平均）
+        if total_rmb > 0:
+            total_cost_twd = sum(item['total_value_twd'] for item in inventory_data)
+            average_cost_twd = total_cost_twd / total_rmb
+        else:
+            average_cost_twd = 0
+        
+        # 獲取最近的銷售記錄（用於展示利潤計算）
+        recent_sales = (
+            db.session.execute(
+                db.select(SalesRecord)
+                .options(db.selectinload(SalesRecord.customer))
+                .order_by(SalesRecord.created_at.desc())
+                .limit(5)
+            )
+            .scalars()
+            .all()
+        )
+        
+        # 計算每筆銷售的利潤
+        sales_with_profit = []
+        for sale in recent_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                sales_with_profit.append({
+                    'id': sale.id,
+                    'customer_name': sale.customer.name if sale.customer else 'N/A',
+                    'rmb_amount': sale.rmb_amount,
+                    'twd_amount': sale.twd_amount,
+                    'created_at': sale.created_at.strftime('%Y-%m-%d'),
+                    'profit_twd': profit_info['profit_twd'],
+                    'profit_margin': profit_info['profit_margin'],
+                    'total_cost': profit_info['total_cost_twd']
+                })
+        
+        return jsonify({
+            'status': 'success',
+            'total_rmb': total_rmb,
+            'total_value_twd': total_value_twd,
+            'average_cost_twd': average_cost_twd,
+            'inventory_data': inventory_data,
+            'sales_with_profit': sales_with_profit
+        })
+        
+    except Exception as e:
+        print(f"❌ 獲取FIFO庫存狀態失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'獲取庫存狀態失敗: {e}'
+        }), 500
 
 
 @app.route("/admin/update_cash_account", methods=["POST"])
@@ -2050,6 +2307,55 @@ def get_frequent_customers():
         }), 500
 
 
+@app.route("/api/calculate_profit", methods=["POST"])
+@login_required
+def api_calculate_profit():
+    """計算售出利潤預覽"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
+    
+    try:
+        rmb_amount = float(data.get("rmb_amount", 0))
+        exchange_rate = float(data.get("exchange_rate", 0))
+        
+        if rmb_amount <= 0 or exchange_rate <= 0:
+            return jsonify({"status": "error", "message": "售出金額和匯率必須大於0。"}), 400
+        
+        # 計算售出收入
+        revenue_twd = rmb_amount * exchange_rate
+        
+        # 使用FIFO服務計算庫存成本
+        profit_info = FIFOService.calculate_profit_preview(rmb_amount, exchange_rate)
+        
+        if profit_info:
+            return jsonify({
+                "status": "success",
+                "data": {
+                    "rmb_amount": rmb_amount,
+                    "exchange_rate": exchange_rate,
+                    "revenue_twd": revenue_twd,
+                    "total_cost_twd": profit_info["total_cost_twd"],
+                    "profit_twd": profit_info["profit_twd"],
+                    "profit_margin": profit_info["profit_margin"],
+                    "cost_breakdown": profit_info["cost_breakdown"]
+                }
+            })
+        else:
+            return jsonify({
+                "status": "error", 
+                "message": "庫存不足，無法計算利潤。"
+            }), 400
+            
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
+    except Exception as e:
+        print(f"!!! Error in api_calculate_profit: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "伺服器內部錯誤，計算失敗。"}), 500
+
+
 @app.route("/api/settlement", methods=["POST"])
 @login_required
 def api_settlement():
@@ -2086,7 +2392,7 @@ def api_settlement():
         # 更新收款帳戶餘額
         account.balance += amount
         
-        # 創建銷帳記錄
+        # 創建銷帳記錄（只創建LedgerEntry，不創建CashLog避免重複）
         settlement_entry = LedgerEntry(
             account_id=account.id,
             entry_type="SETTLEMENT",
@@ -2096,16 +2402,6 @@ def api_settlement():
             operator_id=current_user.id
         )
         db.session.add(settlement_entry)
-        
-        # 創建現金日誌記錄
-        cash_log = CashLog(
-            type="SETTLEMENT",
-            amount=amount,
-            time=datetime.utcnow(),
-            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-            operator_id=current_user.id
-        )
-        db.session.add(cash_log)
         
         db.session.commit()
 
@@ -2122,6 +2418,99 @@ def api_settlement():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
+
+
+@app.route("/api/customer/transactions/<int:customer_id>")
+@login_required
+def api_customer_transactions(customer_id):
+    """API端點：獲取特定客戶的交易紀錄"""
+    try:
+        # 獲取客戶信息（使用Holder模型）
+        customer = db.session.get(Holder, customer_id)
+        if not customer:
+            return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 404
+        
+        # 獲取該客戶的所有銷售記錄（通過customer_id關聯）
+        sales_records = (
+            db.session.execute(
+                db.select(SalesRecord)
+                .filter(SalesRecord.customer_id == customer_id)
+                .order_by(SalesRecord.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        # 獲取該客戶的應收帳款變動記錄（通過LedgerEntry）
+        receivable_entries = (
+            db.session.execute(
+                db.select(LedgerEntry)
+                .filter(
+                    LedgerEntry.description.like(f'%{customer.name}%'),
+                    LedgerEntry.entry_type == "SETTLEMENT"
+                )
+                .order_by(LedgerEntry.entry_date.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        # 整理交易紀錄
+        transactions = []
+        
+        # 添加銷售記錄
+        for sale in sales_records:
+            # 計算銷售利潤
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            profit_twd = profit_info['profit_twd'] if profit_info else 0
+            
+            transactions.append({
+                'id': sale.id,
+                'type': '售出',
+                'date': sale.created_at.strftime('%Y-%m-%d %H:%M'),
+                'description': f'售出 RMB {sale.rmb_amount:,.2f}',
+                'rmb_amount': sale.rmb_amount,
+                'twd_amount': sale.twd_amount,
+                'profit_twd': profit_twd,
+                'status': '已售出',
+                'category': 'sales'
+            })
+        
+        # 添加銷帳記錄
+        for entry in receivable_entries:
+            transactions.append({
+                'id': entry.id,
+                'type': '銷帳',
+                'date': entry.entry_date.strftime('%Y-%m-%d %H:%M'),
+                'description': entry.description,
+                'rmb_amount': 0,
+                'twd_amount': entry.amount,
+                'profit_twd': 0,
+                'status': '已收款',
+                'category': 'settlement'
+            })
+        
+        # 按日期排序
+        transactions.sort(key=lambda x: x['date'], reverse=True)
+        
+        print(f"🔍 客戶 {customer.name} 的交易紀錄:")
+        print(f"   - 銷售記錄數量: {len(sales_records)}")
+        print(f"   - 銷帳記錄數量: {len(receivable_entries)}")
+        print(f"   - 總交易數量: {len(transactions)}")
+        
+        return jsonify({
+            'status': 'success',
+            'customer_name': customer.name,
+            'total_receivables': customer.total_receivables_twd,
+            'transactions': transactions
+        })
+        
+    except Exception as e:
+        print(f"❌ 獲取客戶交易紀錄失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'獲取交易紀錄失敗: {e}'
+        }), 500
 
 
 @app.route("/sales_action", methods=["POST"])

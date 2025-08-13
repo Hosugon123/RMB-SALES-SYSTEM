@@ -70,7 +70,36 @@
                         <h2 id="twd-receivable-display" class="fw-bold mb-0">NT$ 0.00</h2>
                     </div>
                     
-                    <!-- 5. 提交按鈕 -->
+                    <!-- 5. 利潤預覽 -->
+                    <div id="profit-preview-section" class="d-none">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0"><i class="bi bi-graph-up me-2"></i>利潤預覽</h6>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="row text-center">
+                                    <div class="col-4">
+                                        <small class="text-muted d-block">庫存成本</small>
+                                        <span id="cost-display" class="fw-bold text-danger">NT$ 0.00</span>
+                                    </div>
+                                    <div class="col-4">
+                                        <small class="text-muted d-block">預估利潤</small>
+                                        <span id="profit-display" class="fw-bold text-success">NT$ 0.00</span>
+                                    </div>
+                                    <div class="col-4">
+                                        <small class="text-muted d-block">利潤率</small>
+                                        <span id="margin-display" class="fw-bold text-primary">0.0%</span>
+                                    </div>
+                                </div>
+                                <div id="cost-breakdown" class="mt-3">
+                                    <small class="text-muted">成本分解：</small>
+                                    <div id="breakdown-details" class="small"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 6. 提交按鈕 -->
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary btn-lg">
                             <i class="bi bi-plus-circle me-2"></i>確認創建訂單
@@ -95,6 +124,7 @@
                                 <th>客戶</th>
                                 <th>售出 (RMB)</th>
                                 <th class="text-end">應收 (TWD)</th>
+                                <th class="text-end">預估利潤 (TWD)</th>
                                 <th>日期</th>
                             </tr>
                         </thead>
@@ -105,11 +135,21 @@
                                 <td>{{ sale.customer.name }}</td>
                                 <td class="text-success">¥ {{ "%.2f"|format(sale.rmb_amount) }}</td>
                                 <td class="fw-bold text-end text-danger">NT$ {{ "%.2f"|format(sale.twd_amount) }}</td>
+                                <td class="text-end">
+                                    {% if sale.profit_info %}
+                                        <span class="fw-bold {% if sale.profit_info.profit_twd >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            NT$ {{ "%.2f"|format(sale.profit_info.profit_twd) }}
+                                        </span>
+                                        <br><small class="text-muted">{{ "%.1f"|format(sale.profit_info.profit_margin) }}%</small>
+                                    {% else %}
+                                        <span class="text-muted">計算中...</span>
+                                    {% endif %}
+                                </td>
                                 <td><small>{{ sale.created_at.strftime('%Y-%m-%d') }}</small></td>
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="4" class="text-center text-muted py-5">太棒了！所有訂單都已結清！</td>
+                                <td colspan="5" class="text-center text-muted py-5">太棒了！所有訂單都已結清！</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -243,12 +283,104 @@ document.addEventListener('DOMContentLoaded', function () {
         const rmb = parseFloat(rmbAmountInput.value) || 0;
         const twd = rate * rmb;
         twdDisplay.textContent = `NT$ ${twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        
+        // 如果金額和匯率都有效，計算利潤預覽
+        if (rate > 0 && rmb > 0) {
+            calculateProfitPreview(rmb, rate);
+        } else {
+            hideProfitPreview();
+        }
     }
     rmbAmountInput.addEventListener('input', calculateReceivable);
     exchangeRateInput.addEventListener('input', calculateReceivable);
     calculateReceivable(); // 頁面載入時先計算一次
+    
+    // 7. 利潤預覽計算
+    async function calculateProfitPreview(rmbAmount, exchangeRate) {
+        try {
+            const response = await fetch('/api/calculate_profit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rmb_amount: rmbAmount,
+                    exchange_rate: exchangeRate
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                showProfitPreview(result.data);
+            } else {
+                hideProfitPreview();
+                if (result.message.includes('庫存不足')) {
+                    // 顯示庫存不足的提示
+                    document.getElementById('profit-preview-section').classList.remove('d-none');
+                    document.getElementById('profit-preview-section').querySelector('.card').classList.remove('border-success');
+                    document.getElementById('profit-preview-section').querySelector('.card').classList.add('border-warning');
+                    document.getElementById('profit-preview-section').querySelector('.card-header').classList.remove('bg-success', 'text-white');
+                    document.getElementById('profit-preview-section').querySelector('.card-header').classList.add('bg-warning', 'text-dark');
+                    document.getElementById('profit-preview-section').querySelector('.card-header h6').innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i>庫存不足';
+                    document.getElementById('profit-preview-section').querySelector('.card-body').innerHTML = '<div class="text-center text-warning"><i class="bi bi-boxes display-6"></i><p class="mt-2">當前庫存無法滿足此筆售出</p></div>';
+                }
+            }
+        } catch (error) {
+            console.error('計算利潤預覽時發生錯誤:', error);
+            hideProfitPreview();
+        }
+    }
+    
+    // 8. 顯示利潤預覽
+    function showProfitPreview(data) {
+        const profitSection = document.getElementById('profit-preview-section');
+        const costDisplay = document.getElementById('cost-display');
+        const profitDisplay = document.getElementById('profit-display');
+        const marginDisplay = document.getElementById('margin-display');
+        const breakdownDetails = document.getElementById('breakdown-details');
+        
+        // 更新數值顯示
+        costDisplay.textContent = `NT$ ${data.total_cost_twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        profitDisplay.textContent = `NT$ ${data.profit_twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        marginDisplay.textContent = `${data.profit_margin.toFixed(1)}%`;
+        
+        // 更新成本分解
+        let breakdownHtml = '';
+        data.cost_breakdown.forEach(item => {
+            breakdownHtml += `
+                <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                    <span class="text-muted">${item.purchase_date} (${item.channel})</span>
+                    <span class="fw-bold">¥${item.rmb_amount.toFixed(2)} × NT$${item.unit_cost_twd.toFixed(4)} = NT$${item.batch_cost_twd.toFixed(2)}</span>
+                </div>
+            `;
+        });
+        breakdownDetails.innerHTML = breakdownHtml;
+        
+        // 顯示利潤預覽區域
+        profitSection.classList.remove('d-none');
+        
+        // 根據利潤設置顏色
+        const card = profitSection.querySelector('.card');
+        const header = profitSection.querySelector('.card-header');
+        
+        if (data.profit_twd >= 0) {
+            card.classList.remove('border-warning', 'border-danger');
+            card.classList.add('border-success');
+            header.classList.remove('bg-warning', 'bg-danger', 'text-dark');
+            header.classList.add('bg-success', 'text-white');
+        } else {
+            card.classList.remove('border-success', 'border-warning');
+            card.classList.add('border-danger');
+            header.classList.remove('bg-success', 'bg-warning', 'text-white');
+            header.classList.add('bg-danger', 'text-white');
+        }
+    }
+    
+    // 9. 隱藏利潤預覽
+    function hideProfitPreview() {
+        document.getElementById('profit-preview-section').classList.add('d-none');
+    }
 
-    // 7. 處理「創建訂單」表單提交
+    // 10. 處理「創建訂單」表單提交
     createOrderForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         
@@ -295,6 +427,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 showConfirmButton: false
             });
             window.location.reload();
+            
+            // 通知FIFO庫存頁面更新（如果存在）
+            if (window.opener && window.opener.postMessage) {
+                window.opener.postMessage({ type: 'inventory_updated' }, '*');
+            }
 
         } catch (error) {
             Swal.fire('創建失敗', error.message, 'error');
