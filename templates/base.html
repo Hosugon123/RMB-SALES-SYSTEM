@@ -156,9 +156,11 @@
                 <li class="{% if request.endpoint == 'sales_entry' %}active{% endif %}">
                     <a href="{{ url_for('sales_entry') }}"><i class="bi bi-cash-coin me-3"></i>售出錄入</a>
                 </li>
+                <!-- 暫時隱藏刷卡記帳功能
                 <li class="{% if request.endpoint == 'card_purchase' %}active{% endif %}">
                     <a href="{{ url_for('card_purchase') }}"><i class="bi bi-credit-card-2-front-fill me-3"></i>刷卡記帳</a>
                 </li>
+                -->
                 
                 <!-- ============================================= -->
                 <!--            【核心新增】管理員專屬功能             -->

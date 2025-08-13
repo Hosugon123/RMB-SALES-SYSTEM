@@ -1,15 +1,7 @@
-import requests
+print("Hello World!")
+print("測試腳本執行")
 
-def test_simple():
-    print("測試開始")
-    
-    try:
-        # 測試公開渠道API
-        response = requests.get("http://127.0.0.1:5000/api/channels/public")
-        print(f"狀態碼: {response.status_code}")
-        print(f"回應: {response.text}")
-    except Exception as e:
-        print(f"錯誤: {e}")
+import os
+print(f"當前目錄: {os.getcwd()}")
 
-if __name__ == "__main__":
-    test_simple()
+input("按 Enter 繼續...")

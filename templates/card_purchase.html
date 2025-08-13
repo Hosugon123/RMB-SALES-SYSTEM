@@ -95,9 +95,9 @@
                                     <td class="text-end">NT$ {{ purchase.twd_equivalent }}</td>
                                     <td class="text-end text-success">{{ "%.4f"|format(purchase.calculated_rate) }}</td>
                                     <td class="text-center">
-                                         <button class="btn btn-sm btn-outline-danger" disabled>
-                                            <i class="bi bi-trash"></i>
-                                         </button>
+                                        <button class="btn btn-sm btn-outline-danger" onclick="cancelCardPurchase({{ purchase.id }}, '{{ purchase.supplier }}', {{ purchase.rmb_amount }}, {{ purchase.twd_equivalent }})" title="取消此筆刷卡記錄">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -147,6 +147,7 @@
 
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // 獲取所有需要操作的元件
@@ -191,6 +192,100 @@ document.addEventListener('DOMContentLoaded', function () {
         calculateAndUpdate();
     });
 
+    // ===================================================================
+    // 取消刷卡記錄功能
+    // ===================================================================
+    
+    // 取消刷卡記錄函數
+    window.cancelCardPurchase = function(recordId, supplier, rmbAmount, twdAmount) {
+        Swal.fire({
+            title: '確認取消刷卡記錄',
+            html: `
+                <div class="text-start">
+                    <p><strong>供應商:</strong> ${supplier}</p>
+                    <p><strong>刷卡金額:</strong> ¥${rmbAmount.toFixed(2)}</p>
+                    <p><strong>帳單金額:</strong> NT$${twdAmount.toFixed(2)}</p>
+                    <p class="text-danger"><strong>⚠️ 警告:</strong> 此操作將：</p>
+                    <ul class="text-start text-danger">
+                        <li>刪除此筆刷卡記錄</li>
+                        <li>此操作不可逆轉！</li>
+                    </ul>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '確定取消記錄',
+            cancelButtonText: '保留記錄',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            width: '500px'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                executeCancelCardPurchase(recordId);
+            }
+        });
+    };
+    
+    // 執行取消刷卡記錄
+    async function executeCancelCardPurchase(recordId) {
+        try {
+            const response = await fetch(`/api/reverse-card-purchase/${recordId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                Swal.fire({
+                    icon: 'success',
+                    title: '取消成功',
+                    text: result.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    // 重新載入頁面以更新數據
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire('取消失敗', result.message, 'error');
+            }
+        } catch (error) {
+            console.error('取消刷卡記錄失敗:', error);
+            Swal.fire('取消失敗', '網路錯誤，請稍後再試', 'error');
+        }
+    }
+    
+    // 重置表單函數（用於清空輸入）
+    function resetForm() {
+        // 重置所有輸入欄位
+        document.getElementById('purchase_date').value = '{{ today }}';
+        document.getElementById('supplier').value = '';
+        document.getElementById('rmb_amount').value = '';
+        document.getElementById('twd_equivalent').value = '';
+        
+        // 重置顯示
+        document.getElementById('rmb_with_fee').textContent = '0.00';
+        document.getElementById('calculated_rate_display').textContent = '0.0000';
+        
+        // 重置表單驗證狀態
+        form.classList.remove('was-validated');
+        
+        // 清除所有錯誤提示
+        const invalidFeedback = document.querySelectorAll('.invalid-feedback');
+        invalidFeedback.forEach(feedback => feedback.style.display = 'none');
+        
+        // 重置輸入框樣式
+        const inputs = document.querySelectorAll('.form-control');
+        inputs.forEach(input => {
+            input.classList.remove('is-valid', 'is-invalid');
+        });
+        
+        console.log('✅ 刷卡記帳表單已重置');
+    }
+    
     // 頁面載入時先執行一次
     calculateAndUpdate();
 });

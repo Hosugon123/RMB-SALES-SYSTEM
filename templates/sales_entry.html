@@ -126,6 +126,7 @@
                                 <th class="text-end">應收 (TWD)</th>
                                 <th class="text-end">預估利潤 (TWD)</th>
                                 <th>日期</th>
+                                <th class="text-center">操作</th>
                             </tr>
                         </thead>
                         <tbody id="pending-sales-table-body">
@@ -146,10 +147,15 @@
                                     {% endif %}
                                 </td>
                                 <td><small>{{ sale.created_at.strftime('%Y-%m-%d') }}</small></td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-danger" onclick="cancelSalesRecord({{ sale.id }}, '{{ sale.customer.name }}', {{ sale.rmb_amount }}, {{ sale.twd_amount }})" title="取消此筆銷售記錄">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                </td>
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-5">太棒了！所有訂單都已結清！</td>
+                                <td colspan="6" class="text-center text-muted py-5">太棒了！所有訂單都已結清！</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -380,6 +386,105 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('profit-preview-section').classList.add('d-none');
     }
 
+    // ===================================================================
+    // 取消銷售記錄功能
+    // ===================================================================
+    
+    // 取消銷售記錄函數
+    window.cancelSalesRecord = function(recordId, customerName, rmbAmount, twdAmount) {
+        Swal.fire({
+            title: '確認取消銷售記錄',
+            html: `
+                <div class="text-start">
+                    <p><strong>客戶:</strong> ${customerName}</p>
+                    <p><strong>售出金額:</strong> ¥${rmbAmount.toFixed(2)}</p>
+                    <p><strong>應收帳款:</strong> NT$${twdAmount.toFixed(2)}</p>
+                    <p class="text-danger"><strong>⚠️ 警告:</strong> 此操作將：</p>
+                    <ul class="text-start text-danger">
+                        <li>完全刪除此筆銷售記錄</li>
+                        <li>回滾FIFO庫存分配</li>
+                        <li>恢復庫存數量</li>
+                        <li>此操作不可逆轉！</li>
+                    </ul>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '確定取消記錄',
+            cancelButtonText: '保留記錄',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            width: '500px'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                executeCancelSales(recordId);
+            }
+        });
+    };
+    
+    // 執行取消銷售記錄
+    async function executeCancelSales(recordId) {
+        try {
+            const response = await fetch(`/api/reverse-sale-allocation/${recordId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                Swal.fire({
+                    icon: 'success',
+                    title: '取消成功',
+                    text: result.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    // 重新載入頁面以更新數據
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire('取消失敗', result.message, 'error');
+            }
+        } catch (error) {
+            console.error('取消銷售記錄失敗:', error);
+            Swal.fire('取消失敗', '網路錯誤，請稍後再試', 'error');
+        }
+    }
+    
+    // 重置表單函數（用於清空輸入）
+    function resetForm() {
+        // 重置所有輸入欄位
+        document.getElementById('customer-select').value = '';
+        document.getElementById('customer-name-manual').value = '';
+        document.getElementById('rmb-account-select').value = '';
+        document.getElementById('rmb-amount').value = '';
+        document.getElementById('exchange-rate').value = '4.5'; // 恢復預設匯率
+        
+        // 重置顯示
+        document.getElementById('twd-receivable-display').textContent = 'NT$ 0.00';
+        
+        // 隱藏利潤預覽
+        hideProfitPreview();
+        
+        // 重置表單驗證狀態
+        createOrderForm.classList.remove('was-validated');
+        
+        // 清除所有錯誤提示
+        const invalidFeedback = document.querySelectorAll('.invalid-feedback');
+        invalidFeedback.forEach(feedback => feedback.style.display = 'none');
+        
+        // 重置輸入框樣式
+        const inputs = document.querySelectorAll('.form-control, .form-select');
+        inputs.forEach(input => {
+            input.classList.remove('is-valid', 'is-invalid');
+        });
+        
+        console.log('✅ 銷售錄入表單已重置');
+    }
+    
     // 10. 處理「創建訂單」表單提交
     createOrderForm.addEventListener('submit', async function(e) {
         e.preventDefault();

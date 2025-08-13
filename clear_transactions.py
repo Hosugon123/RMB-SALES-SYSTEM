@@ -1,92 +1,135 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-清理所有交易紀錄的腳本
-清空銷售記錄、FIFO分配、現金日誌等，讓系統重新開始
+清理交易紀錄腳本
+清空所有交易相關數據，但保留持有人和帳戶資訊
 """
 
 import sqlite3
 import os
+from datetime import datetime
 
 def clear_transactions():
-    """清理所有交易紀錄"""
+    """清空所有交易紀錄，保留持有人和帳戶資訊"""
+    
+    # 數據庫路徑
     db_path = "instance/sales_system_v4.db"
     
     if not os.path.exists(db_path):
         print(f"❌ 數據庫文件不存在: {db_path}")
-        return
+        return False
     
     try:
         # 連接到數據庫
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        print("🔍 正在檢查數據庫中的交易紀錄...")
+        print("🔍 連接到數據庫成功")
         
-        # 檢查現有記錄數量
-        tables_to_check = [
-            ('sales_records', '銷售記錄'),
-            ('fifo_sales_allocations', 'FIFO銷售分配'),
-            ('cash_logs', '現金日誌'),
-            ('ledger_entries', '記帳記錄'),
-            ('fifo_inventory', 'FIFO庫存')
-        ]
+        # 開始事務
+        cursor.execute("BEGIN TRANSACTION")
         
-        for table_name, display_name in tables_to_check:
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-            count = cursor.fetchone()[0]
-            print(f"📊 {display_name}: {count} 條")
-        
-        print("\n⚠️  警告：此操作將清空所有交易紀錄！")
-        confirm = input("請輸入 'YES' 確認清空: ")
-        
-        if confirm != 'YES':
-            print("❌ 操作已取消")
-            return
-        
-        print("\n🧹 開始清理交易紀錄...")
-        
-        # 按順序清理相關表（注意外鍵約束）
+        # 清空交易相關表（按依賴關係順序）
         tables_to_clear = [
-            'fifo_sales_allocations',  # 先清理FIFO分配
-            'sales_records',           # 再清理銷售記錄
-            'cash_logs',               # 清理現金日誌
-            'ledger_entries',          # 清理記帳記錄
-            'fifo_inventory'           # 最後清理FIFO庫存
+            "fifo_sales_allocations",  # FIFO銷售分配
+            "sales_records",           # 銷售記錄
+            "purchase_records",        # 買入記錄
+            "cash_logs",               # 現金日誌
+            "ledger_entries",          # 記帳分錄
+            "fifo_inventory",          # FIFO庫存
+            "card_purchases",          # 刷卡記錄
         ]
         
-        for table_name in tables_to_clear:
-            cursor.execute(f"DELETE FROM {table_name}")
-            deleted_count = cursor.rowcount
-            print(f"✅ 已清理 {table_name}: {deleted_count} 條記錄")
+        for table in tables_to_clear:
+            try:
+                # 檢查表是否存在
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
+                if cursor.fetchone():
+                    # 清空表數據
+                    cursor.execute(f"DELETE FROM {table}")
+                    affected_rows = cursor.rowcount
+                    print(f"✅ 清空表 {table}: 刪除 {affected_rows} 條記錄")
+                else:
+                    print(f"⚠️  表 {table} 不存在，跳過")
+            except Exception as e:
+                print(f"❌ 清空表 {table} 失敗: {e}")
+                continue
         
         # 重置自增ID
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name IN (?, ?, ?, ?, ?)", 
-                      tables_to_clear)
+        print("\n🔄 重置自增ID...")
+        for table in tables_to_clear:
+            try:
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
+                if cursor.fetchone():
+                    cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}'")
+                    print(f"✅ 重置表 {table} 的自增ID")
+            except Exception as e:
+                print(f"⚠️  重置表 {table} 自增ID失敗: {e}")
+                continue
         
-        # 提交更改
+        # 清空客戶應收帳款
+        print("\n💰 清空客戶應收帳款...")
+        try:
+            cursor.execute("UPDATE customers SET total_receivables_twd = 0.0")
+            affected_rows = cursor.rowcount
+            print(f"✅ 清空客戶應收帳款: 更新 {affected_rows} 條記錄")
+        except Exception as e:
+            print(f"❌ 清空客戶應收帳款失敗: {e}")
+        
+        # 提交事務
         conn.commit()
+        print("\n✅ 所有交易紀錄清理完成！")
         
-        print("\n🎉 交易紀錄清理完成！")
-        print("📋 清理的內容包括：")
-        print("   • 所有銷售記錄")
-        print("   • FIFO庫存記錄")
-        print("   • FIFO銷售分配")
-        print("   • 現金日誌")
-        print("   • 記帳記錄")
-        print("\n💡 現在您可以重新開始記錄交易了！")
+        # 顯示清理後的狀態
+        print("\n📊 清理後的數據狀態:")
         
-    except sqlite3.Error as e:
-        print(f"❌ 數據庫操作失敗: {e}")
-        if conn:
-            conn.rollback()
+        # 檢查持有人和帳戶
+        cursor.execute("SELECT COUNT(*) FROM holders")
+        holders_count = cursor.fetchone()[0]
+        print(f"   - 持有人數量: {holders_count}")
+        
+        cursor.execute("SELECT COUNT(*) FROM cash_accounts")
+        accounts_count = cursor.fetchone()[0]
+        print(f"   - 現金帳戶數量: {accounts_count}")
+        
+        cursor.execute("SELECT COUNT(*) FROM customers")
+        customers_count = cursor.fetchone()[0]
+        print(f"   - 客戶數量: {customers_count}")
+        
+        # 檢查交易表是否為空
+        for table in tables_to_clear:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                print(f"   - {table}: {count} 條記錄")
+            except:
+                print(f"   - {table}: 表不存在")
+        
+        return True
+        
     except Exception as e:
-        print(f"❌ 發生錯誤: {e}")
+        print(f"❌ 清理過程中發生錯誤: {e}")
         if conn:
             conn.rollback()
+        return False
+        
     finally:
         if conn:
             conn.close()
+            print("🔌 數據庫連接已關閉")
 
 if __name__ == "__main__":
-    clear_transactions()
+    print("🚀 開始清理交易紀錄...")
+    print("=" * 50)
+    
+    # 確認操作
+    confirm = input("⚠️  此操作將清空所有交易紀錄，確定繼續嗎？(y/N): ")
+    
+    if confirm.lower() in ['y', 'yes']:
+        success = clear_transactions()
+        if success:
+            print("\n🎉 清理完成！系統已重置為初始狀態。")
+        else:
+            print("\n💥 清理失敗，請檢查錯誤信息。")
+    else:
+        print("❌ 操作已取消")

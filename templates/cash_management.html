@@ -20,7 +20,8 @@
             <div class="card shadow-sm text-center h-100">
                 <div class="card-body">
                     <p class="text-muted mb-1">總台幣資產 (TWD)</p>
-                    <h2 class="fw-bold text-primary">NT$ {{ "{:,.2f}".format(total_twd or 0) }}</h2>
+                    <h2 class="fw-bold text-primary" id="totalTwdDisplay">NT$ {{ "{:,.2f}".format(total_twd or 0) }}</h2>
+                    <small class="text-muted">即時更新</small>
                 </div>
             </div>
         </div>
@@ -28,7 +29,8 @@
             <div class="card shadow-sm text-center h-100">
                 <div class="card-body">
                     <p class="text-muted mb-1">總人民幣資產 (RMB)</p>
-                    <h2 class="fw-bold text-success">¥ {{ "{:,.2f}".format(total_rmb or 0) }}</h2>
+                    <h2 class="fw-bold text-success" id="totalRmbDisplay">¥ {{ "{:,.2f}".format(total_rmb or 0) }}</h2>
+                    <small class="text-muted">即時更新</small>
                 </div>
             </div>
         </div>
@@ -36,7 +38,8 @@
             <div class="card shadow-sm text-center h-100">
                 <div class="card-body">
                     <p class="text-muted mb-1">總應收帳款 (TWD)</p>
-                                             <h2 class="fw-bold text-danger">NT$ {{ "{:,.2f}".format(total_receivables or 0) }}</h2>
+                    <h2 class="fw-bold text-danger">NT$ {{ "{:,.2f}".format(total_receivables or 0) }}</h2>
+                    <small class="text-muted">待收款項</small>
                 </div>
             </div>
         </div>
@@ -118,8 +121,13 @@
                             <th class="ps-3">時間</th>
                             <th>類型</th>
                             <th>描述</th>
+                            <th>操作人員</th>
+                            <th>出款帳戶</th>
+                            <th>入款帳戶</th>
+                            <th>備註</th>
                             <th class="text-end" id="twd-header">TWD 變動</th>
                             <th class="text-end" id="rmb-header">RMB 變動</th>
+                            <th class="text-end">累積餘額</th>
                             <th class="text-end pe-3">利潤</th>
                         </tr>
                     </thead>
@@ -160,6 +168,56 @@
 
 
 {% block scripts %}
+<style>
+/* 現金管理頁面的視覺優化 */
+.transaction-row {
+    transition: all 0.2s ease;
+}
+
+.transaction-row:hover {
+    background-color: #f8f9fa !important;
+    transform: translateX(2px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.transaction-row[data-type="買入"] {
+    border-left: 3px solid #ffc107;
+}
+
+.transaction-row[data-type="售出"] {
+    border-left: 3px solid #198754;
+}
+
+.transaction-row[data-type="銷帳"] {
+    border-left: 3px solid #0d6efd;
+}
+
+.transaction-row[data-type="DEPOSIT"] {
+    border-left: 3px solid #6f42c1;
+}
+
+.transaction-row[data-type="CARD_PURCHASE"] {
+    border-left: 3px solid #6c757d;
+}
+
+/* 累積餘額列的樣式 */
+.running-balance {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+/* 頂部卡片的動畫效果 */
+.card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+</style>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // 從後端 Jinja2 獲取已經準備好的數據，並提供安全的預設值
@@ -256,7 +314,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!movementsTbody) return;
         movementsTbody.innerHTML = '';
         if (movements.length === 0) {
-            movementsTbody.innerHTML = '<tr><td colspan="7" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
         
@@ -265,7 +323,14 @@ document.addEventListener('DOMContentLoaded', function () {
         let hasRmbChange = false;
         
         movements.forEach(m => {
-            if (parseFloat(m.twd_change) !== 0) hasTwdChange = true;
+            // 售出操作不顯示TWD變動，因為銷帳時才會有變動
+            if (m.type === '售出') {
+                // 售出時TWD變動設為0，不顯示
+                m.twd_change = 0;
+            } else if (parseFloat(m.twd_change) !== 0) {
+                hasTwdChange = true;
+            }
+            
             if (parseFloat(m.rmb_change) !== 0) hasRmbChange = true;
         });
         
@@ -313,21 +378,50 @@ document.addEventListener('DOMContentLoaded', function () {
                 profitHtml = `<td class="text-end pe-3 text-muted">-</td>`;
             }
             
-            // 動態生成表格行，只包含有變動的欄位
-            let rowHtml = `<tr>
-                <td class="ps-3">${new Date(m.date).toLocaleDateString()}</td>
+            // 分離描述和備註
+            let description = m.description || '';
+            let note = m.note || '';
+            
+            // 如果description包含分隔符，則分離備註
+            if (description.includes(' | ')) {
+                const parts = description.split(' | ');
+                description = parts[0];
+                note = parts[1] || note;
+            }
+            
+            // 動態生成表格行，包含累積餘額
+            let rowHtml = `<tr class="transaction-row" data-type="${m.type}">
+                <td class="ps-3"><strong>${new Date(m.date).toLocaleDateString()}</strong></td>
                 <td><span class="badge ${typeClass}">${typeDisplay}</span></td>
-                <td>${m.description}</td>`;
+                <td><strong>${description}</strong></td>
+                <td><small class="text-muted">${m.operator || '未知'}</small></td>
+                <td><small class="text-muted">${m.payment_account || 'N/A'}</small></td>
+                <td><small class="text-muted">${m.deposit_account || 'N/A'}</small></td>
+                <td><small class="text-muted">${note || '-'}</small></td>`;
             
             // 只有TWD有變動時才添加TWD欄位
             if (twdChange !== 0) {
                 rowHtml += `<td class="text-end fw-bold ${twdChange > 0 ? 'text-success' : 'text-danger'}">${twdChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>`;
+            } else {
+                rowHtml += `<td class="text-end text-muted">-</td>`;
             }
             
             // 只有RMB有變動時才添加RMB欄位
             if (rmbChange !== 0) {
                 rowHtml += `<td class="text-end fw-bold ${rmbChange > 0 ? 'text-success' : 'text-danger'}">${rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>`;
+            } else {
+                rowHtml += `<td class="text-end text-muted">-</td>`;
             }
+            
+            // 添加累積餘額列
+            const runningTwd = m.running_twd_balance || 0;
+            const runningRmb = m.running_rmb_balance || 0;
+            rowHtml += `<td class="text-end">
+                <div class="small running-balance">
+                    <div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ${runningTwd.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                    <div class="text-success">¥ ${runningRmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                </div>
+            </td>`;
             
             rowHtml += profitHtml + '</tr>';
             movementsTbody.innerHTML += rowHtml;
@@ -372,8 +466,31 @@ document.addEventListener('DOMContentLoaded', function () {
     renderAccounts();
     renderMovements();
     
+    // 更新頂部卡片的餘額顯示
+    updateTopCardBalances();
+    
     // 設置客戶交易紀錄點擊事件監聽器
     setupCustomerTransactionsListeners();
+    
+    // 函數：更新頂部卡片的餘額顯示
+    function updateTopCardBalances() {
+        if (movements && movements.length > 0) {
+            // 找到最新的交易記錄（第一筆）
+            const latestTransaction = movements[0];
+            if (latestTransaction) {
+                const twdDisplay = document.getElementById('totalTwdDisplay');
+                const rmbDisplay = document.getElementById('totalRmbDisplay');
+                
+                if (twdDisplay && latestTransaction.running_twd_balance !== undefined) {
+                    twdDisplay.textContent = `NT$ ${latestTransaction.running_twd_balance.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                }
+                
+                if (rmbDisplay && latestTransaction.running_rmb_balance !== undefined) {
+                    rmbDisplay.textContent = `¥ ${latestTransaction.running_rmb_balance.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                }
+            }
+        }
+    }
     
     // 銷帳模態框相關功能
     const settlementModal = new bootstrap.Modal(document.getElementById('settlementModal'));

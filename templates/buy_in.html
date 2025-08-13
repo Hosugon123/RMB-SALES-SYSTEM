@@ -89,7 +89,9 @@
                         預計花費成本 (TWD): <strong id="twdCostDisplay">NT$ 0.00</strong>
                     </div>
                     <div class="d-grid mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-check-circle-fill me-2"></i>確認執行交易</button>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-check-circle-fill me-2"></i>確認執行交易
+                        </button>
                     </div>
                 </form>
             </div>
@@ -102,7 +104,7 @@
             <div class="card-body p-2">
                 <div class="table-responsive">
                     <table class="table table-sm table-hover align-middle mb-0">
-                        <thead><tr><th>日期</th><th>渠道</th><th>付款帳戶</th><th class="text-end">買入RMB</th><th class="text-end">匯率</th><th class="text-end">成本TWD</th></tr></thead>
+                        <thead><tr><th>日期</th><th>渠道</th><th>付款帳戶</th><th class="text-end">買入RMB</th><th class="text-end">匯率</th><th class="text-end">成本TWD</th><th class="text-center">操作</th></tr></thead>
                         <tbody>
                             {% for record in recent_purchases %}
                             <tr>
@@ -112,9 +114,14 @@
                                 <td class="text-end text-success">¥ {{ "%.2f"|format(record.rmb_amount) }}</td>
                                 <td class="text-end text-info">{{ "%.4f"|format(record.exchange_rate) }}</td>
                                 <td class="text-end text-danger fw-bold">NT$ {{ "%.2f"|format(record.twd_cost) }}</td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-danger" onclick="cancelPurchaseRecord({{ record.id }}, '{{ record.channel.name if record.channel else 'N/A' }}', {{ record.rmb_amount }})" title="取消此筆買入記錄">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="6" class="text-center p-4 text-muted">尚無買入紀錄。</td></tr>
+                            <tr><td colspan="7" class="text-center p-4 text-muted">尚無買入紀錄。</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -482,6 +489,102 @@ document.addEventListener('DOMContentLoaded', function() {
             Swal.fire('錯誤', '新增渠道失敗，請稍後再試', 'error');
         }
     });
+    
+    // ===================================================================
+    // 取消買入記錄功能
+    // ===================================================================
+    
+    // 取消買入記錄函數
+    window.cancelPurchaseRecord = function(recordId, channelName, rmbAmount) {
+        Swal.fire({
+            title: '確認取消買入記錄',
+            html: `
+                <div class="text-start">
+                    <p><strong>渠道:</strong> ${channelName}</p>
+                    <p><strong>金額:</strong> ¥${rmbAmount.toFixed(2)}</p>
+                    <p class="text-danger"><strong>⚠️ 警告:</strong> 此操作將：</p>
+                    <ul class="text-start text-danger">
+                        <li>完全刪除此筆買入記錄</li>
+                        <li>刪除相關的FIFO庫存</li>
+                        <li>此操作不可逆轉！</li>
+                    </ul>
+                    <p class="text-warning mt-2"><strong>注意:</strong> 如果此筆買入已有銷售分配，則無法取消</p>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '確定取消記錄',
+            cancelButtonText: '保留記錄',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            width: '500px'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                executeCancelPurchase(recordId);
+            }
+        });
+    };
+    
+    // 執行取消買入記錄
+    async function executeCancelPurchase(recordId) {
+        try {
+            const response = await fetch(`/api/reverse-purchase-inventory/${recordId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                Swal.fire({
+                    icon: 'success',
+                    title: '取消成功',
+                    text: result.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    // 重新載入頁面以更新數據
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire('取消失敗', result.message, 'error');
+            }
+        } catch (error) {
+            console.error('取消買入記錄失敗:', error);
+            Swal.fire('取消失敗', '網路錯誤，請稍後再試', 'error');
+        }
+    }
+    
+    // 重置表單函數（用於清空輸入）
+    function resetForm() {
+        // 重置所有輸入欄位
+        document.getElementById('channelSelect').value = '';
+        document.getElementById('channelNameManual').value = '';
+        document.getElementById('paymentAccountSelect').value = '';
+        document.getElementById('depositAccountSelect').value = '';
+        document.getElementById('rmbAmount').value = '';
+        document.getElementById('exchangeRate').value = '';
+        
+        // 重置顯示
+        document.getElementById('twdCostDisplay').textContent = 'NT$ 0.00';
+        
+        // 重置表單驗證狀態
+        purchaseForm.classList.remove('was-validated');
+        
+        // 清除所有錯誤提示
+        const invalidFeedback = document.querySelectorAll('.invalid-feedback');
+        invalidFeedback.forEach(feedback => feedback.style.display = 'none');
+        
+        // 重置輸入框樣式
+        const inputs = document.querySelectorAll('.form-control, .form-select');
+        inputs.forEach(input => {
+            input.classList.remove('is-valid', 'is-invalid');
+        });
+        
+        console.log('✅ 表單已重置');
+    }
     
     // 添加調試信息
     console.log('所有事件監聽器已設置完成');

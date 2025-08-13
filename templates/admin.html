@@ -10,6 +10,45 @@
     .metric-card .card-body { display: flex; align-items: center; }
     .metric-card .icon-circle { display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; margin-right: 1.25rem; }
     .metric-card .card-footer { background-color: #f8f9fa; border-top: 1px solid #dee2e6; font-weight: 500; }
+    
+    /* 庫存狀態概覽的樣式 */
+    .inventory-stat-card {
+        transition: all 0.3s ease;
+        border-radius: 12px;
+    }
+    
+    .inventory-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .progress {
+        border-radius: 10px;
+        background-color: #f8f9fa;
+    }
+    
+    .progress-bar {
+        border-radius: 10px;
+        transition: width 0.6s ease;
+    }
+    
+    .inventory-table tr {
+        transition: background-color 0.2s ease;
+    }
+    
+    .inventory-table tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .quick-action-btn {
+        transition: all 0.2s ease;
+        border-radius: 8px;
+    }
+    
+    .quick-action-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
 </style>
 {% endblock %}
 
@@ -25,8 +64,8 @@
             <div class="card-body">
                 <div class="icon-circle bg-primary-subtle text-primary"><i class="bi bi-wallet2 fs-3"></i></div>
                 <div>
-                    <p class="text-muted mb-1 small">預估總資產 (TWD)</p>
-                    <h3 class="fw-bold mb-0">NT$ {{ "{:,.0f}".format(estimated_total_assets_twd or 0) }}</h3>
+                    <p class="text-muted mb-1 small">台幣資產 (TWD)</p>
+                    <h3 class="fw-bold mb-0">NT$ {{ "{:,.0f}".format(twd_assets or 0) }}</h3>
                 </div>
             </div>
             <a href="{{ url_for('cash_management') }}" class="card-footer text-decoration-none text-muted d-block">查看現金 <i class="bi bi-arrow-right-circle float-end"></i></a>
@@ -35,13 +74,13 @@
     <div class="col-lg-3 col-md-6 mb-4">
         <div class="card h-100 metric-card">
             <div class="card-body">
-                <div class="icon-circle bg-warning-subtle text-warning"><i class="bi bi-hourglass-split fs-3"></i></div>
+                <div class="icon-circle bg-success-subtle text-success"><i class="bi bi-currency-yen fs-3"></i></div>
                 <div>
-                    <p class="text-muted mb-1 small">待處理訂單</p>
-                    <h3 class="fw-bold mb-0">{{ recent_pending_sales|length or 0 }} <span class="fs-6 fw-normal">筆</span></h3>
+                    <p class="text-muted mb-1 small">人民幣資產 (RMB)</p>
+                    <h3 class="fw-bold mb-0">¥ {{ "{:,.0f}".format(total_rmb_stock or 0) }}</h3>
                 </div>
             </div>
-            <a href="{{ url_for('sales_entry') }}" class="card-footer text-decoration-none text-muted d-block">前往處理 <i class="bi bi-arrow-right-circle float-end"></i></a>
+            <a href="{{ url_for('fifo_inventory') }}" class="card-footer text-decoration-none text-muted d-block">管理庫存 <i class="bi bi-arrow-right-circle float-end"></i></a>
         </div>
     </div>
     <div class="col-lg-3 col-md-6 mb-4">
@@ -59,13 +98,13 @@
     <div class="col-lg-3 col-md-6 mb-4">
         <div class="card h-100 metric-card">
             <div class="card-body">
-                <div class="icon-circle bg-success-subtle text-success"><i class="bi bi-currency-yen fs-3"></i></div>
+                <div class="icon-circle bg-warning-subtle text-warning"><i class="bi bi-cash-stack fs-3"></i></div>
                 <div>
-                    <p class="text-muted mb-1 small">總人民幣庫存</p>
-                    <h3 class="fw-bold mb-0">¥ {{ "{:,.0f}".format(total_rmb_stock or 0) }}</h3>
+                    <p class="text-muted mb-1 small">總利潤 (TWD)</p>
+                    <h3 class="fw-bold mb-0">NT$ {{ "{:,.0f}".format(total_profit_twd or 0) }}</h3>
                 </div>
             </div>
-             <a href="{{ url_for('cash_management') }}" class="card-footer text-decoration-none text-muted d-block">管理庫存 <i class="bi bi-arrow-right-circle float-end"></i></a>
+            <a href="{{ url_for('fifo_inventory') }}" class="card-footer text-decoration-none text-muted d-block">查看利潤分析 <i class="bi bi-arrow-right-circle float-end"></i></a>
         </div>
     </div>
 </div>
@@ -73,32 +112,82 @@
 <div class="row mt-3">
     <div class="col-lg-7 mb-4">
         <div class="card shadow-sm border-0">
-            <div class="card-header bg-white border-0 pt-3"><h5 class="card-title fw-bold"><i class="bi bi-bar-chart-line-fill me-2"></i>近30日銷售額 (TWD)</h5></div>
+            <div class="card-header bg-white border-0 pt-3">
+                <h5 class="card-title fw-bold"><i class="bi bi-box-seam-fill me-2"></i>近30日庫存變化趨勢 (RMB)</h5>
+                <small class="text-muted">顯示庫存數量的變化趨勢</small>
+            </div>
             <div class="card-body">
-                <canvas id="salesChart" style="min-height: 280px; height: 280px;"></canvas>
+                <canvas id="inventoryChart" style="min-height: 280px; height: 280px;"></canvas>
             </div>
         </div>
     </div>
     <div class="col-lg-5 mb-4">
         <div class="card shadow-sm border-0">
-            <div class="card-header bg-white border-0 pt-3"><h5 class="card-title fw-bold"><i class="bi bi-list-check me-2"></i>近期待處理訂單</h5></div>
-            <div class="card-body p-0">
+            <div class="card-header bg-white border-0 pt-3">
+                <h5 class="card-title fw-bold"><i class="bi bi-boxes me-2"></i>庫存狀態概覽</h5>
+                <small class="text-muted">即時庫存狀態和效率指標</small>
+            </div>
+            <div class="card-body">
+                <!-- 庫存統計卡片 -->
+                <div class="row g-3 mb-4">
+                    <div class="col-6">
+                        <div class="text-center p-3 rounded inventory-stat-card" style="background-color: #e3f2fd;">
+                            <div class="text-primary fw-bold fs-4">{{ "{:,.0f}".format(total_inventory_rmb or 0) }}</div>
+                            <small class="text-muted">當前庫存 (RMB)</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center p-3 rounded inventory-stat-card" style="background-color: #f3e5f5;">
+                            <div class="text-purple fw-bold fs-4">{{ "{:,.0f}".format(total_allocated_rmb or 0) }}</div>
+                            <small class="text-muted">已分配 (RMB)</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 庫存效率指標 -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small">庫存周轉效率</span>
+                        <span class="fw-bold text-success">{{ "%.1f".format(inventory_efficiency or 0) }}%</span>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-success" role="progressbar" 
+                             style="width: {{ inventory_efficiency or 0 }}%" 
+                             aria-valuenow="{{ inventory_efficiency or 0 }}" 
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
+                
+                <!-- 庫存狀態詳情 -->
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead><tr><th class="ps-3">客戶</th><th>待收 (TWD)</th><th>狀態</th><th class="pe-3">操作</th></tr></thead>
+                    <table class="table table-sm mb-0 inventory-table">
                         <tbody>
-                            {% for sale in recent_pending_sales %}
                             <tr>
-                               <td class="ps-3">{{ sale.customer.name }}</td>
-                               <td><span class="badge bg-danger-subtle text-danger-emphasis rounded-pill">NT$ {{ "%.2f"|format(sale.due_amount_twd) }}</span></td>
-                               <td>{{ sale.status }}</td>
-                               <td class="pe-3"><a href="{{ url_for('sales_entry') }}" class="btn btn-sm btn-outline-primary">處理</a></td>
+                                <td><i class="bi bi-check-circle-fill text-success me-2"></i>活躍庫存批次</td>
+                                <td class="text-end"><span class="badge bg-success-subtle text-success-emphasis">{{ active_inventory_count or 0 }}</span></td>
                             </tr>
-                            {% else %}
-                             <tr><td colspan="4" class="text-center p-5 text-muted"><i class="bi bi-check2-circle fs-2 d-block mb-2"></i>太棒了！目前沒有待處理的訂單。</td></tr>
-                            {% endfor %}
+                            <tr>
+                                <td><i class="bi bi-x-circle-fill text-muted me-2"></i>已用完批次</td>
+                                <td class="text-end"><span class="badge bg-secondary-subtle text-secondary-emphasis">{{ exhausted_inventory_count or 0 }}</span></td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-arrow-up-circle-fill text-info me-2"></i>總庫存批次</td>
+                                <td class="text-end"><span class="badge bg-info-subtle text-info-emphasis">{{ (active_inventory_count or 0) + (exhausted_inventory_count or 0) }}</span></td>
+                            </tr>
                         </tbody>
                     </table>
+                </div>
+                
+                <!-- 快速操作按鈕 -->
+                <div class="mt-3 pt-3 border-top">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('fifo_inventory') }}" class="btn btn-outline-primary btn-sm quick-action-btn">
+                            <i class="bi bi-box-seam me-1"></i>詳細庫存管理
+                        </a>
+                        <a href="{{ url_for('buy_in') }}" class="btn btn-outline-success btn-sm quick-action-btn">
+                            <i class="bi bi-plus-circle me-1"></i>新增庫存
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -111,40 +200,62 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     'use strict';
-    const salesChartCanvas = document.getElementById('salesChart');
-    if (!salesChartCanvas) { return; }
-    const ctx = salesChartCanvas.getContext('2d');
+    const inventoryChartCanvas = document.getElementById('inventoryChart');
+    if (!inventoryChartCanvas) { return; }
+    const ctx = inventoryChartCanvas.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 280);
-    gradient.addColorStop(0, 'rgba(54, 162, 235, 0.6)');
-    gradient.addColorStop(1, 'rgba(54, 162, 235, 0)');
+    gradient.addColorStop(0, 'rgba(76, 175, 80, 0.6)');
+    gradient.addColorStop(1, 'rgba(76, 175, 80, 0)');
     
-    // --- 這裡的程式碼是完全正確的 ---
-    const salesChartData = {
+    // 庫存變化趨勢圖表
+    const inventoryChartData = {
         labels: {{ chart_data['labels']|tojson }},
         datasets: [{
-            label: '銷售額 (TWD)',
+            label: '庫存數量 (RMB)',
             backgroundColor: gradient,
-            borderColor: 'rgba(54, 162, 235, 1)',
+            borderColor: 'rgba(76, 175, 80, 1)',
             borderWidth: 2,
             fill: true,
             pointRadius: 3,
-            pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+            pointBackgroundColor: 'rgba(76, 175, 80, 1)',
             tension: 0.3,
             data: {{ chart_data['values']|tojson }}
         }]
     };
 
-    const salesChartOptions = {
+    const inventoryChartOptions = {
         maintainAspectRatio: false,
         responsive: true,
-        plugins: { legend: { display: false } },
+        plugins: { 
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return `庫存: ¥${context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 0})}`;
+                    }
+                }
+            }
+        },
         scales: {
-            x: { grid: { display: false } },
-            y: { beginAtZero: true }
+            x: { 
+                grid: { display: false },
+                ticks: {
+                    maxTicksLimit: 10,
+                    maxRotation: 45
+                }
+            },
+            y: { 
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '¥' + value.toLocaleString('en-US', {minimumFractionDigits: 0});
+                    }
+                }
+            }
         }
     };
 
-    new Chart(salesChartCanvas, { type: 'line', data: salesChartData, options: salesChartOptions });
+    new Chart(inventoryChartCanvas, { type: 'line', data: inventoryChartData, options: inventoryChartOptions });
 });
 </script>
 {% endblock %}
