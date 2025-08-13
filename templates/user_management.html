@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}使用者管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-4 border-bottom">
+    <h1 class="h2"><i class="bi bi-people-fill me-2"></i>使用者管理</h1>
+</div>
+
+<div class="row g-4">
+    <!-- 左側：新增使用者表單 -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0 fw-light"><i class="bi bi-person-plus-fill me-2"></i>新增使用者</h4>
+            </div>
+            <div class="card-body p-4">
+                <form id="add-user-form">
+                    <div class="mb-3">
+                        <label for="new-username" class="form-label">新用戶名:</label>
+                        <input type="text" class="form-control" id="new-username" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new-password" class="form-label">設定密碼:</label>
+                        <input type="password" class="form-control" id="new-password" name="password" required>
+                    </div>
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle me-2"></i>確認新增
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右側：使用者列表 -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0 fw-light"><i class="bi bi-list-ul me-2"></i>現有使用者列表</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">用戶名</th>
+                                <th>角色</th>
+                                <th>狀態</th>
+                                <!-- 未來可以加入"操作"欄位，如編輯、停用等 -->
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td class="ps-3">{{ user.username }}</td>
+                                <td>
+                                    <span class="badge {% if user.role == 'admin' %}bg-primary{% else %}bg-secondary{% endif %}">
+                                        {{ user.role }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if user.is_active %}
+                                    <span class="badge bg-success">啟用中</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">已停用</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted p-5">
+                                    尚無其他使用者。
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const addUserForm = document.getElementById('add-user-form');
+
+    addUserForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(addUserForm);
+        const dataToSend = {
+            username: formData.get('username'),
+            password: formData.get('password')
+        };
+        
+        // 簡單的前端驗證
+        if (!dataToSend.username || !dataToSend.password) {
+            Swal.fire('資料不完整', '用戶名和密碼皆為必填項。', 'warning');
+            return;
+        }
+
+addUserForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(addUserForm);
+    const dataToSend = {
+        username: formData.get('username'),
+        password: formData.get('password')
+    };
+    
+    if (!dataToSend.username || !dataToSend.password) {
+        Swal.fire('資料不完整', '用戶名和密碼皆為必填項。', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch("{{ url_for('api_add_user') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataToSend)
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || '伺服器發生未知錯誤');
+        }
+
+        await Swal.fire({
+            icon: 'success',
+            title: '新增成功！',
+            text: result.message,
+            timer: 2000,
+            showConfirmButton: false
+        });
+        window.location.reload(); // 成功後刷新頁面，以在列表中看到新用戶
+
+    } catch (error) {
+        Swal.fire('新增失敗', error.message, 'error');
+    }
+});
+        Swal.fire('功能開發中', '處理新增使用者的後端 API 尚未完成。', 'info');
+    });
+});
+</script>
+{% endblock %}```
+

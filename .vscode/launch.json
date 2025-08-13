@@ -6,7 +6,7 @@
     "configurations": [
         
         {
-            "name": "Python 偵錯工具: Flask",
+   app.p         "name": "Python 偵錯工具: Flask",
             "type": "debugpy",
             "request": "launch",
             "module": "flask",
