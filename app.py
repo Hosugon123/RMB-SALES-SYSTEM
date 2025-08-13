@@ -37,6 +37,39 @@ login_manager.login_view = "login"
 login_manager.login_message = "請先登入以存取此頁面。"
 login_manager.login_message_category = "info"
 
+# 在應用程式啟動時初始化資料庫
+@app.before_first_request
+def init_database():
+    """在第一次請求前初始化資料庫"""
+    try:
+        with app.app_context():
+            db.create_all()
+            print("✅ 資料庫表格已創建")
+            
+            # 檢查是否已有管理員帳戶
+            admin_user = User.query.filter_by(username='admin').first()
+            if not admin_user:
+                # 創建預設管理員帳戶
+                admin_user = User(
+                    username='admin',
+                    role='admin',
+                    is_active=True
+                )
+                admin_user.set_password('admin123')  # 預設密碼，請在首次登入後修改
+                
+                db.session.add(admin_user)
+                db.session.commit()
+                print("✅ 預設管理員帳戶創建成功")
+                print("   用戶名: admin")
+                print("   密碼: admin123")
+                print("   ⚠️  請在首次登入後立即修改密碼！")
+            else:
+                print("✅ 管理員帳戶已存在")
+                
+    except Exception as e:
+        print(f"❌ 資料庫初始化失敗: {e}")
+        db.session.rollback()
+
 # ===================================================================
 # 3. 資料庫模型 (Models) 定義 - 【V4.0 職責分離重構版】
 # ===================================================================
@@ -3575,9 +3608,4 @@ def api_add_user():
 # 8. 啟動器
 # ===================================================================
 if __name__ == "__main__":
-    # 確保資料庫表格存在
-    with app.app_context():
-        db.create_all()
-        print("✅ 資料庫表格已創建")
-    
     app.run(debug=True)
