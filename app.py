@@ -38,9 +38,8 @@ login_manager.login_message = "請先登入以存取此頁面。"
 login_manager.login_message_category = "info"
 
 # 在應用程式啟動時初始化資料庫
-@app.before_first_request
 def init_database():
-    """在第一次請求前初始化資料庫"""
+    """初始化資料庫和創建預設管理員帳戶"""
     try:
         with app.app_context():
             db.create_all()
@@ -69,6 +68,14 @@ def init_database():
     except Exception as e:
         print(f"❌ 資料庫初始化失敗: {e}")
         db.session.rollback()
+
+# 使用 Flask 3.x 兼容的方式初始化資料庫
+@app.before_request
+def before_request():
+    """在每個請求前檢查資料庫是否已初始化"""
+    if not hasattr(app, '_database_initialized'):
+        init_database()
+        app._database_initialized = True
 
 # ===================================================================
 # 3. 資料庫模型 (Models) 定義 - 【V4.0 職責分離重構版】
