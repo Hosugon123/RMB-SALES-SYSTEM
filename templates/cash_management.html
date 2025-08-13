@@ -53,6 +53,7 @@
                     <thead>
                         <tr>
                             <th class="ps-3">時間</th>
+                            <th>操作人員</th>
                             <th>類型</th>
                             <th>描述</th>
                             <th class="text-end">TWD 變動</th>
@@ -102,6 +103,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const accountsByHolder = {{ accounts_by_holder|tojson if accounts_by_holder is defined else '{}' }};
     const movements = {{ movements|tojson if movements is defined else '[]' }};
     const holders = {{ holders|tojson if holders is defined else '[]' }};
+    console.log('holders:', holders);
     const allAccounts = {{ owner_accounts|tojson if owner_accounts is defined else '[]' }}; // Renamed for clarity
     
     // 獲取所有需要操作的 DOM 元素
@@ -145,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderAccounts() {
         if (!accountsContainer) return;
         accountsContainer.innerHTML = '';
-        if (holders.length === 0) {
+        if (!holders || holders.length === 0) {
             accountsContainer.innerHTML = '<div class="col-12 text-center text-muted p-4">尚無資金持有人。</div>';
             return;
         }
@@ -154,14 +156,21 @@ document.addEventListener('DOMContentLoaded', function () {
             const holderName = holder.name;
             const holderData = accountsByHolder[holderId];
             let accountsHtml = '';
+            let totalTwd = 0;
+            let totalRmb = 0;
             if (holderData && holderData.accounts && holderData.accounts.length > 0) {
                 holderData.accounts.forEach(acc => {
                     accountsHtml += `<li class="list-group-item d-flex justify-content-between align-items-center ps-4"><div><i class="bi bi-caret-right-fill text-muted me-1"></i><span>${acc.name} <span class="badge bg-secondary rounded-pill">${acc.currency}</span></span></div><div class="d-flex align-items-center"><strong class="me-3 ${acc.balance >= 0 ? 'text-dark' : 'text-danger'}">${acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong><div class="btn-group btn-group-sm"><button class="btn btn-outline-primary btn-movement" data-account-id="${acc.id}" data-account-name="${acc.name}" title="存入/提出"><i class="bi bi-arrow-down-up"></i></button><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此帳戶嗎？');"><input type="hidden" name="action" value="delete_account"><input type="hidden" name="account_id" value="${acc.id}"><button type="submit" class="btn btn-outline-danger" title="刪除帳戶">&times;</button></form></div></div></li>`;
                 });
+                totalTwd = holderData.total_twd || 0;
+                totalRmb = holderData.total_rmb || 0;
             } else {
+                // 強制顯示持有人，即使沒有帳戶
                 accountsHtml = '<li class="list-group-item text-muted text-center">-- 尚無帳戶 --</li>';
+                totalTwd = 0;
+                totalRmb = 0;
             }
-            const subtotalFooter = `<div class="card-footer bg-light d-flex justify-content-around p-2"><div><small class="text-muted">TWD 小計:</small> <strong class="text-primary">${(holderData ? holderData.total_twd : 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div><div><small class="text-muted">RMB 小計:</small> <strong class="text-success">${(holderData ? holderData.total_rmb : 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div></div>`;
+            const subtotalFooter = `<div class="card-footer bg-light d-flex justify-content-around p-2"><div><small class="text-muted">TWD 小計:</small> <strong class="text-primary">${totalTwd.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div><div><small class="text-muted">RMB 小計:</small> <strong class="text-success">${totalRmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></div></div>`;
             accountsContainer.innerHTML += `<div class="col-lg-6 mb-4"><div class="card h-100 shadow-sm"><div class="card-header d-flex justify-content-between align-items-center"><strong>${holderName}</strong><form action="{{ url_for('admin_update_cash_account') }}" method="POST" class="d-inline" onsubmit="return confirm('確定要刪除此持有人及其所有帳戶嗎？');"><input type="hidden" name="action" value="delete_holder"><input type="hidden" name="holder_id" value="${holderId}"><button type="submit" class="btn btn-danger btn-sm py-0">刪除持有人</button></form></div><ul class="list-group list-group-flush">${accountsHtml}</ul>${subtotalFooter}</div></div>`;
         });
         document.querySelectorAll('.btn-movement').forEach(btn => {
@@ -180,22 +189,21 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!movementsTbody) return;
         movementsTbody.innerHTML = '';
         if (movements.length === 0) {
-            movementsTbody.innerHTML = '<tr><td colspan="5" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="6" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
         movements.forEach(m => {
             const twdChange = parseFloat(m.twd_change) || 0;
             const rmbChange = parseFloat(m.rmb_change) || 0;
-            movementsTbody.innerHTML += `<tr><td class="ps-3">${new Date(m.date).toLocaleDateString()}</td><td><span class="badge bg-info-subtle text-info-emphasis">${m.type}</span></td><td>${m.description}</td><td class="text-end fw-bold ${twdChange >= 0 ? 'text-success' : 'text-danger'}">${twdChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td class="text-end pe-3 fw-bold ${rmbChange >= 0 ? 'text-success' : 'text-danger'}">${rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>`;
+            movementsTbody.innerHTML += `<tr>
+                <td class="ps-3">${new Date(m.date).toLocaleDateString()}</td>
+                <td>${m.operator || ''}</td>
+                <td><span class="badge bg-info-subtle text-info-emphasis">${m.type}</span></td>
+                <td>${m.description}</td>
+                <td class="text-end fw-bold ${twdChange >= 0 ? 'text-success' : 'text-danger'}">${twdChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                <td class="text-end pe-3 fw-bold ${rmbChange >= 0 ? 'text-success' : 'text-danger'}">${rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+            </tr>`;
         });
-    }
-
-    // --- 頁面初始化 ---
-    renderAccounts();
-    renderMovements();
-    
-    if (Array.isArray(holders)) {
-        populateSelect('accountHolder', holders.map(h => ({text: h.name, value: h.id})));
     }
     
     const groupedAccounts = [];
