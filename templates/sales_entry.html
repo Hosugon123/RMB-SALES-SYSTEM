@@ -15,17 +15,25 @@
                     <!-- 1. 客戶選擇 -->
                     <div class="mb-3">
                         <label for="customer-select" class="form-label fw-bold">客戶</label>
-                        <div class="input-group">
-                            <select id="customer-select" name="customer_id" class="form-select" required>
-                                <option value="" disabled selected>--- 請選擇客戶 ---</option>
-                                {% for customer in customers %}
-                                <option value="{{ customer.id }}">{{ customer.name }}</option>
-                                {% endfor %}
-                            </select>
-                            <button class="btn btn-outline-secondary" type="button" id="manage-customers-btn" title="管理常用客戶">
-                                <i class="bi bi-people"></i>
-                            </button>
+                        <div class="row g-2">
+                            <!-- 常用客戶下拉選單 -->
+                            <div class="col-md-6">
+                                <select id="customer-select" name="customer_id" class="form-select">
+                                    <option value="">--- 選擇常用客戶 ---</option>
+                                </select>
+                            </div>
+                            <!-- 手動輸入客戶名稱 -->
+                            <div class="col-md-4">
+                                <input type="text" id="customer-name-manual" name="customer_name_manual" class="form-control" placeholder="輸入客戶名稱">
+                            </div>
+                            <!-- 新增到常用客戶按鈕 -->
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-outline-primary" id="add-to-frequent-btn" title="新增到常用客戶">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </div>
                         </div>
+                        <small class="text-muted">您可以從下拉選單選擇常用客戶，或直接輸入新客戶名稱</small>
                     </div>
 
                     <!-- 2. 出貨庫存帳戶 -->
@@ -111,9 +119,7 @@
         </div>
     </div>
 </div>
-<!-- 我們將在下一步驟中，為客戶管理創建一個專屬的 Modal -->
 {% endblock %}
-
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -121,16 +127,117 @@
 document.addEventListener('DOMContentLoaded', function () {
     // --- 元素獲取 ---
     const createOrderForm = document.getElementById('create-order-form');
+    const customerSelect = document.getElementById('customer-select');
+    const customerNameManual = document.getElementById('customer-name-manual');
+    const addToFrequentBtn = document.getElementById('add-to-frequent-btn');
     const rmbAmountInput = document.getElementById('rmb-amount');
     const exchangeRateInput = document.getElementById('exchange-rate');
     const twdDisplay = document.getElementById('twd-receivable-display');
     
-    // --- API 端點 (我們稍後會在 app.py 中創建這些) ---
-    const CREATE_ORDER_API = "#"; 
+    // --- API 端點 ---
+    const FREQUENT_CUSTOMERS_API = "{{ url_for('get_frequent_customers') }}";
+    const ADD_CUSTOMER_API = "{{ url_for('add_customer_ajax') }}";
+    
+    // --- 全局變數 ---
+    let customersData = [];
+    
+    // --- 初始化 ---
+    loadFrequentCustomers();
     
     // --- 事件監聽器 ---
-
-    // 1. 動態計算應收台幣
+    
+    // 1. 載入常用客戶列表
+    async function loadFrequentCustomers() {
+        try {
+            const response = await fetch(FREQUENT_CUSTOMERS_API);
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                customersData = result.customers;
+                refreshCustomersDropdown();
+            } else {
+                console.error('載入常用客戶失敗:', result.message);
+            }
+        } catch (error) {
+            console.error('載入常用客戶時發生錯誤:', error);
+        }
+    }
+    
+    // 2. 刷新客戶下拉選單
+    function refreshCustomersDropdown() {
+        customerSelect.innerHTML = '<option value="">--- 選擇常用客戶 ---</option>';
+        
+        customersData.forEach(customer => {
+            const option = document.createElement('option');
+            option.value = customer.id;
+            option.textContent = customer.name;
+            customerSelect.appendChild(option);
+        });
+    }
+    
+    // 3. 客戶選擇變更事件
+    customerSelect.addEventListener('change', function() {
+        if (this.value) {
+            // 當選擇下拉列表時，自動填寫客戶名稱
+            const selectedCustomer = customersData.find(c => c.id == this.value);
+            if (selectedCustomer) {
+                customerNameManual.value = selectedCustomer.name;
+                customerNameManual.disabled = true;
+            }
+        } else {
+            // 當清空選擇時，啟用手動輸入
+            customerNameManual.value = '';
+            customerNameManual.disabled = false;
+        }
+    });
+    
+    // 4. 手動輸入客戶名稱事件
+    customerNameManual.addEventListener('input', function() {
+        if (this.value) {
+            // 當手動輸入時，清空下拉列表選擇
+            customerSelect.value = '';
+        }
+    });
+    
+    // 5. 新增到常用客戶按鈕事件
+    addToFrequentBtn.addEventListener('click', async function() {
+        const customerName = customerNameManual.value.trim();
+        
+        if (!customerName) {
+            Swal.fire('錯誤', '請先輸入客戶名稱。', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch(ADD_CUSTOMER_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: customerName })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                // 重新載入客戶列表
+                await loadFrequentCustomers();
+                
+                // 選擇新添加的客戶
+                const newCustomer = result.customer;
+                customerSelect.value = newCustomer.id;
+                customerNameManual.value = newCustomer.username;
+                customerNameManual.disabled = true;
+                
+                Swal.fire('成功', '客戶已新增到常用列表！', 'success');
+            } else {
+                Swal.fire('錯誤', result.message, 'error');
+            }
+        } catch (error) {
+            Swal.fire('錯誤', '新增客戶時發生錯誤', 'error');
+            console.error('新增客戶錯誤:', error);
+        }
+    });
+    
+    // 6. 動態計算應收台幣
     function calculateReceivable() {
         const rate = parseFloat(exchangeRateInput.value) || 0;
         const rmb = parseFloat(rmbAmountInput.value) || 0;
@@ -141,67 +248,58 @@ document.addEventListener('DOMContentLoaded', function () {
     exchangeRateInput.addEventListener('input', calculateReceivable);
     calculateReceivable(); // 頁面載入時先計算一次
 
-    // 2. 處理「創建訂單」表單提交
+    // 7. 處理「創建訂單」表單提交
     createOrderForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         
         const formData = new FormData(createOrderForm);
+        const customerId = formData.get('customer_id');
+        const customerNameManual = formData.get('customer_name_manual');
+        
+        // 驗證客戶信息
+        if (!customerId && !customerNameManual) {
+            Swal.fire('資料不完整', '請選擇常用客戶或輸入客戶名稱。', 'warning');
+            return;
+        }
+        
         const dataToSend = {
-            customer_id: formData.get('customer_id'),
+            customer_id: customerId || null,
+            customer_name_manual: customerNameManual || null,
             rmb_account_id: formData.get('rmb_account_id'),
             rmb_amount: formData.get('rmb_amount'),
             exchange_rate: formData.get('exchange_rate')
         };
         
-        if (!dataToSend.customer_id || !dataToSend.rmb_account_id) {
-            Swal.fire('資料不完整', '請務必選擇「客戶」和「RMB出貨帳戶」。', 'warning');
+        if (!dataToSend.rmb_account_id) {
+            Swal.fire('資料不完整', '請選擇RMB出貨帳戶。', 'warning');
             return;
         }
 
-        // API 呼叫邏輯暫時留空，等待後端 API 完成
-        Swal.fire('功能開發中', '處理訂單創建的後端 API 尚未完成。', 'info');
-    });
-createOrderForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(createOrderForm);
-    const dataToSend = {
-        customer_id: formData.get('customer_id'),
-        rmb_account_id: formData.get('rmb_account_id'),
-        rmb_amount: formData.get('rmb_amount'),
-        exchange_rate: formData.get('exchange_rate')
-    };
-    
-    if (!dataToSend.customer_id || !dataToSend.rmb_account_id) {
-        Swal.fire('資料不完整', '請務必選擇「客戶」和「RMB出貨帳戶」。', 'warning');
-        return;
-    }
+        try {
+            const response = await fetch("{{ url_for('api_sales_entry') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataToSend)
+            });
+            const result = await response.json();
 
-    try {
-        const response = await fetch("{{ url_for('api_sales_entry') }}", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dataToSend)
-        });
-        const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || '伺服器發生未知錯誤');
+            }
 
-        if (!response.ok) {
-            throw new Error(result.message || '伺服器發生未知錯誤');
+            await Swal.fire({
+                icon: 'success',
+                title: '訂單創建成功！',
+                text: result.message,
+                timer: 2500,
+                showConfirmButton: false
+            });
+            window.location.reload();
+
+        } catch (error) {
+            Swal.fire('創建失敗', error.message, 'error');
         }
-
-        await Swal.fire({
-            icon: 'success',
-            title: '訂單創建成功！',
-            text: result.message,
-            timer: 2500,
-            showConfirmButton: false
-        });
-        window.location.reload();
-
-    } catch (error) {
-        Swal.fire('創建失敗', error.message, 'error');
-    }
-});
+    });
 });
 </script>
 {% endblock %}

@@ -1,7 +1,7 @@
 # 這是 init_database.py 的完整內容
 
 # 從主應用程式導入需要的變數和模型
-from app import app, db, User, ExchangeRate, Holder, CashAccount
+from app import app, db, User, Holder, CashAccount
 
 print(">>> 正在啟動獨立初始化腳本...")
 
@@ -29,10 +29,8 @@ with app.app_context():
     db.session.add(admin_user)
     print(">>> 預設管理員 'admin' 已準備好加入。")
 
-    # 準備預設匯率
-    default_rate = ExchangeRate(buy_rate=4.3, sell_rate=4.4)
-    db.session.add(default_rate)
-    print(">>> 預設匯率已準備好加入。")
+    # 匯率目前是硬編碼的，不需要單獨的模型
+    print(">>> 匯率將使用硬編碼的預設值。")
     
     # 準備預設持有人
     default_holder = Holder(name='預設持有人')
@@ -46,7 +44,7 @@ with app.app_context():
     for name, currency in initial_accounts.items():
         account = CashAccount(
             holder_id=default_holder.id,
-            account_name=name,
+            name=name,
             currency=currency,
             balance=0
         )

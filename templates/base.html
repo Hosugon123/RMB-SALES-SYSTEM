@@ -150,10 +150,15 @@
                 <li class="{% if request.endpoint == 'buy_in' %}active{% endif %}">
                     <a href="{{ url_for('buy_in') }}"><i class="bi bi-bag-plus-fill me-3"></i>買入頁面</a>
                 </li>
+                <li class="{% if request.endpoint == 'fifo_inventory' %}active{% endif %}">
+                    <a href="{{ url_for('fifo_inventory') }}"><i class="bi bi-boxes me-3"></i>FIFO庫存管理</a>
+                </li>
                 <li class="{% if request.endpoint == 'sales_entry' %}active{% endif %}">
                     <a href="{{ url_for('sales_entry') }}"><i class="bi bi-cash-coin me-3"></i>售出錄入</a>
                 </li>
-                <li><a href="#" class="disabled"><i class="bi bi-credit-card-2-front-fill me-3"></i>刷卡記帳</a></li>
+                <li class="{% if request.endpoint == 'card_purchase' %}active{% endif %}">
+                    <a href="{{ url_for('card_purchase') }}"><i class="bi bi-credit-card-2-front-fill me-3"></i>刷卡記帳</a>
+                </li>
                 
                 <!-- ============================================= -->
                 <!--            【核心新增】管理員專屬功能             -->

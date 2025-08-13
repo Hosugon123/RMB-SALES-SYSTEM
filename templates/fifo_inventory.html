@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}FIFO庫存管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 頁面標題 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">
+            <i class="bi bi-boxes me-2"></i>FIFO庫存管理
+        </h2>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('buy_in') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-2"></i>新增買入
+            </a>
+            <a href="{{ url_for('cash_management') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-cash-stack me-2"></i>現金管理
+            </a>
+        </div>
+    </div>
+
+    <!-- 庫存總覽卡片 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-muted">總庫存 (RMB)</h5>
+                    <h2 class="text-success mb-0">¥ {{ "%.2f"|format(total_rmb) }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-muted">庫存總價值 (TWD)</h5>
+                    <h2 class="text-primary mb-0">NT$ {{ "%.2f"|format(total_value_twd) }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 左側：FIFO庫存明細 -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ul me-2"></i>FIFO庫存明細
+                        <small class="text-muted">（按買入時間排序，先買先賣）</small>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if inventory_data %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>買入日期</th>
+                                    <th>渠道</th>
+                                    <th class="text-end">原始數量</th>
+                                    <th class="text-end">剩餘數量</th>
+                                    <th class="text-end">單位成本</th>
+                                    <th class="text-end">匯率</th>
+                                    <th class="text-end">庫存價值</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in inventory_data %}
+                                <tr>
+                                    <td><small>{{ item.purchase_date }}</small></td>
+                                    <td>{{ item.channel }}</td>
+                                    <td class="text-end text-muted">
+                                        ¥ {{ "%.2f"|format(item.original_rmb) }}
+                                    </td>
+                                    <td class="text-end text-success fw-bold">
+                                        ¥ {{ "%.2f"|format(item.remaining_rmb) }}
+                                    </td>
+                                    <td class="text-end text-info">
+                                        NT$ {{ "%.4f"|format(item.unit_cost_twd) }}
+                                    </td>
+                                    <td class="text-end text-muted">
+                                        {{ "%.4f"|format(item.exchange_rate) }}
+                                    </td>
+                                    <td class="text-end text-primary fw-bold">
+                                        NT$ {{ "%.2f"|format(item.total_value_twd) }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center p-5 text-muted">
+                        <i class="bi bi-boxes display-4"></i>
+                        <p class="mt-3">尚無庫存記錄</p>
+                        <a href="{{ url_for('buy_in') }}" class="btn btn-primary">
+                            <i class="bi bi-plus-circle me-2"></i>開始買入
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側：銷售利潤分析 -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up me-2"></i>銷售利潤分析
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if sales_with_profit %}
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>客戶</th>
+                                    <th class="text-end">RMB</th>
+                                    <th class="text-end">收入</th>
+                                    <th class="text-end">利潤</th>
+                                    <th class="text-end">利潤率</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sale in sales_with_profit %}
+                                <tr>
+                                    <td><small>{{ sale.customer_name }}</small></td>
+                                    <td class="text-end text-success">
+                                        ¥ {{ "%.2f"|format(sale.rmb_amount) }}
+                                    </td>
+                                    <td class="text-end text-primary">
+                                        NT$ {{ "%.2f"|format(sale.twd_amount) }}
+                                    </td>
+                                    <td class="text-end {% if sale.profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                        NT$ {{ "%.2f"|format(sale.profit) }}
+                                    </td>
+                                    <td class="text-end {% if sale.profit_margin >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {{ "%.1f"|format(sale.profit_margin) }}%
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center p-4 text-muted">
+                        <i class="bi bi-graph-up display-6"></i>
+                        <p class="mt-2">尚無銷售記錄</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- FIFO原理說明 -->
+            <div class="card border-0 shadow-sm mt-3">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">
+                        <i class="bi bi-info-circle me-2"></i>FIFO原理說明
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        <strong>先進先出法 (First In, First Out)</strong>
+                    </p>
+                    <ul class="small text-muted mb-0">
+                        <li>先買入的貨物優先賣出</li>
+                        <li>確保庫存成本計算準確</li>
+                        <li>符合會計準則要求</li>
+                        <li>利於成本控制和利潤分析</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

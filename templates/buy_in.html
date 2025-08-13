@@ -13,15 +13,35 @@
                     <!-- 渠道區塊 -->
                     <div class="mb-3">
                         <label class="form-label"><strong>步驟 1:</strong> 選擇或輸入購買渠道</label>
-                        <div class="input-group">
+                        
+                        <!-- 常用渠道下拉選單 -->
+                        <div class="mb-2">
+                            <label for="channelSelect" class="form-label text-muted small">常用渠道快速選擇：</label>
                             <select class="form-select" id="channelSelect">
                                 <option value="" selected>從常用列表選擇...</option>
-                                {% for channel in channels %}<option value="{{ channel.id }}">{{ channel.name }}</option>{% endfor %}
+                                {% for channel in channels %}
+                                <option value="{{ channel.id }}">{{ channel.name }}</option>
+                                {% endfor %}
                             </select>
-                            <button class="btn btn-outline-secondary" type="button" id="manageChannelsBtn">管理</button>
                         </div>
-                        <div class="form-text">或直接在下方手動輸入新渠道:</div>
-                        <input type="text" class="form-control mt-1" id="channelNameManual" placeholder="手動輸入渠道名稱...">
+                        
+                        <!-- 手動輸入新渠道 -->
+                        <div class="mb-2">
+                            <label for="channelNameManual" class="form-label text-muted small">或輸入新渠道名稱：</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="channelNameManual" placeholder="輸入新渠道名稱...">
+                                <button class="btn btn-outline-primary" type="button" id="addToFrequentBtn">
+                                    <i class="bi bi-plus-circle"></i> 加入常用
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 渠道管理按鈕 -->
+                        <div class="text-end">
+                            <button class="btn btn-outline-secondary btn-sm" type="button" id="manageChannelsBtn">
+                                <i class="bi bi-gear"></i> 管理常用渠道
+                            </button>
+                        </div>
                     </div>
                     <hr class="my-4">
                     
@@ -82,7 +102,7 @@
             <div class="card-body p-2">
                 <div class="table-responsive">
                     <table class="table table-sm table-hover align-middle mb-0">
-                        <thead><tr><th>日期</th><th>渠道</th><th>付款帳戶</th><th class="text-end">買入RMB</th><th class="text-end">成本TWD</th></tr></thead>
+                        <thead><tr><th>日期</th><th>渠道</th><th>付款帳戶</th><th class="text-end">買入RMB</th><th class="text-end">匯率</th><th class="text-end">成本TWD</th></tr></thead>
                         <tbody>
                             {% for record in recent_purchases %}
                             <tr>
@@ -90,10 +110,11 @@
                                 <td>{{ record.channel.name if record.channel else 'N/A' }}</td>
                                 <td><small>{{ record.payment_account.name if record.payment_account else '刷卡' }}</small></td>
                                 <td class="text-end text-success">¥ {{ "%.2f"|format(record.rmb_amount) }}</td>
+                                <td class="text-end text-info">{{ "%.4f"|format(record.exchange_rate) }}</td>
                                 <td class="text-end text-danger fw-bold">NT$ {{ "%.2f"|format(record.twd_cost) }}</td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="5" class="text-center p-4 text-muted">尚無買入紀錄。</td></tr>
+                            <tr><td colspan="6" class="text-center p-4 text-muted">尚無買入紀錄。</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -119,30 +140,35 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM載入完成，開始初始化...');
+    
     // === 1. 從後端獲取資料 ===
     const channelsData = {{ channels|tojson }};
     const twdAccountsGrouped = {{ owner_twd_accounts_grouped|tojson }};
     const rmbAccountsGrouped = {{ owner_rmb_accounts_grouped|tojson }};
     
+    console.log('後端數據:', { channelsData, twdAccountsGrouped, rmbAccountsGrouped });
+    
     // === 2. 獲取所有需要的 HTML 元件 ===
     const purchaseForm = document.getElementById('purchaseForm');
     const paymentAccountSelect = document.getElementById('paymentAccountSelect');
     const depositAccountSelect = document.getElementById('depositAccountSelect');
-    // ... (其他元件獲取與您原版相同)
     const channelSelect = document.getElementById('channelSelect');
     const channelNameManual = document.getElementById('channelNameManual');
     const rmbAmountInput = document.getElementById('rmbAmount');
     const exchangeRateInput = document.getElementById('exchangeRate');
     const twdCostDisplay = document.getElementById('twdCostDisplay');
     const manageChannelsBtn = document.getElementById('manageChannelsBtn');
+    const addToFrequentBtn = document.getElementById('addToFrequentBtn');
     const channelsModal = new bootstrap.Modal(document.getElementById('channelsModal'));
     const channelListModal = document.getElementById('channelListModal');
     const addChannelBtn = document.getElementById('addChannelBtn');
     const newChannelNameInput = document.getElementById('newChannelName');
 
-    // === 3. 定義 API 地址 (我們將創建一個新的、更專屬的 API) ===
-    const BUY_IN_API_ENDPOINT = "#"; // 稍後我們會定義一個新的 API
-    const CHANNEL_API_ENDPOINT = "#"; // 渠道管理也用專屬 API
+    // === 3. 定義 API 地址 ===
+    const BUY_IN_API_ENDPOINT = "{{ url_for('api_buy_in') }}";
+    const CHANNEL_API_ENDPOINT = "{{ url_for('manage_channel') }}";
+    const GET_CHANNELS_API_ENDPOINT = "{{ url_for('get_channels_public') }}";
 
     // === 4. 功能函式與事件監聽 ===
 
@@ -174,30 +200,288 @@ document.addEventListener('DOMContentLoaded', function() {
 
     channelSelect.addEventListener('change', function() {
         if (this.value) {
-            channelNameManual.value = '';
-            channelNameManual.disabled = true;
+            // 當選擇下拉列表時，自動填寫渠道名稱
+            const selectedChannel = channelsData.find(c => c.id == this.value);
+            if (selectedChannel) {
+                channelNameManual.value = selectedChannel.name;
+                channelNameManual.disabled = true;
+            }
         } else {
+            // 當清空選擇時，啟用手動輸入
+            channelNameManual.value = '';
             channelNameManual.disabled = false;
         }
     });
+    
     channelNameManual.addEventListener('input', function() {
         if (this.value) {
+            // 當手動輸入時，清空下拉列表選擇
             channelSelect.value = '';
         }
     });
 
-    // 表單提交邏輯 (稍後我們會為它創建一個新的 API)
+    // 表單提交邏輯
     purchaseForm.addEventListener('submit', async function(e) {
+        console.log('表單提交事件觸發');
         e.preventDefault();
-        // 此處的 API 呼叫邏輯暫時留空，等待後端 API 完成
-        Swal.fire('功能開發中', '處理買入交易的後端 API 尚未完成。', 'info');
+        
+        // 驗證表單數據
+        const paymentAccountId = paymentAccountSelect.value;
+        const depositAccountId = depositAccountSelect.value;
+        const rmbAmount = parseFloat(rmbAmountInput.value);
+        const exchangeRate = parseFloat(exchangeRateInput.value);
+        const channelId = channelSelect.value;
+        const channelNameManualValue = channelNameManual.value.trim();
+        
+        if (!paymentAccountId || !depositAccountId || !rmbAmount || !exchangeRate) {
+            Swal.fire('錯誤', '請填寫所有必填欄位。', 'error');
+            return;
+        }
+        
+        // 簡化渠道驗證：只要有渠道名稱就可以
+        if (!channelNameManualValue) {
+            Swal.fire('錯誤', '請選擇或輸入購買渠道。', 'error');
+            return;
+        }
+        
+        // 顯示確認對話框
+        const result = await Swal.fire({
+            title: '確認執行買入交易',
+            html: `
+                <div class="text-start">
+                    <p><strong>買入金額:</strong> ¥${rmbAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                    <p><strong>匯率:</strong> ${exchangeRate.toFixed(4)}</p>
+                    <p><strong>預計成本:</strong> NT$${(rmbAmount * exchangeRate).toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                    <p><strong>渠道:</strong> ${channelNameManualValue}</p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '確認執行',
+            cancelButtonText: '取消'
+        });
+        
+        if (!result.isConfirmed) return;
+        
+        try {
+            // 發送API請求 - 簡化數據結構
+            const response = await fetch(BUY_IN_API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'record_purchase',
+                    payment_account_id: paymentAccountId,
+                    deposit_account_id: depositAccountId,
+                    rmb_amount: rmbAmount,
+                    exchange_rate: exchangeRate,
+                    channel_id: channelId || null,
+                    channel_name_manual: channelNameManualValue
+                })
+            });
+            
+            const responseData = await response.json();
+            
+            if (responseData.status === 'success') {
+                Swal.fire('成功', responseData.message, 'success');
+                
+                // 清空表單
+                purchaseForm.reset();
+                updateCost();
+                
+                // 重新載入頁面以顯示最新數據
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                Swal.fire('錯誤', responseData.message, 'error');
+            }
+        } catch (error) {
+            console.error('API請求失敗:', error);
+            Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+        }
     });
 
     // 渠道管理 Modal 邏輯 (也等待後端 API)
     manageChannelsBtn.addEventListener('click', () => {
-        // ...
+        console.log('管理渠道按鈕點擊');
+        loadChannelsList();
         channelsModal.show();
     });
+    
+    // 加入常用渠道按鈕邏輯
+    addToFrequentBtn.addEventListener('click', async function() {
+        const channelName = channelNameManual.value.trim();
+        if (!channelName) {
+            Swal.fire('錯誤', '請先輸入渠道名稱', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch(CHANNEL_API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ name: channelName })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                Swal.fire('成功', result.message, 'success');
+                
+                // 清空手動輸入欄位
+                channelNameManual.value = '';
+                
+                // 重新載入渠道列表
+                await loadChannelsList();
+                
+                // 更新下拉選單
+                await refreshChannelsDropdown();
+                
+            } else {
+                Swal.fire('錯誤', result.message, 'error');
+            }
+        } catch (error) {
+            console.error('新增渠道失敗:', error);
+            Swal.fire('錯誤', '新增渠道失敗，請稍後再試', 'error');
+        }
+    });
+    
+    // 載入渠道列表到Modal
+    async function loadChannelsList() {
+        try {
+            const response = await fetch(GET_CHANNELS_API_ENDPOINT);
+            const channels = await response.json();
+            
+            channelListModal.innerHTML = '';
+            channels.forEach(channel => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                li.innerHTML = `
+                    <span>${channel.name}</span>
+                    <button class="btn btn-danger btn-sm" onclick="deleteChannel(${channel.id}, '${channel.name}')">
+                        <i class="bi bi-trash"></i> 刪除
+                    </button>
+                `;
+                channelListModal.appendChild(li);
+            });
+        } catch (error) {
+            console.error('載入渠道列表失敗:', error);
+            channelListModal.innerHTML = '<li class="list-group-item text-danger">載入失敗</li>';
+        }
+    }
+    
+    // 重新整理渠道下拉選單
+    async function refreshChannelsDropdown() {
+        try {
+            const response = await fetch(GET_CHANNELS_API_ENDPOINT);
+            const channels = await response.json();
+            
+            // 更新channelsData
+            window.channelsData = channels;
+            
+            // 重新填充下拉選單
+            channelSelect.innerHTML = '<option value="" selected>從常用列表選擇...</option>';
+            channels.forEach(channel => {
+                const option = document.createElement('option');
+                option.value = channel.id;
+                option.textContent = channel.name;
+                channelSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('重新整理渠道列表失敗:', error);
+        }
+    }
+    
+    // 刪除渠道函數 (全域函數，供HTML調用)
+    window.deleteChannel = async function(channelId, channelName) {
+        const result = await Swal.fire({
+            title: '確認刪除',
+            text: `確定要刪除渠道 "${channelName}" 嗎？`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '確定刪除',
+            cancelButtonText: '取消'
+        });
+        
+        if (!result.isConfirmed) return;
+        
+        try {
+            const response = await fetch(CHANNEL_API_ENDPOINT, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ id: channelId })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                Swal.fire('成功', result.message, 'success');
+                
+                // 重新載入渠道列表
+                await loadChannelsList();
+                
+                // 更新下拉選單
+                await refreshChannelsDropdown();
+                
+            } else {
+                Swal.fire('錯誤', result.message, 'error');
+            }
+        } catch (error) {
+            console.error('刪除渠道失敗:', error);
+            Swal.fire('錯誤', '刪除渠道失敗，請稍後再試', 'error');
+        }
+    };
+    
+    // Modal中的新增渠道按鈕
+    addChannelBtn.addEventListener('click', async function() {
+        const channelName = newChannelNameInput.value.trim();
+        if (!channelName) {
+            Swal.fire('錯誤', '請輸入渠道名稱', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch(CHANNEL_API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ name: channelName })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                Swal.fire('成功', result.message, 'success');
+                
+                // 清空輸入欄位
+                newChannelNameInput.value = '';
+                
+                // 重新載入渠道列表
+                await loadChannelsList();
+                
+                // 更新下拉選單
+                await refreshChannelsDropdown();
+                
+            } else {
+                Swal.fire('錯誤', result.message, 'error');
+            }
+        } catch (error) {
+            console.error('新增渠道失敗:', error);
+            Swal.fire('錯誤', '新增渠道失敗，請稍後再試', 'error');
+        }
+    });
+    
+    // 添加調試信息
+    console.log('所有事件監聽器已設置完成');
+    console.log('表單元素:', purchaseForm);
+    console.log('按鈕元素:', document.querySelector('button[type="submit"]'));
 });
 </script>
 {% endblock %}

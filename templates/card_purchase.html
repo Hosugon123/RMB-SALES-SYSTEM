@@ -11,7 +11,7 @@
                     <p class="text-muted small">請依序輸入本次進貨的所有相關資訊</p>
                 </div>
 
-                <form method="POST" action="{{ url_for('card_purchase') }}" id="cardPurchaseForm">
+                <form method="POST" action="{{ url_for('api_card_purchase') }}" id="cardPurchaseForm">
                     <!-- PART 1: 刷卡資訊 -->
                     <div class="p-3 rounded mb-3" style="background-color: #f8f9fa;">
                         <h5 class="fw-normal text-primary mb-3"><i class="bi bi-pencil-square me-2"></i>刷卡資訊</h5>
@@ -86,30 +86,32 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for purchase in purchases.items %}
-                            <tr>
-                                <td>{{ purchase.purchase_date.strftime('%Y-%m-%d') }}</td>
-                                <td class="text-truncate" style="max-width: 150px;">{{ purchase.supplier }}</td>
-                                <td class="text-end">¥ {{ "%.2f"|format(purchase.rmb_amount) }}</td>
-                                <td class="text-end">NT$ {{ purchase.twd_equivalent }}</td>
-                                <td class="text-end text-success">{{ "%.4f"|format(purchase.calculated_rate) }}</td>
-                                <td class="text-center">
-                                     <button class="btn btn-sm btn-outline-danger" disabled>
-                                        <i class="bi bi-trash"></i>
-                                     </button>
-                                </td>
-                            </tr>
+                            {% if purchases and purchases.items %}
+                                {% for purchase in purchases.items %}
+                                <tr>
+                                    <td>{{ purchase.purchase_date.strftime('%Y-%m-%d') }}</td>
+                                    <td class="text-truncate" style="max-width: 150px;">{{ purchase.supplier }}</td>
+                                    <td class="text-end">¥ {{ "%.2f"|format(purchase.rmb_amount) }}</td>
+                                    <td class="text-end">NT$ {{ purchase.twd_equivalent }}</td>
+                                    <td class="text-end text-success">{{ "%.4f"|format(purchase.calculated_rate) }}</td>
+                                    <td class="text-center">
+                                         <button class="btn btn-sm btn-outline-danger" disabled>
+                                            <i class="bi bi-trash"></i>
+                                         </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
                             {% else %}
                             <tr>
                                 <td colspan="6" class="text-center text-muted p-4">還沒有任何刷卡紀錄。</td>
                             </tr>
-                            {% endfor %}
+                            {% endif %}
                         </tbody>
                     </table>
                 </div>
 
                 <!-- 分頁導覽 -->
-                {% if purchases.pages > 1 %}
+                {% if purchases and purchases.pages > 1 %}
                 <nav aria-label="Page navigation" class="mt-3">
                     <ul class="pagination justify-content-center mb-0">
                         <!-- 上一頁 -->

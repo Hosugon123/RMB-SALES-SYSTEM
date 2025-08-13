@@ -136,6 +136,55 @@ class PurchaseRecord(db.Model):
         "CashAccount", foreign_keys=[deposit_account_id], backref="deposited_purchases"
     )
     operator = db.relationship("User", backref="purchase_records")
+    
+    # FIFO 關聯
+    fifo_inventory = db.relationship("FIFOInventory", back_populates="purchase_record", cascade="all, delete-orphan")
+
+
+class FIFOInventory(db.Model):
+    """FIFO庫存模型 - 記錄每批貨物的庫存狀態"""
+    __tablename__ = "fifo_inventory"
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_record_id = db.Column(db.Integer, db.ForeignKey("purchase_records.id"), nullable=False)
+    
+    # 庫存信息
+    rmb_amount = db.Column(db.Float, nullable=False)  # 原始買入RMB數量
+    remaining_rmb = db.Column(db.Float, nullable=False)  # 剩餘RMB數量
+    unit_cost_twd = db.Column(db.Float, nullable=False)  # 單位成本（台幣）
+    exchange_rate = db.Column(db.Float, nullable=False)  # 買入匯率
+    
+    # 時間信息
+    purchase_date = db.Column(db.DateTime, nullable=False)  # 買入日期
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 關聯
+    purchase_record = db.relationship("PurchaseRecord", back_populates="fifo_inventory")
+    sales_allocations = db.relationship("FIFOSalesAllocation", back_populates="fifo_inventory", cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<FIFOInventory(id={self.id}, remaining_rmb={self.remaining_rmb}, unit_cost={self.unit_cost_twd})>"
+
+
+class FIFOSalesAllocation(db.Model):
+    """FIFO銷售分配模型 - 記錄每次銷售從哪批庫存中扣除"""
+    __tablename__ = "fifo_sales_allocations"
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # 關聯ID
+    fifo_inventory_id = db.Column(db.Integer, db.ForeignKey("fifo_inventory.id"), nullable=False)
+    sales_record_id = db.Column(db.Integer, db.ForeignKey("sales_records.id"), nullable=False)
+    
+    # 分配信息
+    allocated_rmb = db.Column(db.Float, nullable=False)  # 分配的RMB數量
+    allocated_cost_twd = db.Column(db.Float, nullable=False)  # 分配的台幣成本
+    allocation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # 關聯
+    fifo_inventory = db.relationship("FIFOInventory", back_populates="sales_allocations")
+    sales_record = db.relationship("SalesRecord", backref="fifo_allocations")
+    
+    def __repr__(self):
+        return f"<FIFOSalesAllocation(id={self.id}, rmb={self.allocated_rmb}, cost={self.allocated_cost_twd})>"
 
 
 class SalesRecord(db.Model):
@@ -207,6 +256,206 @@ class CashLog(db.Model):
     # 新增操作人員
     operator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     operator = db.relationship("User")
+
+
+# ===================================================================
+# 新增：刷卡記帳模型
+# ===================================================================
+class CardPurchase(db.Model):
+    __tablename__ = "card_purchases"
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    supplier = db.Column(db.String(200), nullable=False)  # 刷卡對象/供應商
+    rmb_amount = db.Column(db.Float, nullable=False)  # 原始刷卡金額
+    twd_equivalent = db.Column(db.Float, nullable=False)  # 信用卡帳單金額
+    calculated_rate = db.Column(db.Float, nullable=False)  # 計算出的成本匯率
+    rmb_with_fee = db.Column(db.Float, nullable=False)  # 含3%手續費的RMB金額
+    operator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # 關聯關係
+    operator = db.relationship("User", backref="card_purchases")
+    
+    def __repr__(self):
+        return f'<CardPurchase {self.id}: {self.supplier} - ¥{self.rmb_amount}>'
+
+
+# ===================================================================
+# FIFO 服務類
+# ===================================================================
+
+class FIFOService:
+    """FIFO庫存管理服務類"""
+    
+    @staticmethod
+    def create_inventory_from_purchase(purchase_record):
+        """從買入記錄創建FIFO庫存"""
+        try:
+            # 計算單位成本（台幣）
+            unit_cost_twd = purchase_record.twd_cost / purchase_record.rmb_amount
+            
+            # 創建FIFO庫存記錄
+            fifo_inventory = FIFOInventory(
+                purchase_record_id=purchase_record.id,
+                rmb_amount=purchase_record.rmb_amount,
+                remaining_rmb=purchase_record.rmb_amount,  # 初始時剩餘數量等於買入數量
+                unit_cost_twd=unit_cost_twd,
+                exchange_rate=purchase_record.exchange_rate,
+                purchase_date=purchase_record.purchase_date
+            )
+            
+            db.session.add(fifo_inventory)
+            db.session.commit()
+            
+            print(f"✅ 已創建FIFO庫存記錄: {fifo_inventory}")
+            return fifo_inventory
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ 創建FIFO庫存失敗: {e}")
+            raise
+    
+    @staticmethod
+    def allocate_sales_to_inventory(sales_record, rmb_amount):
+        """為銷售記錄分配FIFO庫存"""
+        try:
+            remaining_to_allocate = rmb_amount
+            total_cost = 0
+            allocations = []
+            
+            # 按買入時間順序獲取有庫存的記錄（FIFO原則）
+            available_inventory = (
+                db.session.execute(
+                    db.select(FIFOInventory)
+                    .filter(FIFOInventory.remaining_rmb > 0)
+                    .order_by(FIFOInventory.purchase_date.asc())  # 最早的優先
+                )
+                .scalars()
+                .all()
+            )
+            
+            if not available_inventory:
+                raise ValueError("沒有可用的庫存")
+            
+            for inventory in available_inventory:
+                if remaining_to_allocate <= 0:
+                    break
+                
+                # 計算從這批庫存中分配多少
+                allocate_from_this_batch = min(remaining_to_allocate, inventory.remaining_rmb)
+                
+                # 創建分配記錄
+                allocation = FIFOSalesAllocation(
+                    fifo_inventory_id=inventory.id,
+                    sales_record_id=sales_record.id,
+                    allocated_rmb=allocate_from_this_batch,
+                    allocated_cost_twd=allocate_from_this_batch * inventory.unit_cost_twd
+                )
+                
+                # 更新庫存剩餘數量
+                inventory.remaining_rmb -= allocate_from_this_batch
+                
+                # 累計成本
+                total_cost += allocation.allocated_cost_twd
+                remaining_to_allocate -= allocate_from_this_batch
+                
+                allocations.append(allocation)
+                db.session.add(allocation)
+                
+                print(f"📦 從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {allocation.allocated_cost_twd} TWD")
+            
+            if remaining_to_allocate > 0:
+                raise ValueError(f"庫存不足，還需要 {remaining_to_allocate} RMB")
+            
+            db.session.commit()
+            print(f"✅ FIFO分配完成，總成本: {total_cost} TWD")
+            
+            return {
+                'allocations': allocations,
+                'total_cost': total_cost,
+                'total_rmb': rmb_amount
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ FIFO分配失敗: {e}")
+            raise
+    
+    @staticmethod
+    def get_current_inventory():
+        """獲取當前庫存狀態"""
+        try:
+            inventory = (
+                db.session.execute(
+                    db.select(FIFOInventory)
+                    .filter(FIFOInventory.remaining_rmb > 0)
+                    .order_by(FIFOInventory.purchase_date.asc())
+                )
+                .scalars()
+                .all()
+            )
+            
+            inventory_summary = []
+            for inv in inventory:
+                inventory_summary.append({
+                    'id': inv.id,
+                    'purchase_date': inv.purchase_date.strftime('%Y-%m-%d'),
+                    'channel': inv.purchase_record.channel.name if inv.purchase_record.channel else 'N/A',
+                    'original_rmb': inv.rmb_amount,
+                    'remaining_rmb': inv.remaining_rmb,
+                    'unit_cost_twd': inv.unit_cost_twd,
+                    'exchange_rate': inv.exchange_rate,
+                    'total_value_twd': inv.remaining_rmb * inv.unit_cost_twd
+                })
+            
+            return inventory_summary
+            
+        except Exception as e:
+            print(f"❌ 獲取庫存狀態失敗: {e}")
+            return []
+    
+    @staticmethod
+    def calculate_profit_for_sale(sales_record):
+        """計算某筆銷售的利潤"""
+        try:
+            # 獲取該銷售記錄的所有FIFO分配
+            allocations = (
+                db.session.execute(
+                    db.select(FIFOSalesAllocation)
+                    .filter(FIFOSalesAllocation.sales_record_id == sales_record.id)
+                )
+                .scalars()
+                .all()
+            )
+            
+            if not allocations:
+                return None
+            
+            # 計算總成本
+            total_cost = sum(allocation.allocated_cost_twd for allocation in allocations)
+            
+            # 計算利潤
+            profit = sales_record.twd_amount - total_cost
+            
+            return {
+                'sales_amount': sales_record.twd_amount,
+                'total_cost': total_cost,
+                'profit': profit,
+                'profit_margin': (profit / sales_record.twd_amount * 100) if sales_record.twd_amount > 0 else 0,
+                'allocations': [
+                    {
+                        'inventory_id': allocation.fifo_inventory_id,
+                        'allocated_rmb': allocation.allocated_cost_twd,
+                        'allocated_cost': allocation.allocated_cost_twd,
+                        'purchase_date': allocation.fifo_inventory.purchase_date.strftime('%Y-%m-%d')
+                    }
+                    for allocation in allocations
+                ]
+            }
+            
+        except Exception as e:
+            print(f"❌ 計算利潤失敗: {e}")
+            return None
 
 
 # ===================================================================
@@ -437,24 +686,55 @@ def api_sales_entry():
 
     try:
         # 1. 獲取並驗證資料
-        customer_id = int(data.get("customer_id"))
+        customer_id = data.get("customer_id")
+        customer_name_manual = data.get("customer_name_manual")
         rmb_account_id = int(data.get("rmb_account_id"))
         rmb_amount = float(data.get("rmb_amount"))
         exchange_rate = float(data.get("exchange_rate"))
 
-        if not all([customer_id, rmb_account_id, rmb_amount > 0, exchange_rate > 0]):
+        # 驗證客戶信息：必須有客戶ID或客戶名稱
+        if not customer_id and not customer_name_manual:
             return (
                 jsonify(
                     {
                         "status": "error",
-                        "message": "客戶、出貨帳戶和金額都必須正確填寫。",
+                        "message": "請選擇常用客戶或輸入客戶名稱。",
                     }
                 ),
                 400,
             )
 
-        # 2. 查詢資料庫物件
-        customer = db.session.get(Customer, customer_id)
+        if not all([rmb_account_id, rmb_amount > 0, exchange_rate > 0]):
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "出貨帳戶、金額和匯率都必須正確填寫。",
+                    }
+                ),
+                400,
+            )
+
+        # 2. 處理客戶信息
+        customer = None
+        if customer_id:
+            # 使用現有客戶ID
+            customer = db.session.get(Customer, int(customer_id))
+            if not customer:
+                return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 404
+        else:
+            # 使用手動輸入的客戶名稱
+            customer_name = customer_name_manual.strip()
+            if not customer_name:
+                return jsonify({"status": "error", "message": "客戶名稱不能為空。"}), 400
+            
+            # 查找或創建客戶
+            customer = Customer.query.filter_by(name=customer_name).first()
+            if not customer:
+                customer = Customer(name=customer_name)
+                db.session.add(customer)
+                db.session.flush()  # 獲取ID
+        
         rmb_account = db.session.get(CashAccount, rmb_account_id)
 
         if not customer:
@@ -537,40 +817,66 @@ def cash_management():
             acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
         )
 
-        accounts_by_holder = {}
-        for acc in all_accounts_obj:
-            if acc.holder_id not in accounts_by_holder:
-                accounts_by_holder[acc.holder_id] = {
-                    "holder_name": acc.holder.name,
-                    "accounts": [],
-                    "total_twd": 0,
-                    "total_rmb": 0,
-                }
-            accounts_by_holder[acc.holder_id]["accounts"].append(
-                {
-                    "id": acc.id,
-                    "name": acc.name,
-                    "currency": acc.currency,
-                    "balance": acc.balance,
-                }
+        # 查詢應收帳款數據
+        customers_with_receivables = (
+            db.session.execute(
+                db.select(Customer)
+                .filter_by(is_active=True)
+                .filter(Customer.total_receivables_twd > 0)
+                .order_by(Customer.total_receivables_twd.desc())
             )
-            if acc.currency == "TWD":
-                accounts_by_holder[acc.holder_id]["total_twd"] += acc.balance
-            elif acc.currency == "RMB":
-                accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
+            .scalars()
+            .all()
+        )
+        
+        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+
+        accounts_by_holder = {}
+        # 先為所有持有人創建條目，即使沒有帳戶
+        for holder in holders_obj:
+            accounts_by_holder[holder.id] = {
+                "holder_name": holder.name,
+                "accounts": [],
+                "total_twd": 0,
+                "total_rmb": 0,
+            }
+        
+        # 然後添加帳戶信息
+        for acc in all_accounts_obj:
+            if acc.holder_id in accounts_by_holder:
+                accounts_by_holder[acc.holder_id]["accounts"].append(
+                    {
+                        "id": acc.id,
+                        "name": acc.name,
+                        "currency": acc.currency,
+                        "balance": acc.balance,
+                    }
+                )
+                if acc.currency == "TWD":
+                    accounts_by_holder[acc.holder_id]["total_twd"] += acc.balance
+                elif acc.currency == "RMB":
+                    accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
 
         purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
         sales = db.session.execute(db.select(SalesRecord)).scalars().all()
         misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         unified_stream = []
         for p in purchases:
             if p.payment_account and p.deposit_account:
+                # 獲取渠道名稱
+                channel_name = "未知渠道"
+                if p.channel:
+                    channel_name = p.channel.name
+                elif hasattr(p, 'channel_name_manual') and p.channel_name_manual:
+                    channel_name = p.channel_name_manual
+                
                 unified_stream.append(
                     {
                         "type": "買入",
                         "date": p.purchase_date.isoformat(),
-                        "description": f"向 {p.channel_name_manual or p.channel.name} 買入",
+                        "description": f"向 {channel_name} 買入",
                         "twd_change": -p.twd_cost,
                         "rmb_change": p.rmb_amount,
                         "operator": p.operator.username if p.operator else "未知",
@@ -585,34 +891,72 @@ def cash_management():
                         "description": f"售予 {s.customer.name}",
                         "twd_change": s.twd_amount,
                         "rmb_change": -s.rmb_amount,
-                        "operator": p.operator.username if p.operator else "未知",
+                        "operator": s.operator.username if s.operator else "未知",
                     }
                 )
         for entry in misc_entries:
             twd_change = 0
             rmb_change = 0
-            if entry.account.currency == "TWD":
+            
+            # 優化：移除對BUY_IN_DEBIT和BUY_IN_CREDIT的特殊處理
+            # 因為買入交易現在只使用PurchaseRecord，不需要額外的LedgerEntry
+            
+            # 處理其他類型的記帳記錄
+            if entry.account and entry.account.currency == "TWD":
                 twd_change = (
                     entry.amount
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
                     else -entry.amount
                 )
-            else:
+            elif entry.account and entry.account.currency == "RMB":
                 rmb_change = (
                     entry.amount
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
                     else -entry.amount
                 )
-            unified_stream.append(
-                {
-                    "type": entry.entry_type,
-                    "date": entry.entry_date.isoformat(),
-                    "description": entry.description,
-                    "twd_change": twd_change,
-                    "rmb_change": rmb_change,
-                    "operator": p.operator.username if p.operator else "未知",
-                }
-            )
+            
+            # 只顯示非買入相關的記帳記錄
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+                unified_stream.append(
+                    {
+                        "type": entry.entry_type,
+                        "date": entry.entry_date.isoformat(),
+                        "description": entry.description,
+                        "twd_change": twd_change,
+                        "rmb_change": rmb_change,
+                        "operator": entry.operator.username if entry.operator else "未知",
+                    }
+                )
+
+        # 處理現金日誌記錄
+        for log in cash_logs:
+            twd_change = 0
+            rmb_change = 0
+            
+            # 優化：移除對BUY_IN的特殊處理
+            # 因為買入交易現在只使用PurchaseRecord，不需要額外的CashLog
+            
+            if log.type == "CARD_PURCHASE":
+                # 刷卡記帳：記錄TWD支出
+                twd_change = -log.amount
+                rmb_change = 0
+            else:
+                # 其他類型的現金日誌
+                twd_change = 0
+                rmb_change = 0
+            
+            # 只顯示非買入相關的現金日誌
+            if log.type != "BUY_IN":
+                unified_stream.append(
+                    {
+                        "type": log.type,
+                        "date": log.time.isoformat(),
+                        "description": log.description,
+                        "twd_change": twd_change,
+                        "rmb_change": rmb_change,
+                        "operator": log.operator.username if log.operator else "未知",
+                    }
+                )
 
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
 
@@ -640,6 +984,8 @@ def cash_management():
             "cash_management.html",
             total_twd=total_twd,
             total_rmb=total_rmb,
+            total_receivables=total_receivables,
+            customers_with_receivables=customers_with_receivables,
             accounts_by_holder=accounts_by_holder,
             movements=paginated_items,  # <-- 傳遞分頁後的當前頁數據
             pagination=pagination,  # <-- 傳遞分頁控制對象
@@ -684,6 +1030,16 @@ def buy_in():
             .scalars()
             .all()
         )
+        
+        # 轉換為可序列化的格式
+        channels_serializable = [
+            {
+                "id": channel.id,
+                "name": channel.name,
+                "is_active": channel.is_active
+            }
+            for channel in channels
+        ]
 
         # 2. 查詢我方所有資金持有人及其下的帳戶，用於付款和收款
         holders_with_accounts = (
@@ -700,12 +1056,24 @@ def buy_in():
         owner_rmb_accounts_grouped = []
         for holder in holders_with_accounts:
             twd_accs = [
-                acc
+                {
+                    "id": acc.id,
+                    "name": acc.name,
+                    "balance": float(acc.balance),
+                    "currency": acc.currency,
+                    "is_active": acc.is_active
+                }
                 for acc in holder.cash_accounts
                 if acc.currency == "TWD" and acc.is_active
             ]
             rmb_accs = [
-                acc
+                {
+                    "id": acc.id,
+                    "name": acc.name,
+                    "balance": float(acc.balance),
+                    "currency": acc.currency,
+                    "is_active": acc.is_active
+                }
                 for acc in holder.cash_accounts
                 if acc.currency == "RMB" and acc.is_active
             ]
@@ -722,19 +1090,52 @@ def buy_in():
         recent_purchases = (
             db.session.execute(
                 db.select(PurchaseRecord)
+                .options(
+                    db.selectinload(PurchaseRecord.channel),
+                    db.selectinload(PurchaseRecord.payment_account),
+                    db.selectinload(PurchaseRecord.deposit_account),
+                    db.selectinload(PurchaseRecord.operator)
+                )
                 .order_by(PurchaseRecord.purchase_date.desc())
                 .limit(10)
             )
             .scalars()
             .all()
         )
+        
+        # 轉換為可序列化的格式
+        recent_purchases_serializable = []
+        for record in recent_purchases:
+            recent_purchases_serializable.append({
+                "id": record.id,
+                "purchase_date": record.purchase_date,
+                "rmb_amount": float(record.rmb_amount),
+                "exchange_rate": float(record.exchange_rate),
+                "twd_cost": float(record.twd_cost),
+                "channel": {
+                    "id": record.channel.id,
+                    "name": record.channel.name
+                } if record.channel else None,
+                "payment_account": {
+                    "id": record.payment_account.id,
+                    "name": record.payment_account.name
+                } if record.payment_account else None,
+                "deposit_account": {
+                    "id": record.deposit_account.id,
+                    "name": record.deposit_account.name
+                } if record.deposit_account else None,
+                "operator": {
+                    "id": record.operator.id,
+                    "username": record.operator.username
+                } if record.operator else None
+            })
 
         return render_template(
             "buy_in.html",
-            channels=channels,
+            channels=channels_serializable,
             owner_twd_accounts_grouped=owner_twd_accounts_grouped,
             owner_rmb_accounts_grouped=owner_rmb_accounts_grouped,
-            recent_purchases=recent_purchases,
+            recent_purchases=recent_purchases_serializable,
         )
 
     except Exception as e:
@@ -747,6 +1148,98 @@ def buy_in():
             owner_rmb_accounts_grouped=[],
             recent_purchases=[],
         )
+
+
+@app.route("/card-purchase")
+@login_required
+def card_purchase():
+    """刷卡記帳頁面"""
+    try:
+        # 獲取當前日期
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # 獲取分頁參數
+        page = request.args.get('page', 1, type=int)
+        per_page = 10
+        
+        # 查詢刷卡記錄，按日期降序排列
+        purchases_query = (
+            db.select(CardPurchase)
+            .options(db.selectinload(CardPurchase.operator))
+            .order_by(CardPurchase.purchase_date.desc())
+        )
+        
+        # 分頁
+        purchases = db.paginate(
+            purchases_query,
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        return render_template(
+            "card_purchase.html",
+            today=today,
+            purchases=purchases
+        )
+        
+    except Exception as e:
+        flash(f"載入刷卡記帳頁面時發生錯誤: {e}", "danger")
+        return render_template(
+            "card_purchase.html",
+            today=datetime.now().strftime('%Y-%m-%d'),
+            purchases=None
+        )
+
+
+@app.route("/api/card-purchase", methods=["POST"])
+@login_required
+def api_card_purchase():
+    """處理刷卡記帳的 API"""
+    try:
+        data = request.form
+        
+        # 獲取表單數據
+        purchase_date = datetime.strptime(data.get('purchase_date'), '%Y-%m-%d')
+        supplier = data.get('supplier')
+        rmb_amount = float(data.get('rmb_amount'))
+        twd_equivalent = float(data.get('twd_equivalent'))
+        
+        # 計算含3%手續費的RMB金額
+        rmb_with_fee = rmb_amount * 1.03
+        
+        # 計算成本匯率
+        calculated_rate = twd_equivalent / rmb_with_fee
+        
+        # 創建新的刷卡記錄
+        new_purchase = CardPurchase(
+            purchase_date=purchase_date,
+            supplier=supplier,
+            rmb_amount=rmb_amount,
+            twd_equivalent=twd_equivalent,
+            calculated_rate=calculated_rate,
+            rmb_with_fee=rmb_with_fee,
+            operator_id=current_user.id
+        )
+        
+        db.session.add(new_purchase)
+
+        # 創建現金日誌記錄 - 刷卡記帳
+        cash_log = CashLog(
+            type="CARD_PURCHASE",
+            description=f"刷卡記帳：{supplier}，RMB ¥{rmb_amount:,.2f}，TWD {twd_equivalent:,.2f}，匯率 {calculated_rate:.4f}",
+            amount=twd_equivalent,
+            operator_id=current_user.id
+        )
+        db.session.add(cash_log)
+
+        db.session.commit()
+        
+        flash("刷卡記帳成功！", "success")
+        return redirect(url_for('card_purchase'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f"刷卡記帳失敗: {e}", "danger")
+        return redirect(url_for('card_purchase'))
 
 
 @app.route("/api/buy-in", methods=["POST"])
@@ -773,7 +1266,7 @@ def api_buy_in():
                 deposit_account_id = int(data.get("deposit_account_id"))
                 rmb_amount = float(data.get("rmb_amount"))
                 exchange_rate = float(data.get("exchange_rate"))
-                channel_id = data.get("channel_id")  # 可能為空
+                channel_id = data.get("channel_id")  # 可能為空字符串、null或數字
                 channel_name_manual = data.get("channel_name_manual", "").strip()
             except (ValueError, TypeError, AttributeError):
                 return (
@@ -798,7 +1291,9 @@ def api_buy_in():
                     ),
                     400,
                 )
-            if not (channel_id or channel_name_manual):
+            
+            # 驗證渠道：必須有渠道ID或手動輸入的渠道名稱
+            if not channel_id and not channel_name_manual:
                 return (
                     jsonify(
                         {"status": "error", "message": "請選擇或輸入一個購買渠道。"}
@@ -835,7 +1330,13 @@ def api_buy_in():
                 )
 
             # 處理渠道
-            final_channel_id = int(channel_id) if channel_id else None
+            final_channel_id = None
+            if channel_id and channel_id.strip():  # 檢查是否為有效的渠道ID
+                try:
+                    final_channel_id = int(channel_id)
+                except (ValueError, TypeError):
+                    final_channel_id = None
+            
             if not final_channel_id and channel_name_manual:
                 channel = db.session.execute(
                     db.select(Channel).filter_by(name=channel_name_manual)
@@ -861,6 +1362,20 @@ def api_buy_in():
                 operator_id=current_user.id,  # <--- V4.0 核心功能！
             )
             db.session.add(new_purchase)
+            db.session.flush()  # 立即獲取ID，以便創建FIFO庫存
+
+            # 創建FIFO庫存記錄
+            try:
+                FIFOService.create_inventory_from_purchase(new_purchase)
+                print(f"✅ 已為買入記錄 {new_purchase.id} 創建FIFO庫存")
+            except Exception as e:
+                print(f"❌ 創建FIFO庫存失敗: {e}")
+                # 即使FIFO創建失敗，也不影響主要交易
+                pass
+
+            # 優化：移除重複的記帳記錄，只保留主要的PurchaseRecord
+            # 因為PurchaseRecord已經包含了完整的交易信息，不需要額外的LedgerEntry和CashLog
+            
             db.session.commit()
 
             return jsonify(
@@ -922,85 +1437,147 @@ def process_payment_api():
         # --- 2. 業務邏輯驗證 ---
         if not customer or customer.type != "CUSTOMER":
             return jsonify({"status": "error", "message": "無效的客戶 ID。"}), 404
-        if not twd_account or twd_account.currency != "TWD":
+        if not twd_account or customer.currency != "TWD":
             return jsonify({"status": "error", "message": "無效的 TWD 收款帳戶。"}), 400
         if customer.total_receivables_twd < payment_amount:
             return (
                 jsonify(
                     {
                         "status": "error",
-                        "message": f"付款金額超過總欠款！客戶總欠款為 {customer.total_receivables_twd:,.2f} TWD。",
+                        "message": f"付款金額超過應收帳款！客戶應收 {customer.total_receivables_twd:,.2f}，但付款 {payment_amount:,.2f}。",
                     }
                 ),
                 400,
             )
 
-        # --- 3. 查找該客戶所有未結清的訂單，按日期升序排列 ---
-        unpaid_orders = (
+        # --- 3. 執行付款處理 ---
+        # 更新收款帳戶餘額
+        twd_account.balance += payment_amount
+
+        # 更新客戶應收帳款
+        customer.total_receivables_twd -= payment_amount
+
+        # 創建現金日誌記錄
+        cash_log = CashLog(
+            type="CUSTOMER_PAYMENT",
+            description=f"客戶 {customer.name} 付款 {payment_amount:,.2f} TWD",
+            amount=payment_amount,
+            operator_id=current_user.id,
+        )
+        db.session.add(cash_log)
+
+        # 自動沖銷最早的未付訂單
+        unpaid_sales = (
             db.session.execute(
                 db.select(SalesRecord)
-                .filter_by(customer_id=customer_id)
-                .filter(SalesRecord.status != "PAID")
-                .order_by(SalesRecord.created_at.asc())
+                .filter_by(customer_id=customer.id, is_settled=False)
+                .order_by(SalesRecord.created_at.asc())  # 最早的優先
             )
             .scalars()
             .all()
         )
 
         remaining_payment = payment_amount
+        settled_sales = []
 
-        # --- 4. 核心沖銷邏輯 ---
-        for order in unpaid_orders:
+        for sale in unpaid_sales:
             if remaining_payment <= 0:
                 break
 
-            payment_for_this_order = min(remaining_payment, order.due_amount_twd)
+            # 計算這筆訂單能沖銷多少
+            settle_amount = min(remaining_payment, sale.twd_amount)
+            remaining_payment -= settle_amount
 
-            # A. 建立一筆新的銷帳流水 (Transaction)
-            new_transaction = Transaction(
-                sales_record_id=order.id,
+            # 更新訂單狀態
+            if settle_amount >= sale.twd_amount:
+                sale.is_settled = True
+                settled_sales.append(sale)
+
+            # 創建交易記錄
+            transaction = Transaction(
+                sales_record_id=sale.id,
                 twd_account_id=twd_account.id,
-                amount=payment_for_this_order,
-                note=f"沖銷訂單 #{order.id}",
+                amount=settle_amount,
+                note=f"客戶付款沖銷 - 訂單 #{sale.id}",
             )
-            db.session.add(new_transaction)
+            db.session.add(transaction)
 
-            # B. 更新訂單狀態 (這部分邏輯可以被 models.py 中的自動化事件監聽器取代)
-            # 但為了清晰，我們也可以在這裡手動計算
-            order.paid_amount_twd += payment_for_this_order
-            order.due_amount_twd -= payment_for_this_order
-            if order.due_amount_twd < 0.01:  # 處理浮點數精度問題
-                order.status = "PAID"
-            else:
-                order.status = "PARTIALLY_PAID"
-
-            remaining_payment -= payment_for_this_order
-
-        # C. 更新收款的 TWD 帳戶餘額
-        twd_account.balance += payment_amount
-
-        # D. 更新客戶的總應收款
-        customer.total_receivables_twd -= payment_amount
-
-        # --- 5. 提交所有變更 ---
         db.session.commit()
 
-        return jsonify(
-            {
-                "status": "success",
-                "message": f"銷帳成功！共處理 {payment_amount:,.2f} TWD。",
-            }
-        )
+        # 準備回應訊息
+        if settled_sales:
+            settled_ids = [s.id for s in settled_sales]
+            message = f"付款成功！已沖銷 {len(settled_sales)} 筆訂單 (ID: {', '.join(map(str, settled_ids))})"
+        else:
+            message = "付款成功！但沒有可沖銷的訂單。"
+
+        return jsonify({"status": "success", "message": message})
 
     except Exception as e:
         db.session.rollback()
-        print(f"!!! 銷帳 API 發生錯誤: {e}")
+        print(f"!!! Error in process_payment_api: {e}")
         import traceback
 
         traceback.print_exc()
-        return (
-            jsonify({"status": "error", "message": "資料庫儲存失敗，請聯繫管理員。"}),
-            500,
+        return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
+
+
+@app.route("/fifo-inventory")
+@login_required
+def fifo_inventory():
+    """FIFO庫存管理頁面"""
+    try:
+        # 獲取當前FIFO庫存狀態
+        inventory_data = FIFOService.get_current_inventory()
+        
+        # 計算總庫存價值
+        total_rmb = sum(item['remaining_rmb'] for item in inventory_data)
+        total_value_twd = sum(item['total_value_twd'] for item in inventory_data)
+        
+        # 獲取最近的銷售記錄（用於展示利潤計算）
+        recent_sales = (
+            db.session.execute(
+                db.select(SalesRecord)
+                .options(db.selectinload(SalesRecord.customer))
+                .order_by(SalesRecord.created_at.desc())
+                .limit(10)
+            )
+            .scalars()
+            .all()
+        )
+        
+        # 計算每筆銷售的利潤
+        sales_with_profit = []
+        for sale in recent_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                sales_with_profit.append({
+                    'id': sale.id,
+                    'customer_name': sale.customer.name if sale.customer else 'N/A',
+                    'rmb_amount': sale.rmb_amount,
+                    'twd_amount': sale.twd_amount,
+                    'created_at': sale.created_at.strftime('%Y-%m-%d'),
+                    'profit': profit_info['profit'],
+                    'profit_margin': profit_info['profit_margin'],
+                    'total_cost': profit_info['total_cost']
+                })
+        
+        return render_template(
+            "fifo_inventory.html",
+            inventory_data=inventory_data,
+            total_rmb=total_rmb,
+            total_value_twd=total_value_twd,
+            sales_with_profit=sales_with_profit
+        )
+        
+    except Exception as e:
+        flash(f"載入FIFO庫存頁面時發生錯誤: {e}", "danger")
+        return render_template(
+            "fifo_inventory.html",
+            inventory_data=[],
+            total_rmb=0,
+            total_value_twd=0,
+            sales_with_profit=[]
         )
 
 
@@ -1015,18 +1592,21 @@ def admin_update_cash_account():
             # --- 關鍵修正：我們不再獲取也不再檢查 holder_type ---
             if not name:
                 flash("持有人名稱為必填項。", "danger")
-            else:
-                existing_holder = db.session.execute(
-                    db.select(Holder).filter_by(name=name)
-                ).scalar_one_or_none()
-                if existing_holder:
-                    flash(f'錯誤：持有人 "{name}" 已經存在。', "danger")
-                else:
-                    # 我們直接創建，type 會自動使用模型中定義的 default='CUSTOMER'
-                    new_holder = Holder(name=name)
-                    db.session.add(new_holder)
-                    db.session.commit()
-                    flash(f'持有人 "{name}" 已成功新增！', "success")
+                return redirect(url_for('cash_management'))
+            
+            existing_holder = db.session.execute(
+                db.select(Holder).filter_by(name=name)
+            ).scalar_one_or_none()
+            if existing_holder:
+                flash(f'錯誤：持有人 "{name}" 已經存在。', "danger")
+                return redirect(url_for('cash_management'))
+            
+            # 我們直接創建，type 會自動使用模型中定義的 default='CUSTOMER'
+            new_holder = Holder(name=name)
+            db.session.add(new_holder)
+            db.session.commit()
+            flash(f'持有人 "{name}" 已成功新增！', "success")
+            return redirect(url_for('cash_management'))
 
         elif action == "delete_holder":
             holder_id = int(request.form.get("holder_id"))
@@ -1036,12 +1616,15 @@ def admin_update_cash_account():
                     flash(
                         f'無法刪除！持有人 "{holder.name}" 名下尚有現金帳戶。', "danger"
                     )
-                else:
-                    db.session.delete(holder)
-                    db.session.commit()
-                    flash(f'持有人 "{holder.name}" 已被刪除。', "success")
+                    return redirect(url_for('cash_management'))
+                
+                db.session.delete(holder)
+                db.session.commit()
+                flash(f'持有人 "{holder.name}" 已被刪除。', "success")
+                return redirect(url_for('cash_management'))
             else:
                 flash("找不到該持有人。", "warning")
+                return redirect(url_for('cash_management'))
 
         elif action == "add_account":
             holder_id = int(request.form.get("holder_id"))
@@ -1050,13 +1633,15 @@ def admin_update_cash_account():
             balance = float(request.form.get("initial_balance", 0.0))
             if not all([holder_id, name, currency]):
                 flash("持有人、帳戶名稱和幣別為必填項。", "danger")
-            else:
-                new_account = CashAccount(
-                    holder_id=holder_id, name=name, currency=currency, balance=balance
-                )
-                db.session.add(new_account)
-                db.session.commit()
-                flash(f'帳戶 "{name}" 已成功新增！', "success")
+                return redirect(url_for('cash_management'))
+            
+            new_account = CashAccount(
+                holder_id=holder_id, name=name, currency=currency, balance=balance
+            )
+            db.session.add(new_account)
+            db.session.commit()
+            flash(f'帳戶 "{name}" 已成功新增！', "success")
+            return redirect(url_for('cash_management'))
 
         elif action == "delete_account":
             account_id = int(request.form.get("account_id"))
@@ -1067,12 +1652,15 @@ def admin_update_cash_account():
                         f'無法刪除！帳戶 "{account.name}" 尚有 {account.balance:,.2f} 的餘額。',
                         "danger",
                     )
-                else:
-                    db.session.delete(account)
-                    db.session.commit()
-                    flash(f'帳戶 "{account.name}" 已被刪除。', "success")
+                    return redirect(url_for('cash_management'))
+                
+                db.session.delete(account)
+                db.session.commit()
+                flash(f'帳戶 "{account.name}" 已被刪除。', "success")
+                return redirect(url_for('cash_management'))
             else:
                 flash("找不到該帳戶。", "warning")
+                return redirect(url_for('cash_management'))
 
         elif action == "add_movement":
             account_id = int(request.form.get("account_id"))
@@ -1083,6 +1671,7 @@ def admin_update_cash_account():
                 if is_decrease:
                     if account.balance < amount:
                         flash(f"餘額不足，無法提出 {amount}。", "danger")
+                        return redirect(url_for('cash_management'))
                     else:
                         account.balance -= amount
                         entry = LedgerEntry(
@@ -1098,6 +1687,7 @@ def admin_update_cash_account():
                             f'已從 "{account.name}" 提出 {amount:,.2f}，並已記錄流水。',
                             "success",
                         )
+                        return redirect(url_for('cash_management'))
                 else:
                     account.balance += amount
                     entry = LedgerEntry(
@@ -1113,6 +1703,7 @@ def admin_update_cash_account():
                         f'已向 "{account.name}" 存入 {amount:,.2f}，並已記錄流水。',
                         "success",
                     )
+                    return redirect(url_for('cash_management'))
 
         elif action == "transfer_funds":
             from_id = int(request.form.get("from_account_id"))
@@ -1120,12 +1711,14 @@ def admin_update_cash_account():
             amount = float(request.form.get("transfer_amount"))
             if from_id == to_id:
                 flash("來源與目標帳戶不可相同！", "danger")
+                return redirect(url_for('cash_management'))
+            
+            from_account = db.session.get(CashAccount, from_id)
+            to_account = db.session.get(CashAccount, to_id)
+            if from_account.balance < amount:
+                flash(f'來源帳戶 "{from_account.name}" 餘額不足。', "danger")
+                return redirect(url_for('cash_management'))
             else:
-                from_account = db.session.get(CashAccount, from_id)
-                to_account = db.session.get(CashAccount, to_id)
-                if from_account.balance < amount:
-                    flash(f'來源帳戶 "{from_account.name}" 餘額不足。', "danger")
-                else:
                     from_account.balance -= amount
                     to_account.balance += amount
 
@@ -1150,9 +1743,11 @@ def admin_update_cash_account():
                         f'成功從 "{from_account.name}" 轉帳 {amount:,.2f} 到 "{to_account.name}"，並已記錄流水！',
                         "success",
                     )
+                    return redirect(url_for('cash_management'))
 
         else:
             flash("未知的操作指令。", "warning")
+            return redirect(url_for('cash_management'))
 
     except Exception as e:
         db.session.rollback()
@@ -1420,6 +2015,115 @@ def delete_customer_ajax():
     return jsonify({"status": "success", "message": "客戶已從常用列表移除"})
 
 
+@app.route("/api/customers/frequent", methods=["GET"])
+@login_required
+def get_frequent_customers():
+    """獲取常用客戶列表"""
+    try:
+        # 獲取所有活躍的客戶（常用客戶）
+        frequent_customers = (
+            db.session.execute(
+                db.select(Customer).filter_by(is_active=True).order_by(Customer.name)
+            )
+            .scalars()
+            .all()
+        )
+        
+        # 轉換為可序列化的格式
+        customers_data = []
+        for customer in frequent_customers:
+            customers_data.append({
+                'id': customer.id,
+                'name': customer.name,
+                'is_active': customer.is_active
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'customers': customers_data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'獲取常用客戶列表失敗: {str(e)}'
+        }), 500
+
+
+@app.route("/api/settlement", methods=["POST"])
+@login_required
+def api_settlement():
+    """處理應收帳款銷帳"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
+
+    try:
+        # 1. 獲取並驗證資料
+        customer_id = int(data.get("customer_id"))
+        amount = float(data.get("amount"))
+        account_id = int(data.get("account_id"))
+        note = data.get("note", "")
+
+        if not all([customer_id, amount > 0, account_id]):
+            return jsonify({"status": "error", "message": "客戶ID、銷帳金額和收款帳戶都必須正確填寫。"}), 400
+
+        # 2. 查詢資料庫物件
+        customer = db.session.get(Customer, customer_id)
+        account = db.session.get(CashAccount, account_id)
+
+        if not customer:
+            return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 400
+        if not account or account.currency != "TWD":
+            return jsonify({"status": "error", "message": "無效的台幣收款帳戶。"}), 400
+        if amount > customer.total_receivables_twd:
+            return jsonify({"status": "error", "message": f"銷帳金額超過應收帳款！客戶應收 {customer.total_receivables_twd:,.2f}，但銷帳 {amount:,.2f}。"}), 400
+
+        # 3. 核心業務邏輯
+        # 更新客戶應收帳款
+        customer.total_receivables_twd -= amount
+        
+        # 更新收款帳戶餘額
+        account.balance += amount
+        
+        # 創建銷帳記錄
+        settlement_entry = LedgerEntry(
+            account_id=account.id,
+            entry_type="SETTLEMENT",
+            amount=amount,
+            entry_date=datetime.utcnow(),
+            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+            operator_id=current_user.id
+        )
+        db.session.add(settlement_entry)
+        
+        # 創建現金日誌記錄
+        cash_log = CashLog(
+            type="SETTLEMENT",
+            amount=amount,
+            time=datetime.utcnow(),
+            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+            operator_id=current_user.id
+        )
+        db.session.add(cash_log)
+        
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": f"銷帳成功！客戶「{customer.name}」已收款 NT$ {amount:,.2f}，應收帳款餘額：NT$ {customer.total_receivables_twd:,.2f}。"
+        })
+
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
+    except Exception as e:
+        db.session.rollback()
+        print(f"!!! Error in api_settlement: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
+
+
 @app.route("/sales_action", methods=["POST"])
 @admin_required
 def sales_action():
@@ -1500,6 +2204,14 @@ def sales_action():
 @app.route("/api/channels", methods=["GET"])
 @admin_required
 def get_channels():
+    channels = Channel.query.filter_by(is_active=True).order_by(Channel.name).all()
+    return jsonify([{"id": c.id, "name": c.name} for c in channels])
+
+
+@app.route("/api/channels/public", methods=["GET"])
+@login_required
+def get_channels_public():
+    """允許登入用戶獲取渠道列表，用於買入頁面"""
     channels = Channel.query.filter_by(is_active=True).order_by(Channel.name).all()
     return jsonify([{"id": c.id, "name": c.name} for c in channels])
 
