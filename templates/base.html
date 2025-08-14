@@ -113,21 +113,30 @@
         /* --- Mobile Responsive Styles --- */
         @media (max-width: 768px) {
             #sidebar {
-                margin-left: -260px;
+                margin-left: -260px !important;
                 width: 260px;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease-in-out;
+                left: -260px !important;
             }
 
             #sidebar.active {
-                margin-left: 0;
+                margin-left: 0 !important;
+                transform: translateX(0);
+                left: 0 !important;
             }
 
             #content {
-                padding-left: 0;
-                width: 100%;
+                padding-left: 0 !important;
+                width: 100% !important;
+                margin-left: 0 !important;
+                left: 0 !important;
             }
 
             #content.active {
-                padding-left: 0;
+                padding-left: 0 !important;
+                margin-left: 0 !important;
+                left: 0 !important;
             }
 
             .main-content-inner {
@@ -165,7 +174,21 @@
             .form-control, .form-select {
                 font-size: 16px; /* 防止 iOS 縮放 */
             }
+
+                    /* 強制確保手機上內容區域不被遮擋 */
+        .wrapper {
+            overflow-x: hidden;
         }
+
+        /* 緊急修正：強制手機上側邊欄隱藏 */
+        #sidebar:not(.active) {
+            display: none !important;
+        }
+
+        #sidebar.active {
+            display: block !important;
+        }
+    }
 
         /* 超小螢幕優化 */
         @media (max-width: 576px) {
@@ -361,6 +384,17 @@
                     }
                 }
 
+                // 強制確保手機上側邊欄隱藏
+                function forceMobileSidebarHidden() {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.add('active');
+                        content.classList.add('active');
+                        if (sidebarOverlay) {
+                            sidebarOverlay.classList.remove('active');
+                        }
+                    }
+                }
+
                 function initSidebarState() {
                     if (window.innerWidth <= 768) {
                         sidebar.classList.add('active');
@@ -381,7 +415,20 @@
                 initSidebarState();
                 
                 // 監聽視窗大小變化
-                window.addEventListener('resize', initSidebarState);
+                window.addEventListener('resize', function() {
+                    initSidebarState();
+                    // 強制確保手機上側邊欄隱藏
+                    if (window.innerWidth <= 768) {
+                        forceMobileSidebarHidden();
+                    }
+                });
+
+                // 頁面載入完成後再次確保手機上側邊欄隱藏
+                window.addEventListener('load', function() {
+                    if (window.innerWidth <= 768) {
+                        forceMobileSidebarHidden();
+                    }
+                });
 
                 // 點擊側邊欄連結後自動關閉（手機上）
                 const sidebarLinks = sidebar.querySelectorAll('a');
