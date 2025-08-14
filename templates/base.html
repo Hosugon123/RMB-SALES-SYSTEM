@@ -281,10 +281,6 @@
                 <!-- 只有登入後才顯示頂部導航條 -->
                 <nav class="navbar navbar-expand-lg navbar-light bg-white mb-4 rounded shadow-sm p-2">
                     <div class="container-fluid">
-                        <button type="button" id="sidebarCollapse" class="btn btn-primary btn-lg">
-                            <i class="bi bi-list fs-4"></i>
-                            <span class="ms-2">選單</span>
-                        </button>
                         <div class="ms-auto">
                             <span class="navbar-text text-muted d-none d-md-inline">
                                 {{ current_user.username }}
@@ -318,22 +314,14 @@
         document.addEventListener('DOMContentLoaded', function () {
             const sidebar = document.getElementById('sidebar');
             const content = document.getElementById('content');
-            const sidebarCollapseBtn = document.getElementById('sidebarCollapse');
             const floatingToggleBtn = document.getElementById('floatingSidebarToggle');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-            if (sidebar && content && sidebarCollapseBtn) {
-                // 頂部導航欄按鈕切換側邊欄
-                sidebarCollapseBtn.addEventListener('click', function () {
+            if (sidebar && content && floatingToggleBtn) {
+                // 浮動按鈕切換側邊欄
+                floatingToggleBtn.addEventListener('click', function () {
                     toggleSidebar();
                 });
-
-                // 浮動按鈕切換側邊欄
-                if (floatingToggleBtn) {
-                    floatingToggleBtn.addEventListener('click', function () {
-                        toggleSidebar();
-                    });
-                }
 
                 // 點擊遮罩關閉側邊欄
                 if (sidebarOverlay) {
@@ -346,7 +334,7 @@
 
                 // 點擊主內容區域隱藏側邊欄（手機上）
                 content.addEventListener('click', function(e) {
-                    if (window.innerWidth <= 768 && !sidebar.contains(e.target) && !sidebarCollapseBtn.contains(e.target) && !floatingToggleBtn.contains(e.target)) {
+                    if (window.innerWidth <= 768 && !sidebar.contains(e.target) && !floatingToggleBtn.contains(e.target)) {
                         closeSidebar();
                     }
                 });

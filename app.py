@@ -42,8 +42,30 @@ def init_database():
     """初始化資料庫和創建預設管理員帳戶"""
     try:
         with app.app_context():
-            db.create_all()
-            print("✅ 資料庫表格已創建")
+            # 檢查資料庫是否已經初始化
+            inspector = db.inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            
+            print(f"🔍 檢查資料庫表格: {existing_tables}")
+            
+            if 'user' not in existing_tables:
+                # 只有當表格不存在時才創建
+                print("📝 創建資料庫表格...")
+                db.create_all()
+                print("✅ 資料庫表格已創建")
+            else:
+                print("✅ 資料庫表格已存在")
+                
+                # 檢查現有數據
+                try:
+                    user_count = User.query.count()
+                    print(f"👥 現有用戶數量: {user_count}")
+                    
+                    if user_count > 0:
+                        print("✅ 資料庫中已有數據，跳過初始化")
+                        return
+                except Exception as e:
+                    print(f"⚠️  檢查用戶數據時出錯: {e}")
             
             # 檢查是否已有管理員帳戶
             admin_user = User.query.filter_by(username='admin').first()
@@ -67,6 +89,8 @@ def init_database():
                 
     except Exception as e:
         print(f"❌ 資料庫初始化失敗: {e}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
 
 # 使用 Flask 3.x 兼容的方式初始化資料庫
@@ -74,8 +98,12 @@ def init_database():
 def before_request():
     """在每個請求前檢查資料庫是否已初始化"""
     if not hasattr(app, '_database_initialized'):
+        print("🚀 首次請求，初始化資料庫...")
         init_database()
         app._database_initialized = True
+        print("✅ 資料庫初始化完成")
+    else:
+        print("✅ 資料庫已初始化，跳過")
 
 # ===================================================================
 # 3. 資料庫模型 (Models) 定義 - 【V4.0 職責分離重構版】
@@ -3489,8 +3517,53 @@ def manage_channel():
         return jsonify({"status": "success", "message": "渠道已刪除"})
 
 
+# API 1: 獲取現金管理的總資產數據，用於實時更新
+@app.route("/api/cash_management/totals", methods=["GET"])
+@login_required
+def get_cash_management_totals():
+    """獲取現金管理的總資產數據，用於實時更新"""
+    try:
+        # 獲取所有現金帳戶
+        all_accounts_obj = (
+            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            .scalars()
+            .all()
+        )
+
+        # 計算總台幣和人民幣資產
+        total_twd = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+        )
+        total_rmb = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+        )
+
+        # 查詢應收帳款數據
+        customers_with_receivables = (
+            db.session.execute(
+                db.select(Customer)
+                .filter_by(is_active=True)
+                .filter(Customer.total_receivables_twd > 0)
+                .order_by(Customer.total_receivables_twd.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+
+        return jsonify({
+            'total_twd': float(total_twd),
+            'total_rmb': float(total_rmb),
+            'total_receivables': float(total_receivables),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f"獲取現金管理總資產數據時發生錯誤: {e}")
+        return jsonify({'error': '獲取數據失敗'}), 500
+
 # API 2: 根據持有人 ID，查詢其名下的帳戶
-@app.route("/api/cash_management/accounts_by_holder/<int:holder_id>", methods=["GET"])
 @login_required
 def get_accounts_by_holder_api(holder_id):
     # --- 偵錯印記 1：看看我們收到了什麼請求 ---
