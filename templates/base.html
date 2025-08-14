@@ -183,10 +183,44 @@
         /* 緊急修正：強制手機上側邊欄隱藏 */
         #sidebar:not(.active) {
             display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            transform: translateX(-100%) !important;
         }
 
         #sidebar.active {
             display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            transform: translateX(0) !important;
+        }
+
+        /* 浮動側邊欄切換按鈕 */
+        .floating-sidebar-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1040;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #0d6efd;
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .floating-sidebar-toggle:hover {
+            background: #0b5ed7;
+            transform: scale(1.1);
+        }
+
+        .floating-sidebar-toggle:active {
+            transform: scale(0.95);
         }
     }
 
@@ -268,6 +302,11 @@
         <!-- 手機上側邊欄遮罩 -->
         <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
+        <!-- 浮動側邊欄切換按鈕 -->
+        <button id="floatingSidebarToggle" class="floating-sidebar-toggle d-md-none">
+            <i class="bi bi-list fs-4"></i>
+        </button>
+
         <!-- Page Content -->
         <div id="content" class="{% if not current_user.is_authenticated %}w-100 p-0 m-0{% endif %}">
             <div class="{% if current_user.is_authenticated %}main-content-inner{% endif %}">
@@ -275,9 +314,9 @@
                 <!-- 只有登入後才顯示頂部導航條 -->
                 <nav class="navbar navbar-expand-lg navbar-light bg-white mb-4 rounded shadow-sm p-2">
                     <div class="container-fluid">
-                        <button type="button" id="sidebarCollapse" class="btn btn-outline-primary">
-                            <i class="bi bi-list fs-5"></i>
-                            <span class="d-none d-md-inline ms-1">功能選單</span>
+                        <button type="button" id="sidebarCollapse" class="btn btn-primary btn-lg">
+                            <i class="bi bi-list fs-4"></i>
+                            <span class="ms-2">選單</span>
                         </button>
                         <div class="ms-auto">
                             <span class="navbar-text text-muted d-none d-md-inline">
@@ -313,13 +352,21 @@
             const sidebar = document.getElementById('sidebar');
             const content = document.getElementById('content');
             const sidebarCollapseBtn = document.getElementById('sidebarCollapse');
+            const floatingToggleBtn = document.getElementById('floatingSidebarToggle');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
 
             if (sidebar && content && sidebarCollapseBtn) {
-                // 切換側邊欄
+                // 頂部導航欄按鈕切換側邊欄
                 sidebarCollapseBtn.addEventListener('click', function () {
                     toggleSidebar();
                 });
+
+                // 浮動按鈕切換側邊欄
+                if (floatingToggleBtn) {
+                    floatingToggleBtn.addEventListener('click', function () {
+                        toggleSidebar();
+                    });
+                }
 
                 // 點擊遮罩關閉側邊欄
                 if (sidebarOverlay) {
@@ -329,6 +376,13 @@
                         }
                     });
                 }
+
+                // 點擊主內容區域隱藏側邊欄（手機上）
+                content.addEventListener('click', function(e) {
+                    if (window.innerWidth <= 768 && !sidebar.contains(e.target) && !sidebarCollapseBtn.contains(e.target) && !floatingToggleBtn.contains(e.target)) {
+                        closeSidebar();
+                    }
+                });
 
                 // 滑動手勢支援（手機上）
                 let touchStartX = 0;
@@ -372,6 +426,10 @@
                     if (sidebarOverlay) {
                         sidebarOverlay.classList.add('active');
                     }
+                    // 更新浮動按鈕圖示
+                    if (floatingToggleBtn) {
+                        floatingToggleBtn.innerHTML = '<i class="bi bi-x-lg fs-4"></i>';
+                    }
                 }
 
                 function closeSidebar() {
@@ -380,6 +438,10 @@
                         content.classList.add('active');
                         if (sidebarOverlay) {
                             sidebarOverlay.classList.remove('active');
+                        }
+                        // 更新浮動按鈕圖示
+                        if (floatingToggleBtn) {
+                            floatingToggleBtn.innerHTML = '<i class="bi bi-list fs-4"></i>';
                         }
                     }
                 }
