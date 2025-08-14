@@ -162,33 +162,33 @@
                 overflow-x: hidden;
             }
 
-            /* 浮動側邊欄切換按鈕 */
-            .floating-sidebar-toggle {
-                position: fixed;
-                top: 20px;
-                left: 20px;
-                z-index: 1040;
-                width: 60px;
-                height: 60px;
-                border-radius: 50%;
-                background: #0d6efd;
-                color: white;
-                border: none;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all 0.3s ease;
-            }
+                    /* 浮動側邊欄切換按鈕 */
+        .floating-sidebar-toggle {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            z-index: 1040;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: #0d6efd;
+            color: white;
+            border: none;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
 
-            .floating-sidebar-toggle:hover {
-                background: #0b5ed7;
-                transform: scale(1.1);
-            }
+        .floating-sidebar-toggle:hover {
+            background: #0b5ed7;
+            transform: scale(1.05);
+        }
 
-            .floating-sidebar-toggle:active {
-                transform: scale(0.95);
-            }
+        .floating-sidebar-toggle:active {
+            transform: scale(0.95);
+        }
         }
 
         /* 超小螢幕優化 */
@@ -271,7 +271,7 @@
 
         <!-- 浮動側邊欄切換按鈕 -->
         <button id="floatingSidebarToggle" class="floating-sidebar-toggle d-md-none">
-            <i class="bi bi-list fs-4"></i>
+            <i class="bi bi-list fs-5"></i>
         </button>
 
         <!-- Page Content -->
@@ -360,45 +360,7 @@
                     });
                 }
 
-                // 滑動手勢支援（手機上）
-                let touchStartX = 0;
-                let touchEndX = 0;
-
-                document.addEventListener('touchstart', function(e) {
-                    touchStartX = e.changedTouches[0].screenX;
-                });
-
-                document.addEventListener('touchend', function(e) {
-                    touchEndX = e.changedTouches[0].screenX;
-                    handleSwipe();
-                });
-
-                function handleSwipe() {
-                    const swipeThreshold = 50;
-                    const diff = touchStartX - touchEndX;
-
-                    if (Math.abs(diff) > swipeThreshold) {
-                        if (window.innerWidth <= 768) {
-                            // 手機上使用 show 類別
-                            if (diff > 0 && !sidebar.classList.contains('show')) {
-                                // 向左滑動，開啟側邊欄
-                                openSidebar();
-                            } else if (diff < 0 && sidebar.classList.contains('show')) {
-                                // 向右滑動，關閉側邊欄
-                                closeSidebar();
-                            }
-                        } else {
-                            // 桌面版使用 active 類別
-                            if (diff > 0 && !sidebar.classList.contains('active')) {
-                                // 向左滑動，開啟側邊欄
-                                openSidebar();
-                            } else if (diff < 0 && sidebar.classList.contains('active')) {
-                                // 向右滑動，關閉側邊欄
-                                closeSidebar();
-                            }
-                        }
-                    }
-                }
+                // 滑動手勢功能已移除，避免意外觸發側邊欄
 
                 function toggleSidebar() {
                     if (window.innerWidth <= 768) {
@@ -427,7 +389,7 @@
                         }
                         // 更新浮動按鈕圖示
                         if (floatingToggleBtn) {
-                            floatingToggleBtn.innerHTML = '<i class="bi bi-x-lg fs-4"></i>';
+                            floatingToggleBtn.innerHTML = '<i class="bi bi-x-lg fs-5"></i>';
                         }
                     } else {
                         // 桌面版
@@ -445,7 +407,7 @@
                         }
                         // 更新浮動按鈕圖示
                         if (floatingToggleBtn) {
-                            floatingToggleBtn.innerHTML = '<i class="bi bi-list fs-4"></i>';
+                            floatingToggleBtn.innerHTML = '<i class="bi bi-list fs-5"></i>';
                         }
                     } else {
                         // 桌面版
