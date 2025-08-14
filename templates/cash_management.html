@@ -56,19 +56,19 @@
     
     /* 超小卡片樣式 - 與點擊操作區塊大小一致 */
     .action-card-compact {
-        min-height: 100px;
-        max-height: 120px;
+        min-height: 80px;
+        max-height: 100px;
     }
     
     .action-icon-compact {
-        width: 30px;
-        height: 30px;
+        width: 25px;
+        height: 25px;
         margin: 0 auto;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.9rem;
+        font-size: 0.8rem;
         color: white;
         transition: all 0.3s ease;
     }
@@ -313,48 +313,48 @@
         </div>
     </div>
 
-    <!-- 功能操作卡片區塊 - 縮小版 -->
-    <div class="row mt-4 mb-3">
-        <div class="col-lg-3 col-md-4 mb-2">
+    <!-- 功能操作卡片區塊 - 超小版 -->
+    <div class="row mt-3 mb-2">
+        <div class="col-lg-2 col-md-3 col-6 mb-2">
             <div class="card action-card action-card-compact h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addHolderModal">
-                <div class="card-body text-center p-2">
+                <div class="card-body text-center p-1">
                     <div class="action-icon-compact mb-1">
                         <i class="bi bi-person-plus-fill"></i>
                     </div>
-                    <h6 class="card-title fw-bold mb-1 small">新增持有人</h6>
+                    <h6 class="card-title fw-bold mb-0 small">新增持有人</h6>
                     <p class="card-text text-muted small mb-0">新增資金持有人</p>
                 </div>
-                <div class="card-footer bg-transparent border-0 text-center py-1">
+                <div class="card-footer bg-transparent border-0 text-center py-0">
                     <span class="badge bg-success small">點擊操作</span>
                 </div>
             </div>
         </div>
         
-        <div class="col-lg-6 col-md-8 mb-2">
+        <div class="col-lg-4 col-md-6 col-6 mb-2">
             <div class="card action-card action-card-compact h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addAccountModal">
-                <div class="card-body text-center p-2">
+                <div class="card-body text-center p-1">
                     <div class="action-icon-compact mb-1">
                         <i class="bi bi-plus-circle-fill"></i>
                     </div>
-                    <h6 class="card-title fw-bold mb-1 small">新增帳戶</h6>
+                    <h6 class="card-title fw-bold mb-0 small">新增帳戶</h6>
                     <p class="card-text text-muted small mb-0">為持有人創建新的現金帳戶</p>
                 </div>
-                <div class="card-footer bg-transparent border-0 text-center py-1">
+                <div class="card-footer bg-transparent border-0 text-center py-0">
                     <span class="badge bg-primary small">點擊操作</span>
                 </div>
             </div>
         </div>
         
-        <div class="col-lg-3 col-md-4 mb-2">
+        <div class="col-lg-2 col-md-3 col-6 mb-2">
             <div class="card action-card action-card-compact h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#transferModal">
-                <div class="card-body text-center p-2">
+                <div class="card-body text-center p-1">
                     <div class="action-icon-compact mb-1">
                         <i class="bi bi-arrow-left-right"></i>
                     </div>
-                    <h6 class="card-title fw-bold mb-1 small">內部轉帳</h6>
+                    <h6 class="card-title fw-bold mb-0 small">內部轉帳</h6>
                     <p class="card-text text-muted small mb-0">帳戶間資金轉移</p>
                 </div>
-                <div class="card-footer bg-transparent border-0 text-center py-1">
+                <div class="card-footer bg-transparent border-0 text-center py-0">
                     <span class="badge bg-warning text-dark small">點擊操作</span>
                 </div>
             </div>
@@ -672,6 +672,9 @@ document.addEventListener('DOMContentLoaded', function () {
             renderAccounts();
         }, 1000);
     }
+    
+    // 初始渲染帳戶列表
+    renderAccounts();
     
     // 初始更新總資產顯示
     updateTotalAssets();
