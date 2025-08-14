@@ -2707,7 +2707,7 @@ def admin_update_cash_account():
             db.session.add(new_holder)
             db.session.commit()
             flash(f'持有人 "{name}" 已成功新增！', "success")
-            return redirect(url_for('cash_management'))
+            return redirect(url_for('cash_management', refresh='true'))
 
         elif action == "delete_holder":
             holder_id = int(request.form.get("holder_id"))
@@ -2742,7 +2742,7 @@ def admin_update_cash_account():
             db.session.add(new_account)
             db.session.commit()
             flash(f'帳戶 "{name}" 已成功新增！', "success")
-            return redirect(url_for('cash_management'))
+            return redirect(url_for('cash_management', refresh='true'))
 
         elif action == "delete_account":
             account_id = int(request.form.get("account_id"))
@@ -2853,7 +2853,7 @@ def admin_update_cash_account():
                         f'成功從 "{from_account.name}" 轉帳 {amount:,.2f} 到 "{to_account.name}"，並已記錄流水！',
                         "success",
                     )
-                    return redirect(url_for('cash_management'))
+                    return redirect(url_for('cash_management', refresh='true'))
 
         else:
             flash("未知的操作指令。", "warning")

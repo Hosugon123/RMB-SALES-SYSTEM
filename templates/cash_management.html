@@ -54,6 +54,25 @@
         transition: all 0.3s ease;
     }
     
+    /* 超小卡片樣式 - 與點擊操作區塊大小一致 */
+    .action-card-compact {
+        min-height: 100px;
+        max-height: 120px;
+    }
+    
+    .action-icon-compact {
+        width: 30px;
+        height: 30px;
+        margin: 0 auto;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        color: white;
+        transition: all 0.3s ease;
+    }
+    
     .action-card:nth-child(1) .action-icon {
         background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
     }
@@ -68,6 +87,23 @@
     
     .action-card:hover .action-icon {
         transform: scale(1.1);
+    }
+    
+    /* 超小卡片的圖標背景色 */
+    .action-card-compact:nth-child(1) .action-icon-compact {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    }
+    
+    .action-card-compact:nth-child(2) .action-icon-compact {
+        background: linear-gradient(135deg, #007bff 0%, #6610f2 100%);
+    }
+    
+    .action-card-compact:nth-child(3) .action-icon-compact {
+        background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+    }
+    
+    .action-card-compact:hover .action-icon-compact {
+        transform: scale(1.05);
     }
     
     .action-card .card-title {
@@ -127,6 +163,24 @@
         .action-card-small .card-text {
             font-size: 0.75rem;
         }
+        
+        .action-card-compact .card-body {
+            padding: 0.75rem 0.5rem;
+        }
+        
+        .action-icon-compact {
+            width: 25px;
+            height: 25px;
+            font-size: 0.8rem;
+        }
+        
+        .action-card-compact .card-title {
+            font-size: 0.8rem;
+        }
+        
+        .action-card-compact .card-text {
+            font-size: 0.7rem;
+        }
     }
     
     /* 超小螢幕優化 */
@@ -140,6 +194,16 @@
             height: 45px;
             font-size: 1.1rem;
         }
+        
+        .action-card-compact .card-body {
+            padding: 0.5rem 0.25rem;
+        }
+        
+        .action-icon-compact {
+            width: 22px;
+            height: 22px;
+            font-size: 0.7rem;
+        }
     }
 </style>
 {% endblock %}
@@ -151,53 +215,7 @@
         <h1 class="h2"><i class="bi bi-wallet2 me-2"></i>現金管理</h1>
     </div>
 
-    <!-- 功能操作卡片區塊 -->
-    <div class="row mb-4">
-        <div class="col-lg-3 col-md-4 mb-3">
-            <div class="card action-card action-card-small h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addHolderModal">
-                <div class="card-body text-center p-3">
-                    <div class="action-icon-small mb-2">
-                        <i class="bi bi-person-plus-fill"></i>
-                    </div>
-                    <h6 class="card-title fw-bold mb-1">新增持有人</h6>
-                    <p class="card-text text-muted small mb-0">新增資金持有人</p>
-                </div>
-                <div class="card-footer bg-transparent border-0 text-center py-2">
-                    <span class="badge bg-success">點擊操作</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-lg-6 col-md-8 mb-3">
-            <div class="card action-card h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addAccountModal">
-                <div class="card-body text-center p-4">
-                    <div class="action-icon mb-3">
-                        <i class="bi bi-plus-circle-fill"></i>
-                    </div>
-                    <h5 class="card-title fw-bold mb-2">新增帳戶</h5>
-                    <p class="card-text text-muted small mb-0">為持有人創建新的現金帳戶</p>
-                </div>
-                <div class="card-footer bg-transparent border-0 text-center">
-                    <span class="badge bg-primary">點擊操作</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-lg-3 col-md-4 mb-3">
-            <div class="card action-card action-card-small h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#transferModal">
-                <div class="card-body text-center p-3">
-                    <div class="action-icon-small mb-2">
-                        <i class="bi bi-arrow-left-right"></i>
-                    </div>
-                    <h6 class="card-title fw-bold mb-1">內部轉帳</h6>
-                    <p class="card-text text-muted small mb-0">帳戶間資金轉移</p>
-                </div>
-                <div class="card-footer bg-transparent border-0 text-center py-2">
-                    <span class="badge bg-warning text-dark">點擊操作</span>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- 頂部核心指標卡片 -->
     <div class="row">
@@ -292,6 +310,54 @@
                 <p class="mt-3">太棒了！所有應收帳款都已結清</p>
             </div>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- 功能操作卡片區塊 - 縮小版 -->
+    <div class="row mt-4 mb-3">
+        <div class="col-lg-3 col-md-4 mb-2">
+            <div class="card action-card action-card-compact h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addHolderModal">
+                <div class="card-body text-center p-2">
+                    <div class="action-icon-compact mb-1">
+                        <i class="bi bi-person-plus-fill"></i>
+                    </div>
+                    <h6 class="card-title fw-bold mb-1 small">新增持有人</h6>
+                    <p class="card-text text-muted small mb-0">新增資金持有人</p>
+                </div>
+                <div class="card-footer bg-transparent border-0 text-center py-1">
+                    <span class="badge bg-success small">點擊操作</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6 col-md-8 mb-2">
+            <div class="card action-card action-card-compact h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+                <div class="card-body text-center p-2">
+                    <div class="action-icon-compact mb-1">
+                        <i class="bi bi-plus-circle-fill"></i>
+                    </div>
+                    <h6 class="card-title fw-bold mb-1 small">新增帳戶</h6>
+                    <p class="card-text text-muted small mb-0">為持有人創建新的現金帳戶</p>
+                </div>
+                <div class="card-footer bg-transparent border-0 text-center py-1">
+                    <span class="badge bg-primary small">點擊操作</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-4 mb-2">
+            <div class="card action-card action-card-compact h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#transferModal">
+                <div class="card-body text-center p-2">
+                    <div class="action-icon-compact mb-1">
+                        <i class="bi bi-arrow-left-right"></i>
+                    </div>
+                    <h6 class="card-title fw-bold mb-1 small">內部轉帳</h6>
+                    <p class="card-text text-muted small mb-0">帳戶間資金轉移</p>
+                </div>
+                <div class="card-footer bg-transparent border-0 text-center py-1">
+                    <span class="badge bg-warning text-dark small">點擊操作</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -579,6 +645,34 @@ document.addEventListener('DOMContentLoaded', function () {
     // 初始化客戶交易紀錄監聽器
     setupCustomerTransactionsListeners();
     
+    // 檢查是否需要刷新數據（從新增操作返回）
+    const urlParams = new URLSearchParams(window.location.search);
+    const shouldRefresh = urlParams.get('refresh') === 'true';
+    
+    if (shouldRefresh) {
+        console.log('🔄 檢測到刷新參數，自動刷新數據...');
+        // 延遲一下再刷新，確保後端數據已更新
+        setTimeout(() => {
+            updateTotalAssets();
+            renderAccounts();
+        }, 1000);
+        
+        // 移除 URL 參數，避免重複刷新
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+    }
+    
+    // 檢查是否有成功訊息，如果有則刷新數據
+    const successMessages = document.querySelectorAll('.alert-success');
+    if (successMessages.length > 0) {
+        console.log('📢 檢測到成功訊息，自動刷新數據...');
+        // 延遲一下再刷新，確保後端數據已更新
+        setTimeout(() => {
+            updateTotalAssets();
+            renderAccounts();
+        }, 1000);
+    }
+    
     // 初始更新總資產顯示
     updateTotalAssets();
     
@@ -590,6 +684,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!document.hidden) {
             console.log('👁️ 頁面重新可見，更新總資產數據...');
             updateTotalAssets();
+            renderAccounts();
         }
     });
     
