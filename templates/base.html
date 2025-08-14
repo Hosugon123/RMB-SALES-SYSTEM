@@ -227,42 +227,43 @@
             </div>
 
             <ul class="list-unstyled components">
+                <!-- 1. 儀表板 -->
                 <li class="{% if request.endpoint in ['dashboard', 'admin_dashboard'] %}active{% endif %}">
                     <a href="{{ url_for('dashboard' if not current_user.is_admin else 'admin_dashboard') }}"><i class="bi bi-grid-1x2-fill me-3"></i>儀表板</a>
                 </li>
+                
+                <!-- 2. 現金管理 -->
                 <li class="{% if request.endpoint in ['cash_management', 'cash_management_operator'] %}active{% endif %}">
                     <a href="{{ url_for('cash_management_operator' if not current_user.is_admin else 'cash_management') }}"><i class="bi bi-wallet2 me-3"></i>現金管理</a>
                 </li>
-                <li class="{% if request.endpoint == 'buy_in' %}active{% endif %}">
-                    <a href="{{ url_for('buy_in') }}"><i class="bi bi-bag-plus-fill me-3"></i>買入頁面</a>
-                </li>
-                <li class="{% if request.endpoint == 'fifo_inventory' %}active{% endif %}">
-                    <a href="{{ url_for('fifo_inventory') }}"><i class="bi bi-boxes me-3"></i>FIFO庫存管理</a>
-                </li>
+                
+                <!-- 3. 售出錄入 -->
                 <li class="{% if request.endpoint == 'sales_entry' %}active{% endif %}">
                     <a href="{{ url_for('sales_entry') }}"><i class="bi bi-cash-coin me-3"></i>售出錄入</a>
                 </li>
-                <!-- 暫時隱藏刷卡記帳功能
-                <li class="{% if request.endpoint == 'card_purchase' %}active{% endif %}">
-                    <a href="{{ url_for('card_purchase') }}"><i class="bi bi-credit-card-2-front-fill me-3"></i>刷卡記帳</a>
-                </li>
-                -->
                 
-                <!-- ============================================= -->
-                <!--            【核心新增】管理員專屬功能             -->
-                <!-- ============================================= -->
+                <!-- 4. 買入頁面 -->
+                <li class="{% if request.endpoint == 'buy_in' %}active{% endif %}">
+                    <a href="{{ url_for('buy_in') }}"><i class="bi bi-bag-plus-fill me-3"></i>買入頁面</a>
+                </li>
+                
+                <!-- 5. 庫存管理 -->
+                <li class="{% if request.endpoint == 'fifo_inventory' %}active{% endif %}">
+                    <a href="{{ url_for('fifo_inventory') }}"><i class="bi bi-boxes me-3"></i>FIFO庫存管理</a>
+                </li>
+                
+                <!-- 6. 使用者管理 (僅管理員可見) -->
                 {% if current_user.is_admin %}
                 <hr class="mx-3">
                 <li class="{% if request.endpoint == 'user_management' %}active{% endif %}">
                     <a href="{{ url_for('user_management') }}"><i class="bi bi-person-badge me-3"></i>使用者管理</a>
                 </li>
                 {% endif %}
+                
+                <!-- 7. 登出按鈕 (已在頂部導航條，這裡不重複顯示) -->
             </ul>
 
-            <div class="sidebar-footer">
-                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger w-100">登出 <i
-                        class="bi bi-box-arrow-right ms-1"></i></a>
-            </div>
+
         </nav>
         {% endif %}
 
@@ -281,10 +282,13 @@
                 <!-- 只有登入後才顯示頂部導航條 -->
                 <nav class="navbar navbar-expand-lg navbar-light bg-white mb-4 rounded shadow-sm p-2">
                     <div class="container-fluid">
-                        <div class="ms-auto">
-                            <span class="navbar-text text-muted d-none d-md-inline">
+                        <div class="ms-auto d-flex align-items-center">
+                            <span class="navbar-text text-muted d-none d-md-inline me-3">
                                 {{ current_user.username }}
                             </span>
+                            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-box-arrow-right me-1"></i>登出
+                            </a>
                         </div>
                     </div>
                 </nav>

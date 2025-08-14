@@ -36,6 +36,24 @@
         transition: all 0.3s ease;
     }
     
+    /* 小卡片樣式 */
+    .action-card-small {
+        min-height: 140px;
+    }
+    
+    .action-icon-small {
+        width: 40px;
+        height: 40px;
+        margin: 0 auto;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        color: white;
+        transition: all 0.3s ease;
+    }
+    
     .action-card:nth-child(1) .action-icon {
         background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
     }
@@ -80,16 +98,34 @@
             font-size: 1.25rem;
         }
         
+        .action-icon-small {
+            width: 35px;
+            height: 35px;
+            font-size: 1rem;
+        }
+        
         .action-card .card-body {
             padding: 1.5rem 1rem;
+        }
+        
+        .action-card-small .card-body {
+            padding: 1rem 0.75rem;
         }
         
         .action-card .card-title {
             font-size: 1rem;
         }
         
+        .action-card-small .card-title {
+            font-size: 0.9rem;
+        }
+        
         .action-card .card-text {
             font-size: 0.85rem;
+        }
+        
+        .action-card-small .card-text {
+            font-size: 0.75rem;
         }
     }
     
@@ -117,22 +153,22 @@
 
     <!-- 功能操作卡片區塊 -->
     <div class="row mb-4">
-        <div class="col-lg-4 col-md-6 mb-3">
-            <div class="card action-card h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addHolderModal">
-                <div class="card-body text-center p-4">
-                    <div class="action-icon mb-3">
+        <div class="col-lg-3 col-md-4 mb-3">
+            <div class="card action-card action-card-small h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addHolderModal">
+                <div class="card-body text-center p-3">
+                    <div class="action-icon-small mb-2">
                         <i class="bi bi-person-plus-fill"></i>
                     </div>
-                    <h5 class="card-title fw-bold mb-2">新增持有人</h5>
-                    <p class="card-text text-muted small mb-0">新增資金持有人，管理內部資金分配</p>
+                    <h6 class="card-title fw-bold mb-1">新增持有人</h6>
+                    <p class="card-text text-muted small mb-0">新增資金持有人</p>
                 </div>
-                <div class="card-footer bg-transparent border-0 text-center">
+                <div class="card-footer bg-transparent border-0 text-center py-2">
                     <span class="badge bg-success">點擊操作</span>
                 </div>
             </div>
         </div>
         
-        <div class="col-lg-4 col-md-6 mb-3">
+        <div class="col-lg-6 col-md-8 mb-3">
             <div class="card action-card h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#addAccountModal">
                 <div class="card-body text-center p-4">
                     <div class="action-icon mb-3">
@@ -147,16 +183,16 @@
             </div>
         </div>
         
-        <div class="col-lg-4 col-md-6 mb-3">
-            <div class="card action-card h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#transferModal">
-                <div class="card-body text-center p-4">
-                    <div class="action-icon mb-3">
+        <div class="col-lg-3 col-md-4 mb-3">
+            <div class="card action-card action-card-small h-100 border-0 shadow-sm" data-bs-toggle="modal" data-bs-target="#transferModal">
+                <div class="card-body text-center p-3">
+                    <div class="action-icon-small mb-2">
                         <i class="bi bi-arrow-left-right"></i>
                     </div>
-                    <h5 class="card-title fw-bold mb-2">內部轉帳</h5>
-                    <p class="card-text text-muted small mb-0">在帳戶間進行資金轉移</p>
+                    <h6 class="card-title fw-bold mb-1">內部轉帳</h6>
+                    <p class="card-text text-muted small mb-0">帳戶間資金轉移</p>
                 </div>
-                <div class="card-footer bg-transparent border-0 text-center">
+                <div class="card-footer bg-transparent border-0 text-center py-2">
                     <span class="badge bg-warning text-dark">點擊操作</span>
                 </div>
             </div>
