@@ -4037,6 +4037,274 @@ def export_database_api():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/import_database", methods=["POST"])
+def import_database_api():
+    """通過API導入數據庫數據"""
+    try:
+        import os
+        import json
+        
+        # 尋找導出文件
+        json_files = [f for f in os.listdir('.') if f.startswith('database_export') and f.endswith('.json')]
+        
+        if not json_files:
+            return jsonify({"error": "未找到數據導出文件 (database_export*.json)"}), 400
+            
+        # 使用最新的文件
+        json_file = sorted(json_files)[-1]
+        
+        # 讀取JSON數據
+        with open(json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        import_stats = {
+            "users_imported": 0,
+            "holders_imported": 0,
+            "accounts_imported": 0,
+            "customers_imported": 0,
+            "channels_imported": 0,
+            "users_updated": 0,
+            "accounts_updated": 0,
+            "customers_updated": 0
+        }
+        
+        # 1. 導入用戶
+        for user_data in data.get('users', []):
+            existing_user = User.query.filter_by(username=user_data['username']).first()
+            if not existing_user:
+                user = User(
+                    username=user_data['username'],
+                    password_hash='pbkdf2:sha256:260000$default$hash',  # 默認密碼hash
+                    is_admin=user_data.get('is_admin', False),
+                    is_active=user_data.get('is_active', True)
+                )
+                db.session.add(user)
+                import_stats["users_imported"] += 1
+            else:
+                import_stats["users_updated"] += 1
+        
+        # 2. 導入持有人
+        for holder_data in data.get('holders', []):
+            existing_holder = Holder.query.filter_by(name=holder_data['name']).first()
+            if not existing_holder:
+                holder = Holder(
+                    name=holder_data['name'],
+                    is_active=holder_data.get('is_active', True)
+                )
+                db.session.add(holder)
+                import_stats["holders_imported"] += 1
+        
+        # 提交持有人數據，以便後續引用
+        db.session.commit()
+        
+        # 3. 導入現金帳戶
+        for account_data in data.get('cash_accounts', []):
+            existing_account = CashAccount.query.filter_by(name=account_data['name']).first()
+            if not existing_account:
+                # 查找對應的持有人
+                holder = None
+                if account_data.get('holder_name'):
+                    holder = Holder.query.filter_by(name=account_data['holder_name']).first()
+                
+                account = CashAccount(
+                    name=account_data['name'],
+                    currency=account_data['currency'],
+                    balance=account_data.get('balance', 0.0),
+                    holder_id=holder.id if holder else None
+                )
+                db.session.add(account)
+                import_stats["accounts_imported"] += 1
+            else:
+                # 更新餘額
+                existing_account.balance = account_data.get('balance', 0.0)
+                import_stats["accounts_updated"] += 1
+        
+        # 4. 導入客戶
+        for customer_data in data.get('customers', []):
+            existing_customer = Customer.query.filter_by(name=customer_data['name']).first()
+            if not existing_customer:
+                customer = Customer(
+                    name=customer_data['name'],
+                    is_active=customer_data.get('is_active', True),
+                    total_receivables_twd=customer_data.get('total_receivables_twd', 0.0)
+                )
+                db.session.add(customer)
+                import_stats["customers_imported"] += 1
+            else:
+                # 更新應收帳款
+                existing_customer.total_receivables_twd = customer_data.get('total_receivables_twd', 0.0)
+                import_stats["customers_updated"] += 1
+        
+        # 5. 導入渠道
+        for channel_data in data.get('channels', []):
+            existing_channel = Channel.query.filter_by(name=channel_data['name']).first()
+            if not existing_channel:
+                channel = Channel(
+                    name=channel_data['name'],
+                    is_active=channel_data.get('is_active', True)
+                )
+                db.session.add(channel)
+                import_stats["channels_imported"] += 1
+        
+        # 最終提交
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success",
+            "message": "數據導入完成",
+            "file_used": json_file,
+            "statistics": import_stats,
+            "total_data": {
+                "users": len(data.get('users', [])),
+                "holders": len(data.get('holders', [])),
+                "cash_accounts": len(data.get('cash_accounts', [])),
+                "customers": len(data.get('customers', [])),
+                "channels": len(data.get('channels', []))
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"導入失敗: {str(e)}"}), 500
+
+
+@app.route("/import_data.html", methods=["GET"])
+def import_data_page():
+    """提供數據導入頁面"""
+    return '''<!DOCTYPE html>
+<html>
+<head>
+    <title>數據庫導入 - Render</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        button { padding: 15px 30px; background: #28a745; color: white; border: none; cursor: pointer; font-size: 16px; border-radius: 5px; margin: 10px; }
+        button:hover { background: #218838; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 400px; border: 1px solid #dee2e6; }
+        .status { margin: 15px 0; padding: 15px; border-radius: 5px; font-weight: bold; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        h1 { color: #343a40; text-align: center; }
+        .stats { display: flex; flex-wrap: wrap; gap: 15px; margin: 20px 0; }
+        .stat-card { flex: 1; min-width: 150px; padding: 15px; background: #e9ecef; border-radius: 5px; text-align: center; }
+        .stat-number { font-size: 24px; font-weight: bold; color: #007bff; }
+        .stat-label { font-size: 12px; color: #6c757d; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 數據庫同步 - Render部署</h1>
+        
+        <div class="info">
+            <strong>說明：</strong>此工具會將您的本地數據庫數據導入到Render的雲端數據庫中，確保兩邊數據同步。
+        </div>
+        
+        <button onclick="importData()" id="importBtn">🚀 開始導入數據</button>
+        
+        <div id="status"></div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function importData() {
+            const statusDiv = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            const importBtn = document.getElementById('importBtn');
+            
+            // 禁用按鈕
+            importBtn.disabled = true;
+            importBtn.textContent = '⏳ 正在導入...';
+            
+            statusDiv.innerHTML = '<div class="status info">🔄 正在導入數據，請稍候...</div>';
+            resultDiv.innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/import_database', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    // 顯示成功信息
+                    statusDiv.innerHTML = '<div class="status success">✅ 數據導入成功完成！</div>';
+                    
+                    // 顯示統計信息
+                    const stats = data.statistics;
+                    const totalData = data.total_data;
+                    
+                    resultDiv.innerHTML = `
+                        <h3>📊 導入統計：</h3>
+                        <div class="stats">
+                            <div class="stat-card">
+                                <div class="stat-number">${stats.users_imported}</div>
+                                <div class="stat-label">新增用戶</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${stats.holders_imported}</div>
+                                <div class="stat-label">新增持有人</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${stats.accounts_imported}</div>
+                                <div class="stat-label">新增帳戶</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${stats.customers_imported}</div>
+                                <div class="stat-label">新增客戶</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${stats.channels_imported}</div>
+                                <div class="stat-label">新增渠道</div>
+                            </div>
+                        </div>
+                        
+                        <h3>🔄 更新統計：</h3>
+                        <div class="stats">
+                            <div class="stat-card">
+                                <div class="stat-number">${stats.accounts_updated}</div>
+                                <div class="stat-label">帳戶餘額更新</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${stats.customers_updated}</div>
+                                <div class="stat-label">客戶應收更新</div>
+                            </div>
+                        </div>
+                        
+                        <div class="success">
+                            <strong>導入完成！</strong><br>
+                            使用文件: ${data.file_used}<br>
+                            現在您可以訪問您的應用程式，應該能看到本地的所有數據了！
+                        </div>
+                        
+                        <h3>📋 詳細結果：</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                    
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">❌ 導入失敗: ${data.error || '未知錯誤'}</div>`;
+                    if (data.error) {
+                        resultDiv.innerHTML = `<pre>錯誤詳情: ${data.error}</pre>`;
+                    }
+                }
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ 請求失敗: ${error.message}</div>`;
+                resultDiv.innerHTML = `<pre>錯誤詳情: ${error.stack}</pre>`;
+            } finally {
+                // 重新啟用按鈕
+                importBtn.disabled = false;
+                importBtn.textContent = '🚀 開始導入數據';
+            }
+        }
+    </script>
+</body>
+</html>'''
+
+
 @app.route("/api/customer", methods=["POST", "DELETE"])
 @login_required
 def manage_customer():
