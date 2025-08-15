@@ -1040,7 +1040,7 @@ def dashboard():
                 unified_stream.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
-                    "twd_change": s.twd_amount,
+                    "twd_change": 0,  # 售出不直接增加現金，而是增加應收帳款
                     "rmb_change": -s.rmb_amount,
                 })
         
@@ -1210,7 +1210,7 @@ def admin_dashboard():
                 unified_stream.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
-                    "twd_change": s.twd_amount,
+                    "twd_change": 0,  # 售出不直接增加現金，而是增加應收帳款
                     "rmb_change": -s.rmb_amount,
                 })
         
@@ -2019,7 +2019,7 @@ def cash_management():
                         "type": "售出",
                         "date": s.created_at.isoformat(),
                         "description": f"售予 {s.customer.name}",
-                        "twd_change": s.twd_amount,
+                        "twd_change": 0,  # 售出不直接增加現金，而是增加應收帳款
                         "rmb_change": -s.rmb_amount,
                         "operator": s.operator.username if s.operator else "未知",
                         "profit": profit,
@@ -4473,7 +4473,7 @@ def get_cash_management_totals():
                 unified_stream.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
-                    "twd_change": s.twd_amount,
+                    "twd_change": 0,  # 售出不直接增加現金，而是增加應收帳款
                     "rmb_change": -s.rmb_amount,
                 })
         
@@ -4877,7 +4877,7 @@ def get_account_balances_for_dropdowns():
                 unified_stream.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
-                    "twd_change": s.twd_amount,
+                    "twd_change": 0,  # 售出不直接增加現金，而是增加應收帳款
                     "rmb_change": -s.rmb_amount,
                     "payment_account": "N/A",
                     "deposit_account": "N/A",
@@ -5083,7 +5083,7 @@ def get_accurate_account_balances():
                 unified_stream.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
-                    "twd_change": s.twd_amount,
+                    "twd_change": 0,  # 售出不直接增加現金，而是增加應收帳款
                     "rmb_change": -s.rmb_amount,
                     "payment_account_id": None,
                     "deposit_account_id": None,
