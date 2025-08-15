@@ -22,12 +22,23 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get(
     "SECRET_KEY", "a_very_very_secret_key_that_is_long_and_secure"
 )
-basedir = os.path.abspath(os.path.dirname(__file__))
-instance_path = os.path.join(basedir, "instance")
-os.makedirs(instance_path, exist_ok=True)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(
-    instance_path, "sales_system_v4.db"
-)  # 使用新檔名以示區別
+# 資料庫配置 - 支持 PostgreSQL (Render) 和 SQLite (本地)
+if os.environ.get('DATABASE_URL'):
+    # Render 雲端環境 - 使用 PostgreSQL
+    database_url = os.environ.get('DATABASE_URL')
+    # 修復 Render PostgreSQL URL 格式問題
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+else:
+    # 本地開發環境 - 使用 SQLite
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    instance_path = os.path.join(basedir, "instance")
+    os.makedirs(instance_path, exist_ok=True)
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(
+        instance_path, "sales_system_v4.db"
+    )
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
@@ -2683,16 +2694,7 @@ def process_payment_api():
         # 更新客戶應收帳款
         customer.total_receivables_twd -= payment_amount
 
-        # 創建現金日誌記錄
-        cash_log = CashLog(
-            type="CUSTOMER_PAYMENT",
-            description=f"客戶 {customer.name} 付款 {payment_amount:,.2f} TWD",
-            amount=payment_amount,
-            operator_id=current_user.id,
-        )
-        db.session.add(cash_log)
-        
-        # 同時創建LedgerEntry記錄以確保在流水中顯示
+        # 創建LedgerEntry記錄以確保在流水中顯示
         ledger_entry = LedgerEntry(
             entry_type="SETTLEMENT",
             description=f"客戶 {customer.name} 銷帳 NT$ {payment_amount:,.2f}",

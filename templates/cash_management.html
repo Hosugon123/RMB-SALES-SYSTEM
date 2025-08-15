@@ -427,28 +427,50 @@ document.addEventListener('DOMContentLoaded', function () {
             
             switch(m.type) {
                 case 'PURCHASE':
+                case '買入':
                     typeDisplay = '買入';
                     typeClass = 'badge bg-primary-subtle text-primary-emphasis';
                     break;
                 case 'SALES':
+                case '售出':
                     typeDisplay = '售出';
                     typeClass = 'badge bg-success-subtle text-success-emphasis';
                     break;
                 case 'TRANSFER':
+                case '轉帳':
                     typeDisplay = '轉帳';
                     typeClass = 'badge bg-warning-subtle text-warning-emphasis';
                     break;
                 case 'SETTLEMENT':
+                case '銷帳':
                     typeDisplay = '銷帳';
                     typeClass = 'badge bg-info-subtle text-info-emphasis';
                     break;
                 case 'DEPOSIT':
+                case '存款':
                     typeDisplay = '存款';
                     typeClass = 'badge bg-secondary-subtle text-secondary-emphasis';
                     break;
                 case 'WITHDRAWAL':
+                case '提款':
                     typeDisplay = '提款';
                     typeClass = 'badge bg-danger-subtle text-danger-emphasis';
+                    break;
+                case 'CUSTOMER_PAYMENT':
+                    typeDisplay = '客戶付款';
+                    typeClass = 'badge bg-success-subtle text-success-emphasis';
+                    break;
+                case '記帳':
+                    typeDisplay = '記帳';
+                    typeClass = 'badge bg-secondary-subtle text-secondary-emphasis';
+                    break;
+                case '存款':
+                    typeDisplay = '存款';
+                    typeClass = 'badge bg-light-subtle text-light-emphasis';
+                    break;
+                default:
+                    typeDisplay = m.type;
+                    typeClass = 'badge bg-light-subtle text-muted';
                     break;
             }
             
