@@ -4168,6 +4168,97 @@ def import_database_api():
         return jsonify({"error": f"導入失敗: {str(e)}"}), 500
 
 
+@app.route("/api/fix_database", methods=["POST"])
+def fix_database_api():
+    """修復數據庫表結構和基礎數據"""
+    try:
+        # 確保所有表都存在
+        db.create_all()
+        
+        # 檢查並創建基本數據
+        result = {
+            "tables_created": True,
+            "admin_user_exists": False,
+            "sample_data_created": False
+        }
+        
+        # 檢查是否有管理員用戶
+        admin_user = User.query.filter_by(is_admin=True).first()
+        if admin_user:
+            result["admin_user_exists"] = True
+        else:
+            # 創建默認管理員用戶
+            try:
+                default_admin = User(
+                    username="admin",
+                    password_hash="pbkdf2:sha256:260000$salt$hash",
+                    is_admin=True,
+                    is_active=True
+                )
+                db.session.add(default_admin)
+                db.session.commit()
+                result["admin_user_created"] = True
+            except Exception:
+                pass
+        
+        # 嘗試導入數據（如果有導出文件）
+        import os
+        json_files = [f for f in os.listdir('.') if f.startswith('database_export') and f.endswith('.json')]
+        
+        if json_files:
+            try:
+                import json
+                json_file = sorted(json_files)[-1]
+                
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # 快速導入關鍵數據
+                imported_count = 0
+                
+                # 導入持有人
+                for holder_data in data.get('holders', []):
+                    if not Holder.query.filter_by(name=holder_data['name']).first():
+                        holder = Holder(name=holder_data['name'], is_active=True)
+                        db.session.add(holder)
+                        imported_count += 1
+                
+                db.session.commit()
+                
+                # 導入現金帳戶
+                for account_data in data.get('cash_accounts', []):
+                    if not CashAccount.query.filter_by(name=account_data['name']).first():
+                        holder = Holder.query.filter_by(name=account_data.get('holder_name')).first()
+                        account = CashAccount(
+                            name=account_data['name'],
+                            currency=account_data['currency'],
+                            balance=account_data.get('balance', 0.0),
+                            holder_id=holder.id if holder else None
+                        )
+                        db.session.add(account)
+                        imported_count += 1
+                
+                db.session.commit()
+                result["data_imported"] = imported_count
+                result["import_file"] = json_file
+                
+            except Exception as import_error:
+                result["import_error"] = str(import_error)
+        
+        return jsonify({
+            "status": "success",
+            "message": "數據庫修復完成",
+            "details": result
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error", 
+            "message": f"修復失敗: {str(e)}"
+        }), 500
+
+
 @app.route("/import_data.html", methods=["GET"])
 def import_data_page():
     """提供數據導入頁面"""
