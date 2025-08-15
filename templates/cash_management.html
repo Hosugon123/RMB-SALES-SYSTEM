@@ -567,6 +567,65 @@ document.addEventListener('DOMContentLoaded', function () {
         modal.show();
     };
     
+    // 處理銷帳表單提交
+    document.getElementById('settlementForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        console.log('🔄 開始處理銷帳表單提交');
+        
+        const formData = new FormData(this);
+        const customerId = formData.get('customer_id');
+        const paymentAmount = parseFloat(formData.get('settlement_amount'));
+        const twdAccountId = formData.get('settlement_account');
+        const note = formData.get('settlement_note');
+        
+        // 驗證數據
+        if (!customerId || !paymentAmount || !twdAccountId) {
+            Swal.fire('錯誤', '請填寫所有必填欄位。', 'error');
+            return;
+        }
+        
+        if (paymentAmount <= 0) {
+            Swal.fire('錯誤', '銷帳金額必須大於0。', 'error');
+            return;
+        }
+        
+        try {
+            // 發送銷帳請求
+            const response = await fetch('/api/process_payment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    customer_id: parseInt(customerId),
+                    payment_amount: paymentAmount,
+                    twd_account_id: parseInt(twdAccountId),
+                    note: note || null
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.status === 'success') {
+                Swal.fire('成功', result.message, 'success');
+                
+                // 關閉模態框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('settlementModal'));
+                modal.hide();
+                
+                // 重新載入頁面以顯示最新數據
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                Swal.fire('錯誤', result.message || '銷帳失敗', 'error');
+            }
+        } catch (error) {
+            console.error('❌ 銷帳請求失敗:', error);
+            Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+        }
+    });
+    
     // 初始化所有下拉選單
     function initializeDropdowns() {
         console.log('🔄 初始化下拉選單...');

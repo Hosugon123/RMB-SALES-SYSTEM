@@ -138,18 +138,18 @@
                     </div>
                     <div class="mb-3">
                         <label for="settlementAmount" class="form-label">銷帳金額 (TWD)</label>
-                        <input type="number" step="0.01" class="form-control" id="settlementAmount" required>
+                        <input type="number" step="0.01" class="form-control" id="settlementAmount" name="settlement_amount" required>
                         <small class="text-muted">請輸入實際收到的金額</small>
                     </div>
                     <div class="mb-3">
                         <label for="settlementAccount" class="form-label">收款帳戶</label>
-                        <select class="form-select" id="settlementAccount" required>
+                        <select class="form-select" id="settlementAccount" name="settlement_account" required>
                             <option value="">--- 請選擇收款帳戶 ---</option>
                         </select>
                     </div>
                     <div class="mb-3">
                         <label for="settlementNote" class="form-label">備註</label>
-                        <textarea class="form-control" id="settlementNote" rows="2" placeholder="可選：記錄收款相關信息"></textarea>
+                        <textarea class="form-control" id="settlementNote" name="settlement_note" rows="2" placeholder="可選：記錄收款相關信息"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
