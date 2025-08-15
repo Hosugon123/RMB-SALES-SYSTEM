@@ -1,0 +1,90 @@
+{
+  "cash_accounts": [
+    {
+      "balance": -17710,
+      "currency": "TWD",
+      "holder_name": "007",
+      "name": "現金"
+    },
+    {
+      "balance": 3265,
+      "currency": "RMB",
+      "holder_name": "007",
+      "name": "123"
+    },
+    {
+      "balance": 90000,
+      "currency": "TWD",
+      "holder_name": "螃蟹",
+      "name": "台幣"
+    },
+    {
+      "balance": 4500,
+      "currency": "RMB",
+      "holder_name": "螃蟹",
+      "name": "123"
+    }
+  ],
+  "channels": [
+    {
+      "is_active": true,
+      "name": "123"
+    },
+    {
+      "is_active": true,
+      "name": "333"
+    },
+    {
+      "is_active": true,
+      "name": "456"
+    },
+    {
+      "is_active": true,
+      "name": "222"
+    },
+    {
+      "is_active": true,
+      "name": "籌周"
+    }
+  ],
+  "customers": [
+    {
+      "is_active": true,
+      "name": "小曾",
+      "total_receivables_twd": 5171.5
+    },
+    {
+      "is_active": true,
+      "name": "胡",
+      "total_receivables_twd": 4747.5
+    }
+  ],
+  "export_time": "2025-08-15T18:28:38.697461",
+  "holders": [
+    {
+      "is_active": true,
+      "name": "007"
+    },
+    {
+      "is_active": true,
+      "name": "螃蟹"
+    }
+  ],
+  "users": [
+    {
+      "is_active": true,
+      "is_admin": true,
+      "username": "admin"
+    },
+    {
+      "is_active": true,
+      "is_admin": false,
+      "username": "chen"
+    },
+    {
+      "is_active": true,
+      "is_admin": false,
+      "username": "lin"
+    }
+  ]
+}
