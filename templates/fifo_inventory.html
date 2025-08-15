@@ -173,13 +173,13 @@
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="auditInventory()">
+                        <button type="button" class="btn btn-outline-warning btn-sm" id="auditInventoryBtn">
                             <i class="bi bi-search me-2"></i>審計庫存一致性
                         </button>
-                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="fixInventoryIssues()">
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="fixInventoryBtn">
                             <i class="bi bi-wrench me-2"></i>修復庫存問題
                         </button>
-                        <button type="button" class="btn btn-outline-info btn-sm" onclick="showInventoryStatus()">
+                        <button type="button" class="btn btn-outline-info btn-sm" id="showInventoryStatusBtn">
                             <i class="bi bi-info-circle me-2"></i>庫存狀態報告
                         </button>
                     </div>
@@ -221,9 +221,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateInventoryData() {
         console.log('🔄 開始更新庫存數據...');
         console.log('📊 找到的DOM元素:', {
-            totalRmbElement: !!totalRmbElement,
-            totalValueTwdElement: !!totalValueTwdElement,
-            averageCostTwdElement: !!averageCostTwdElement,
             inventoryTableBody: !!inventoryTableBody,
             salesTableBody: !!salesTableBody
         });
@@ -351,6 +348,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // ===================================================================
     // 系統維護功能
     // ===================================================================
+    
+    // 設置系統維護按鈕事件監聽器
+    const auditInventoryBtn = document.getElementById('auditInventoryBtn');
+    const fixInventoryBtn = document.getElementById('fixInventoryBtn');
+    const showInventoryStatusBtn = document.getElementById('showInventoryStatusBtn');
+    
+    if (auditInventoryBtn) {
+        auditInventoryBtn.addEventListener('click', auditInventory);
+    }
+    if (fixInventoryBtn) {
+        fixInventoryBtn.addEventListener('click', fixInventoryIssues);
+    }
+    if (showInventoryStatusBtn) {
+        showInventoryStatusBtn.addEventListener('click', showInventoryStatus);
+    }
     
     // 審計庫存一致性
     function auditInventory() {

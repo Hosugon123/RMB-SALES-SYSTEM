@@ -538,6 +538,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const result = await response.json();
             
             if (result.status === 'success') {
+                // 發送自定義事件，通知其他頁面更新數據
+                window.dispatchEvent(new CustomEvent('purchaseDataChanged', {
+                    detail: { action: 'cancel_purchase', recordId: recordId }
+                }));
+                
                 Swal.fire({
                     icon: 'success',
                     title: '取消成功',

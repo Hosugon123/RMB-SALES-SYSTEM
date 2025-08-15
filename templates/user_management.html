@@ -49,7 +49,7 @@
                                 <th class="ps-3">用戶名</th>
                                 <th>角色</th>
                                 <th>狀態</th>
-                                <!-- 未來可以加入"操作"欄位，如編輯、停用等 -->
+                                <th class="text-center">操作</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -68,10 +68,21 @@
                                     <span class="badge bg-danger">已停用</span>
                                     {% endif %}
                                 </td>
+                                <td class="text-center">
+                                    {% if user.username != current_user.username %}
+                                    <button type="button" class="btn btn-outline-danger btn-sm" 
+                                            onclick="deleteUser('{{ user.username }}', '{{ user.id }}')"
+                                            title="刪除使用者">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted small">當前用戶</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="3" class="text-center text-muted p-5">
+                                <td colspan="4" class="text-center text-muted p-5">
                                     尚無其他使用者。
                                 </td>
                             </tr>
@@ -149,11 +160,52 @@ document.addEventListener('DOMContentLoaded', function() {
                 Swal.fire('新增失敗', error.message, 'error');
             }
         });
-    } else {
-        // 非管理員用戶，不執行任何JavaScript功能
-        console.log('非管理員用戶，使用者管理功能已禁用');
-    }
-});
+            } else {
+            // 非管理員用戶，不執行任何JavaScript功能
+            console.log('非管理員用戶，使用者管理功能已禁用');
+        }
+    });
+    
+    // 刪除使用者函數
+    window.deleteUser = async function(username, userId) {
+        // 確認對話框
+        const result = await Swal.fire({
+            title: '確定要刪除使用者嗎？',
+            text: `您即將刪除使用者「${username}」，此操作無法復原！`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '確定刪除',
+            cancelButtonText: '取消'
+        });
+        
+        if (result.isConfirmed) {
+            try {
+                const response = await fetch(`/api/delete_user/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    await Swal.fire({
+                        icon: 'success',
+                        title: '刪除成功！',
+                        text: `使用者「${username}」已被刪除`,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    window.location.reload(); // 刷新頁面
+                } else {
+                    throw new Error(result.message || '刪除失敗');
+                }
+            } catch (error) {
+                Swal.fire('刪除失敗', error.message, 'error');
+            }
+        }
+    };
 </script>
 {% endblock %}
 

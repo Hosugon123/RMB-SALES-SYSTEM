@@ -125,6 +125,9 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <!-- 隱藏欄位：客戶ID -->
+                    <input type="hidden" id="settlementCustomerId" name="customer_id">
+                    
                     <div class="mb-3">
                         <label class="form-label">客戶名稱</label>
                         <input type="text" class="form-control" id="settlementCustomerName" readonly>
@@ -159,15 +162,15 @@
 </div>
 
 <!-- 6. 客戶交易紀錄 Modal -->
-<div class="modal fade" id="customerTransactionsModal" tabindex="-1">
+<div class="modal fade" id="customerTransactionsModal" tabindex="-1" aria-labelledby="customerTransactionsTitle" aria-hidden="false">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
+                <h5 class="modal-title" id="customerTransactionsTitle">
                     <i class="bi bi-person-lines-fill me-2"></i>
-                    <span id="customerTransactionsTitle">客戶交易紀錄</span>
+                    客戶交易紀錄
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
                 <div class="row mb-3">
@@ -214,7 +217,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" aria-label="關閉模態框">關閉</button>
             </div>
         </div>
     </div>

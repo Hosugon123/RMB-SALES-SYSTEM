@@ -324,6 +324,9 @@ class CashLog(db.Model):
     # 新增操作人員
     operator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     operator = db.relationship("User")
+    # 暫時移除帳戶關聯，避免數據庫結構不匹配
+    # account_id = db.Column(db.Integer, db.ForeignKey("cash_accounts.id"), nullable=True)
+    # account = db.relationship("CashAccount", backref="cash_logs")
 
 
 # ===================================================================
@@ -521,6 +524,19 @@ class FIFOService:
                 .scalars()
                 .all()
             )
+            
+            # --- 關鍵修正：更新客戶的應收帳款 ---
+            # 在刪除銷售記錄之前，先更新客戶的應收帳款
+            if sales_record.customer:
+                customer = sales_record.customer
+                # 減少客戶的應收帳款
+                customer.total_receivables_twd -= sales_record.twd_amount
+                print(f"🔄 更新客戶 {customer.name} 的應收帳款: -{sales_record.twd_amount} TWD")
+                
+                # 確保應收帳款不會變成負數
+                if customer.total_receivables_twd < 0:
+                    customer.total_receivables_twd = 0
+                    print(f"⚠️  客戶 {customer.name} 的應收帳款已調整為 0")
             
             # 回滾每個分配
             for allocation in allocations:
@@ -997,23 +1013,112 @@ def logout():
 def dashboard():
     """普通用戶的儀表板頁面"""
     try:
-        # 獲取基本財務數據
-        total_twd_cash = (
-            db.session.execute(
-                db.select(func.sum(CashAccount.balance)).filter(
-                    CashAccount.currency == "TWD"
-                )
-            ).scalar()
-            or 0.0
-        )
-        total_rmb_stock = (
-            db.session.execute(
-                db.select(func.sum(CashAccount.balance)).filter(
-                    CashAccount.currency == "RMB"
-                )
-            ).scalar()
-            or 0.0
-        )
+        # --- 關鍵修正：使用交易紀錄的累積餘額來計算總資產，與現金管理頁面保持一致 ---
+        # 獲取所有交易記錄來計算累積餘額
+        purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
+        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+
+        # 構建統一的交易流
+        unified_stream = []
+        
+        # 處理買入記錄
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                unified_stream.append({
+                    "type": "買入",
+                    "date": p.purchase_date.isoformat(),
+                    "twd_change": -p.twd_cost,
+                    "rmb_change": p.rmb_amount,
+                })
+        
+        # 處理銷售記錄
+        for s in sales:
+            if s.customer:
+                unified_stream.append({
+                    "type": "售出",
+                    "date": s.created_at.isoformat(),
+                    "twd_change": s.twd_amount,
+                    "rmb_change": -s.rmb_amount,
+                })
+        
+        # 處理其他記帳記錄
+        for entry in misc_entries:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+                twd_change = 0
+                rmb_change = 0
+                
+                if entry.account and entry.account.currency == "TWD":
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        twd_change = entry.amount
+                    else:
+                        twd_change = -entry.amount
+                elif entry.account and entry.account.currency == "RMB":
+                    rmb_change = (
+                        entry.amount
+                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
+                        else -entry.amount
+                    )
+                
+                unified_stream.append({
+                    "type": entry.entry_type,
+                    "date": entry.entry_date.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                })
+        
+        # 處理現金日誌記錄
+        for log in cash_logs:
+            if log.type != "BUY_IN":
+                twd_change = 0
+                rmb_change = 0
+                
+                if log.type == "CARD_PURCHASE":
+                    twd_change = -log.amount
+                elif log.type == "SETTLEMENT":
+                    twd_change = log.amount
+                
+                unified_stream.append({
+                    "type": log.type,
+                    "date": log.time.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                })
+        
+        # 按日期排序並計算累積餘額
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        
+        # 計算總資產（使用交易紀錄的累積餘額）
+        if unified_stream:
+            # 從最早的交易開始，向後計算累積餘額
+            running_twd_balance = 0
+            running_rmb_balance = 0
+            
+            for transaction in reversed(unified_stream):
+                running_twd_balance += (transaction.get('twd_change', 0) or 0)
+                running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
+            
+            total_twd_cash = running_twd_balance
+            total_rmb_stock = running_rmb_balance
+        else:
+            # 如果沒有交易紀錄，則使用帳戶餘額
+            total_twd_cash = (
+                db.session.execute(
+                    db.select(func.sum(CashAccount.balance)).filter(
+                        CashAccount.currency == "TWD"
+                    )
+                ).scalar()
+                or 0.0
+            )
+            total_rmb_stock = (
+                db.session.execute(
+                    db.select(func.sum(CashAccount.balance)).filter(
+                        CashAccount.currency == "RMB"
+                    )
+                ).scalar()
+                or 0.0
+            )
 
         # 計算總應收帳款
         customers_with_receivables = (
@@ -1078,22 +1183,112 @@ def dashboard():
 def admin_dashboard():
     """儀表板頁面"""
     try:
-        total_twd_cash = (
-            db.session.execute(
-                db.select(func.sum(CashAccount.balance)).filter(
-                    CashAccount.currency == "TWD"
-                )
-            ).scalar()
-            or 0.0
-        )
-        total_rmb_stock = (
-            db.session.execute(
-                db.select(func.sum(CashAccount.balance)).filter(
-                    CashAccount.currency == "RMB"
-                )
-            ).scalar()
-            or 0.0
-        )
+        # --- 關鍵修正：使用交易紀錄的累積餘額來計算總資產，與現金管理頁面保持一致 ---
+        # 獲取所有交易記錄來計算累積餘額
+        purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
+        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+
+        # 構建統一的交易流
+        unified_stream = []
+        
+        # 處理買入記錄
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                unified_stream.append({
+                    "type": "買入",
+                    "date": p.purchase_date.isoformat(),
+                    "twd_change": -p.twd_cost,
+                    "rmb_change": p.rmb_amount,
+                })
+        
+        # 處理銷售記錄
+        for s in sales:
+            if s.customer:
+                unified_stream.append({
+                    "type": "售出",
+                    "date": s.created_at.isoformat(),
+                    "twd_change": s.twd_amount,
+                    "rmb_change": -s.rmb_amount,
+                })
+        
+        # 處理其他記帳記錄
+        for entry in misc_entries:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+                twd_change = 0
+                rmb_change = 0
+                
+                if entry.account and entry.account.currency == "TWD":
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        twd_change = entry.amount
+                    else:
+                        twd_change = -entry.amount
+                elif entry.account and entry.account.currency == "RMB":
+                    rmb_change = (
+                        entry.amount
+                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
+                        else -entry.amount
+                    )
+                
+                unified_stream.append({
+                    "type": entry.entry_type,
+                    "date": entry.entry_date.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                })
+        
+        # 處理現金日誌記錄
+        for log in cash_logs:
+            if log.type != "BUY_IN":
+                twd_change = 0
+                rmb_change = 0
+                
+                if log.type == "CARD_PURCHASE":
+                    twd_change = -log.amount
+                elif log.type == "SETTLEMENT":
+                    twd_change = log.amount
+                
+                unified_stream.append({
+                    "type": log.type,
+                    "date": log.time.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                })
+        
+        # 按日期排序並計算累積餘額
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        
+        # 計算總資產（使用交易紀錄的累積餘額）
+        if unified_stream:
+            # 從最早的交易開始，向後計算累積餘額
+            running_twd_balance = 0
+            running_rmb_balance = 0
+            
+            for transaction in reversed(unified_stream):
+                running_twd_balance += (transaction.get('twd_change', 0) or 0)
+                running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
+            
+            total_twd_cash = running_twd_balance
+            total_rmb_stock = running_rmb_balance
+        else:
+            # 如果沒有交易紀錄，則使用帳戶餘額
+            total_twd_cash = (
+                db.session.execute(
+                    db.select(func.sum(CashAccount.balance)).filter(
+                        CashAccount.currency == "TWD"
+                    )
+                ).scalar()
+                or 0.0
+            )
+            total_rmb_stock = (
+                db.session.execute(
+                    db.select(func.sum(CashAccount.balance)).filter(
+                        CashAccount.currency == "RMB"
+                    )
+                ).scalar()
+                or 0.0
+            )
 
         latest_purchase = (
             db.session.execute(
@@ -1257,17 +1452,8 @@ def sales_entry():
             .all()
         )
 
-        owner_rmb_accounts_grouped = []
-        for holder in holders_with_rmb_accounts:
-            rmb_accs = [
-                acc
-                for acc in holder.cash_accounts
-                if acc.currency == "RMB" and acc.is_active
-            ]
-            if rmb_accs:
-                owner_rmb_accounts_grouped.append(
-                    {"holder_name": holder.name, "accounts": rmb_accs}
-                )
+        # --- 關鍵修正：使用準確的帳戶餘額計算函數 ---
+        _, owner_rmb_accounts_grouped = get_accurate_account_balances()
 
         # 3. 查詢最近 10 筆未結清 (is_settled = False) 的銷售紀錄
         recent_unsettled_sales = (
@@ -1580,13 +1766,34 @@ def cash_management_operator():
                 }
             )
         for log in cash_logs:
+            twd_change = 0
+            rmb_change = 0
+            
+            # 根據類型設置金額變動
+            if log.type == "SETTLEMENT":
+                # 銷帳記錄：記錄TWD收入
+                twd_change = log.amount
+                rmb_change = 0
+            elif log.type == "TWD":
+                # TWD現金日誌
+                twd_change = log.amount
+                rmb_change = 0
+            elif log.type == "RMB":
+                # RMB現金日誌
+                twd_change = 0
+                rmb_change = log.amount
+            else:
+                # 其他類型
+                twd_change = 0
+                rmb_change = 0
+            
             unified_stream.append(
                 {
-                    "type": "現金日誌",
+                    "type": log.type,  # 使用實際的類型名稱
                     "date": log.time.isoformat(),
                     "description": log.description,
-                    "twd_change": log.amount if log.type == "TWD" else 0,
-                    "rmb_change": log.amount if log.type == "RMB" else 0,
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
                     "operator": log.operator.username if log.operator else "未知",
                     "payment_account": "N/A",
                     "deposit_account": "N/A",
@@ -1597,26 +1804,61 @@ def cash_management_operator():
         # 按日期排序，最新的在前面
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
 
-        # 計算累積餘額
-        running_twd_balance = total_twd
-        running_rmb_balance = total_rmb
+        # --- 關鍵修正：使用交易紀錄的累積餘額作為總資產，而不是帳戶餘額 ---
+        # 計算每筆交易後的累積餘額
+        running_twd_balance = 0
+        running_rmb_balance = 0
         
-        for movement in unified_stream:
-            movement["running_twd_balance"] = running_twd_balance
-            movement["running_rmb_balance"] = running_rmb_balance
+        # 從最早的交易開始，向後計算累積餘額
+        for movement in reversed(unified_stream):
+            # 計算此筆交易後的餘額
+            running_twd_balance += (movement.get('twd_change', 0) or 0)
+            running_rmb_balance += (movement.get('rmb_change', 0) or 0)
             
-            # 更新餘額（注意：買入是減少TWD，增加RMB；售出是減少RMB）
-            if movement["type"] == "買入":
-                running_twd_balance += movement["twd_change"]  # twd_change是負數
-                running_rmb_balance += movement["rmb_change"]
-            elif movement["type"] == "售出":
-                running_rmb_balance += movement["rmb_change"]  # rmb_change是負數
-            elif movement["type"] in ["記帳", "現金日誌"]:
-                if movement["twd_change"] != 0:
-                    running_twd_balance += movement["twd_change"]
-                if movement["rmb_change"] != 0:
-                    running_rmb_balance += movement["rmb_change"]
+            # 添加累積餘額到交易記錄中
+            movement['running_twd_balance'] = running_twd_balance
+            movement['running_rmb_balance'] = running_rmb_balance
+        
+        # 使用最新一筆交易的累積餘額作為當前總資產
+        if unified_stream:
+            latest_transaction = unified_stream[0]  # 最新的交易（日期最晚）
+            total_twd = latest_transaction.get('running_twd_balance', 0)
+            total_rmb = latest_transaction.get('running_rmb_balance', 0)
+        else:
+            # 如果沒有交易紀錄，則使用帳戶餘額
+            total_twd = sum(
+                acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+            )
+            total_rmb = sum(
+                acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+            )
 
+        # --- 修正：使用實際的資料庫餘額，不重新計算 ---
+        accounts_by_holder = {}
+        for holder in holders_obj:
+            accounts_by_holder[holder.id] = {
+                "holder_name": holder.name,
+                "accounts": [],
+                "total_twd": 0,
+                "total_rmb": 0,
+            }
+        
+        # 使用實際的帳戶餘額
+        for acc in all_accounts_obj:
+            if acc.holder_id in accounts_by_holder:
+                accounts_by_holder[acc.holder_id]["accounts"].append({
+                    "id": acc.id,
+                    "name": acc.name,
+                    "currency": acc.currency,
+                    "balance": acc.balance,  # 使用實際資料庫餘額
+                })
+                
+                # 累計持有人總餘額
+                if acc.currency == "TWD":
+                    accounts_by_holder[acc.holder_id]["total_twd"] += acc.balance
+                elif acc.currency == "RMB":
+                    accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
+        
         # 分頁處理
         items_per_page = 20
         total_items = len(unified_stream)
@@ -1632,7 +1874,8 @@ def cash_management_operator():
             accounts_by_holder=accounts_by_holder,
             total_twd=total_twd,
             total_rmb=total_rmb,
-            total_receivables=total_receivables,
+            total_receivables_twd=total_receivables,
+            customers_with_receivables=customers_with_receivables,
             movements=paginated_stream,
             current_page=page,
             total_pages=total_pages,
@@ -1648,7 +1891,8 @@ def cash_management_operator():
             accounts_by_holder={},
             total_twd=0.0,
             total_rmb=0.0,
-            total_receivables=0.0,
+            total_receivables_twd=0.0,
+            customers_with_receivables=[],
             movements=[],
             current_page=1,
             total_pages=1,
@@ -1764,8 +2008,8 @@ def cash_management():
                         "rmb_change": -s.rmb_amount,
                         "operator": s.operator.username if s.operator else "未知",
                         "profit": profit,
-                        "payment_account": "N/A",  # 銷售沒有出款帳戶
-                        "deposit_account": "N/A",  # 銷售沒有入款帳戶
+                        "payment_account": s.rmb_account.name if s.rmb_account else "N/A",  # 出貨的RMB帳戶
+                        "deposit_account": "應收帳款",  # 售出產生應收帳款
                         "note": s.note if hasattr(s, 'note') and s.note else None,
                     }
                 )
@@ -1793,6 +2037,43 @@ def cash_management():
             
             # 只顯示非買入相關的記帳記錄
             if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+                # 根據交易類型設置出入款帳戶
+                payment_account = "N/A"
+                deposit_account = "N/A"
+                
+                if entry.entry_type in ["DEPOSIT"]:
+                    # 存款：外部 -> 帳戶
+                    payment_account = "外部存款"
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                elif entry.entry_type in ["WITHDRAW"]:
+                    # 提款：帳戶 -> 外部
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    deposit_account = "外部提款"
+                elif entry.entry_type in ["TRANSFER_OUT"]:
+                    # 轉出：本帳戶 -> 其他帳戶
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    # 從描述中提取目標帳戶名稱
+                    if "轉出至" in entry.description:
+                        deposit_account = entry.description.replace("轉出至 ", "")
+                    else:
+                        deposit_account = "N/A"
+                elif entry.entry_type in ["TRANSFER_IN"]:
+                    # 轉入：其他帳戶 -> 本帳戶
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                    # 從描述中提取來源帳戶名稱
+                    if "從" in entry.description and "轉入" in entry.description:
+                        payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
+                    else:
+                        payment_account = "N/A"
+                elif entry.entry_type in ["SETTLEMENT"]:
+                    # 銷帳：客戶 -> 帳戶
+                    payment_account = "客戶付款"
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                else:
+                    # 其他類型
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    deposit_account = "N/A"
+                
                 unified_stream.append(
                     {
                         "type": entry.entry_type,
@@ -1801,8 +2082,8 @@ def cash_management():
                         "twd_change": twd_change,
                         "rmb_change": rmb_change,
                         "operator": entry.operator.username if entry.operator else "未知",
-                        "payment_account": entry.account.name if entry.account else "N/A",
-                        "deposit_account": "N/A",  # 記帳記錄通常只有一個帳戶
+                        "payment_account": payment_account,
+                        "deposit_account": deposit_account,
                         "note": getattr(entry, 'note', None) or (entry.description.split(' - ', 1)[1] if ' - ' in entry.description else None),
                     }
                 )
@@ -1819,6 +2100,10 @@ def cash_management():
                 # 刷卡記帳：記錄TWD支出
                 twd_change = -log.amount
                 rmb_change = 0
+            elif log.type == "SETTLEMENT":
+                # 銷帳記錄：記錄TWD收入
+                twd_change = log.amount
+                rmb_change = 0
             else:
                 # 其他類型的現金日誌
                 twd_change = 0
@@ -1826,6 +2111,23 @@ def cash_management():
             
             # 只顯示非買入相關的現金日誌
             if log.type != "BUY_IN":
+                # 根據現金日誌類型設置出入款帳戶
+                payment_account = "N/A"
+                deposit_account = "N/A"
+                
+                if log.type == "CARD_PURCHASE":
+                    # 刷卡支出
+                    payment_account = "刷卡"
+                    deposit_account = "N/A"
+                elif log.type == "SETTLEMENT":
+                    # 銷帳收入
+                    payment_account = "客戶付款"
+                    deposit_account = log.account.name if hasattr(log, 'account') and log.account else "現金"
+                else:
+                    # 其他類型的現金日誌
+                    payment_account = "N/A"
+                    deposit_account = "N/A"
+                
                 unified_stream.append(
                     {
                         "type": log.type,
@@ -1834,9 +2136,9 @@ def cash_management():
                         "twd_change": twd_change,
                         "rmb_change": rmb_change,
                         "operator": log.operator.username if log.operator else "未知",
-                        "payment_account": log.account.name if log.account else "N/A",
-                        "deposit_account": "N/A",  # 現金日誌通常只有一個帳戶
-                        "note": log.note if hasattr(log, 'note') and log.note else None,
+                        "payment_account": payment_account,
+                        "deposit_account": deposit_account,
+                        "note": getattr(log, 'note', None),
                     }
                 )
 
@@ -1844,18 +2146,60 @@ def cash_management():
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
         
         # 計算每筆交易後的累積餘額
-        running_twd_balance = total_twd
-        running_rmb_balance = total_rmb
+        running_twd_balance = 0
+        running_rmb_balance = 0
         
-        # 從最新的交易開始，向前計算累積餘額
-        for transaction in unified_stream:
+        # 從最早的交易開始，向後計算累積餘額
+        for transaction in reversed(unified_stream):
             # 計算此筆交易後的餘額
-            running_twd_balance -= (transaction.get('twd_change', 0) or 0)
-            running_rmb_balance -= (transaction.get('rmb_change', 0) or 0)
+            running_twd_balance += (transaction.get('twd_change', 0) or 0)
+            running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
             
             # 添加累積餘額到交易記錄中
             transaction['running_twd_balance'] = running_twd_balance
             transaction['running_rmb_balance'] = running_rmb_balance
+        
+        # --- 關鍵修正：使用交易紀錄的累積餘額作為總資產，而不是帳戶餘額 ---
+        # 這樣確保總資產與交易紀錄的累積餘額完全一致
+        if unified_stream:
+            # 使用最新一筆交易的累積餘額作為當前總資產
+            latest_transaction = unified_stream[0]  # 最新的交易（日期最晚）
+            total_twd = latest_transaction.get('running_twd_balance', 0)
+            total_rmb = latest_transaction.get('running_rmb_balance', 0)
+        else:
+            # 如果沒有交易紀錄，則使用帳戶餘額
+            total_twd = sum(
+                acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+            )
+            total_rmb = sum(
+                acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+            )
+        
+        # --- 修正：使用實際的資料庫餘額，不重新計算 ---
+        accounts_by_holder = {}
+        for holder in holders_obj:
+            accounts_by_holder[holder.id] = {
+                "holder_name": holder.name,
+                "accounts": [],
+                "total_twd": 0,
+                "total_rmb": 0,
+            }
+        
+        # 使用實際的帳戶餘額
+        for acc in all_accounts_obj:
+            if acc.holder_id in accounts_by_holder:
+                accounts_by_holder[acc.holder_id]["accounts"].append({
+                    "id": acc.id,
+                    "name": acc.name,
+                    "currency": acc.currency,
+                    "balance": acc.balance,  # 使用實際資料庫餘額
+                })
+                
+                # 累計持有人總餘額
+                if acc.currency == "TWD":
+                    accounts_by_holder[acc.holder_id]["total_twd"] += acc.balance
+                elif acc.currency == "RMB":
+                    accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
 
         per_page = 10
         total_items = len(unified_stream)
@@ -1881,7 +2225,7 @@ def cash_management():
             "cash_management.html",
             total_twd=total_twd,
             total_rmb=total_rmb,
-            total_receivables=total_receivables,
+            total_receivables_twd=total_receivables,
             customers_with_receivables=customers_with_receivables,
             accounts_by_holder=accounts_by_holder,
             movements=paginated_items,  # <-- 傳遞分頁後的當前頁數據
@@ -1907,6 +2251,8 @@ def cash_management():
             "cash_management.html",
             total_twd=0,
             total_rmb=0,
+            total_receivables_twd=0,
+            customers_with_receivables=[],
             accounts_by_holder={},
             movements=[],
             holders=[],
@@ -1949,40 +2295,8 @@ def buy_in():
             .all()
         )
 
-        owner_twd_accounts_grouped = []
-        owner_rmb_accounts_grouped = []
-        for holder in holders_with_accounts:
-            twd_accs = [
-                {
-                    "id": acc.id,
-                    "name": acc.name,
-                    "balance": float(acc.balance),
-                    "currency": acc.currency,
-                    "is_active": acc.is_active
-                }
-                for acc in holder.cash_accounts
-                if acc.currency == "TWD" and acc.is_active
-            ]
-            rmb_accs = [
-                {
-                    "id": acc.id,
-                    "name": acc.name,
-                    "balance": float(acc.balance),
-                    "currency": acc.currency,
-                    "is_active": acc.is_active
-                }
-                for acc in holder.cash_accounts
-                if acc.currency == "RMB" and acc.is_active
-            ]
-
-            if twd_accs:
-                owner_twd_accounts_grouped.append(
-                    {"holder_name": holder.name, "accounts": twd_accs}
-                )
-            if rmb_accs:
-                owner_rmb_accounts_grouped.append(
-                    {"holder_name": holder.name, "accounts": rmb_accs}
-                )
+        # --- 關鍵修正：使用準確的帳戶餘額計算函數 ---
+        owner_twd_accounts_grouped, owner_rmb_accounts_grouped = get_accurate_account_balances()
 
         recent_purchases = (
             db.session.execute(
@@ -2771,8 +3085,29 @@ def admin_update_cash_account():
             account = db.session.get(CashAccount, account_id)
             if account:
                 if is_decrease:
-                    if account.balance < amount:
-                        flash(f"餘額不足，無法提出 {amount}。", "danger")
+                    # 使用準確的帳戶餘額計算來檢查是否有足夠餘額
+                    owner_twd_accounts_grouped, owner_rmb_accounts_grouped = get_accurate_account_balances()
+                    
+                    # 找到這個帳戶的實際餘額
+                    actual_balance = None
+                    all_accounts = []
+                    if account.currency == 'TWD':
+                        for holder_group in owner_twd_accounts_grouped:
+                            all_accounts.extend(holder_group['accounts'])
+                    else:  # RMB
+                        for holder_group in owner_rmb_accounts_grouped:
+                            all_accounts.extend(holder_group['accounts'])
+                    
+                    for acc in all_accounts:
+                        if acc['id'] == account_id:
+                            actual_balance = acc['balance']
+                            break
+                    
+                    if actual_balance is None:
+                        actual_balance = account.balance  # 備用方案
+                    
+                    if actual_balance < amount:
+                        flash(f"餘額不足，無法提出 {amount:,.2f}。當前可用餘額: {actual_balance:,.2f}", "danger")
                         return redirect(url_for('cash_management'))
                     else:
                         account.balance -= amount
@@ -3160,6 +3495,7 @@ def get_frequent_customers():
         }), 500
 
 
+
 @app.route("/api/calculate_profit", methods=["POST"])
 @login_required
 def api_calculate_profit():
@@ -3245,7 +3581,7 @@ def api_settlement():
         # 更新收款帳戶餘額
         account.balance += amount
         
-        # 創建銷帳記錄（只創建LedgerEntry，不創建CashLog避免重複）
+        # 創建銷帳記錄（LedgerEntry）
         settlement_entry = LedgerEntry(
             account_id=account.id,
             entry_type="SETTLEMENT",
@@ -3256,7 +3592,22 @@ def api_settlement():
         )
         db.session.add(settlement_entry)
         
+        # 創建現金流水記錄（CashLog）- 暫時不設置 account_id
+        settlement_cash_log = CashLog(
+            type="SETTLEMENT",
+            amount=amount,
+            time=datetime.utcnow(),
+            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+            operator_id=current_user.id
+        )
+        db.session.add(settlement_cash_log)
+        
+        # 提交事務
         db.session.commit()
+        
+        # 強制刷新對象狀態
+        db.session.refresh(customer)
+        db.session.refresh(account)
 
         return jsonify({
             "status": "success",
@@ -3454,11 +3805,27 @@ def sales_action():
             if not sale_to_delete:
                 return jsonify({"status": "error", "message": "找不到該訂單"}), 404
 
-            db.session.delete(sale_to_delete)
-            db.session.commit()
-            return jsonify(
-                {"status": "success", "message": "訂單已刪除。", "deleted_id": tx_id}
-            )
+            # --- 關鍵修正：使用正確的取消邏輯，而不是直接刪除 ---
+            # 調用FIFO服務來正確回滾銷售分配和應收帳款
+            try:
+                success = FIFOService.reverse_sale_allocation(sale_to_delete.id)
+                if success:
+                    # 如果FIFO回滾成功，再刪除銷售記錄
+                    db.session.delete(sale_to_delete)
+                    db.session.commit()
+                    return jsonify(
+                        {"status": "success", "message": "訂單已成功取消，應收帳款已更新。", "deleted_id": tx_id}
+                    )
+                else:
+                    db.session.rollback()
+                    return jsonify(
+                        {"status": "error", "message": "取消訂單失敗，請檢查庫存狀態。"}
+                    ), 400
+            except Exception as e:
+                db.session.rollback()
+                return jsonify(
+                    {"status": "error", "message": f"取消訂單時發生錯誤: {str(e)}"}
+                ), 500
 
         else:
             return jsonify({"status": "error", "message": "無效的操作"}), 400
@@ -3530,13 +3897,101 @@ def get_cash_management_totals():
             .all()
         )
 
-        # 計算總台幣和人民幣資產
-        total_twd = sum(
-            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
-        )
-        total_rmb = sum(
-            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
-        )
+        # 獲取所有交易記錄來計算累積餘額
+        purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
+        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+
+        # 構建統一的交易流
+        unified_stream = []
+        
+        # 處理買入記錄
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                unified_stream.append({
+                    "type": "買入",
+                    "date": p.purchase_date.isoformat(),
+                    "twd_change": -p.twd_cost,
+                    "rmb_change": p.rmb_amount,
+                })
+        
+        # 處理銷售記錄
+        for s in sales:
+            if s.customer:
+                unified_stream.append({
+                    "type": "售出",
+                    "date": s.created_at.isoformat(),
+                    "twd_change": s.twd_amount,
+                    "rmb_change": -s.rmb_amount,
+                })
+        
+        # 處理其他記帳記錄
+        for entry in misc_entries:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+                twd_change = 0
+                rmb_change = 0
+                
+                if entry.account and entry.account.currency == "TWD":
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        twd_change = entry.amount
+                    else:
+                        twd_change = -entry.amount
+                elif entry.account and entry.account.currency == "RMB":
+                    rmb_change = (
+                        entry.amount
+                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
+                        else -entry.amount
+                    )
+                
+                unified_stream.append({
+                    "type": entry.entry_type,
+                    "date": entry.entry_date.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                })
+        
+        # 處理現金日誌記錄
+        for log in cash_logs:
+            if log.type != "BUY_IN":
+                twd_change = 0
+                rmb_change = 0
+                
+                if log.type == "CARD_PURCHASE":
+                    twd_change = -log.amount
+                elif log.type == "SETTLEMENT":
+                    twd_change = log.amount
+                
+                unified_stream.append({
+                    "type": log.type,
+                    "date": log.time.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                })
+        
+        # 按日期排序並計算累積餘額
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        
+        # 計算總資產（使用交易紀錄的累積餘額）
+        if unified_stream:
+            # 從最早的交易開始，向後計算累積餘額
+            running_twd_balance = 0
+            running_rmb_balance = 0
+            
+            for transaction in reversed(unified_stream):
+                running_twd_balance += (transaction.get('twd_change', 0) or 0)
+                running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
+            
+            total_twd = running_twd_balance
+            total_rmb = running_rmb_balance
+        else:
+            # 如果沒有交易紀錄，則使用帳戶餘額
+            total_twd = sum(
+                acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+            )
+            total_rmb = sum(
+                acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+            )
 
         # 查詢應收帳款數據
         customers_with_receivables = (
@@ -3555,7 +4010,7 @@ def get_cash_management_totals():
         return jsonify({
             'total_twd': float(total_twd),
             'total_rmb': float(total_rmb),
-            'total_receivables': float(total_receivables),
+            'total_receivables_twd': float(total_receivables),
             'timestamp': datetime.now().isoformat()
         })
         
@@ -3689,6 +4144,566 @@ def api_add_user():
             jsonify({"status": "error", "message": "伺服器內部錯誤，新增失敗。"}),
             500,
         )
+
+
+@app.route("/api/delete_user/<int:user_id>", methods=["DELETE"])
+@admin_required  # 只有 admin 可以執行這個操作
+def api_delete_user(user_id):
+    """處理刪除使用者的請求"""
+    try:
+        # 查詢要刪除的使用者
+        user_to_delete = db.session.get(User, user_id)
+        
+        if not user_to_delete:
+            return jsonify({"status": "error", "message": "找不到指定的使用者。"}), 404
+        
+        # 防止刪除自己
+        if user_to_delete.username == current_user.username:
+            return jsonify({"status": "error", "message": "不能刪除自己的帳號。"}), 400
+        
+        # 防止刪除其他 admin 用戶
+        if user_to_delete.role == "admin":
+            return jsonify({"status": "error", "message": "不能刪除管理員帳號。"}), 400
+        
+        # 記錄刪除操作
+        username = user_to_delete.username
+        print(f"管理員 {current_user.username} 正在刪除使用者 {username}")
+        
+        # 執行刪除
+        db.session.delete(user_to_delete)
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success", 
+            "message": f'使用者 "{username}" 已成功刪除！'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error", 
+            "message": "伺服器內部錯誤，刪除失敗。"
+        }), 500
+
+
+# ===================================================================
+# 7. 輔助函數
+# ===================================================================
+
+def calculate_account_balances_from_transactions(holders_obj, all_accounts_obj, unified_stream):
+    """基於交易紀錄計算每個持有人的帳戶餘額，確保與總資產完全一致"""
+    # 初始化持有人帳戶數據
+    accounts_by_holder = {}
+    for holder in holders_obj:
+        accounts_by_holder[holder.id] = {
+            "holder_name": holder.name,
+            "accounts": [],
+            "total_twd": 0,
+            "total_rmb": 0,
+        }
+    
+    # 為每個帳戶創建餘額追蹤器，從0開始
+    account_balances = {}
+    for acc in all_accounts_obj:
+        account_balances[acc.id] = {
+            'holder_id': acc.holder_id,
+            'name': acc.name,
+            'currency': acc.currency,
+            'current_balance': 0  # 從0開始，基於交易紀錄計算
+        }
+    
+    # 從最早的交易開始，向後累積計算每個帳戶的餘額
+    # 注意：unified_stream 已經按日期排序（新的在前），所以需要反轉
+    for transaction in reversed(unified_stream):
+        payment_account = transaction.get('payment_account')
+        deposit_account = transaction.get('deposit_account')
+        twd_change = transaction.get('twd_change', 0) or 0
+        rmb_change = transaction.get('rmb_change', 0) or 0
+        
+        # 處理出款帳戶（通常是減少餘額）
+        if payment_account != 'N/A':
+            for acc_id, acc_info in account_balances.items():
+                if acc_info['name'] == payment_account:
+                    if acc_info['currency'] == 'TWD' and twd_change != 0:
+                        acc_info['current_balance'] += twd_change
+                    elif acc_info['currency'] == 'RMB' and rmb_change != 0:
+                        acc_info['current_balance'] += rmb_change
+                    break
+        
+        # 處理入款帳戶（通常是增加餘額）
+        if deposit_account != 'N/A':
+            for acc_id, acc_info in account_balances.items():
+                if acc_info['name'] == deposit_account:
+                    if acc_info['currency'] == 'TWD' and twd_change != 0:
+                        acc_info['current_balance'] += twd_change
+                    elif acc_info['currency'] == 'RMB' and rmb_change != 0:
+                        acc_info['current_balance'] += rmb_change
+                    break
+        
+        # 特殊處理：如果沒有明確的出款/入款帳戶，但有金額變動
+        # 這通常發生在現金日誌或記帳記錄中
+        if payment_account == 'N/A' and deposit_account == 'N/A':
+            # 根據交易類型推斷影響的帳戶
+            if transaction.get('type') == 'SETTLEMENT':
+                # 銷帳：TWD增加，影響TWD帳戶
+                for acc_id, acc_info in account_balances.items():
+                    if acc_info['currency'] == 'TWD':
+                        acc_info['current_balance'] += twd_change
+                        break
+            elif transaction.get('type') == 'DEPOSIT':
+                # 存款：根據幣種影響對應帳戶
+                if twd_change != 0:
+                    for acc_id, acc_info in account_balances.items():
+                        if acc_info['currency'] == 'TWD':
+                            acc_info['current_balance'] += twd_change
+                            break
+                if rmb_change != 0:
+                    for acc_id, acc_info in account_balances.items():
+                        if acc_info['currency'] == 'RMB':
+                            acc_info['current_balance'] += rmb_change
+                            break
+    
+    # 構建 accounts_by_holder 數據結構
+    for acc_id, acc_info in account_balances.items():
+        holder_id = acc_info['holder_id']
+        if holder_id in accounts_by_holder:
+            # 添加帳戶信息
+            accounts_by_holder[holder_id]["accounts"].append({
+                "id": acc_id,
+                "name": acc_info['name'],
+                "currency": acc_info['currency'],
+                "balance": acc_info['current_balance'],  # 使用基於交易紀錄計算的餘額
+            })
+            
+            # 累計持有人總餘額
+            if acc_info['currency'] == "TWD":
+                accounts_by_holder[holder_id]["total_twd"] += acc_info['current_balance']
+            elif acc_info['currency'] == "RMB":
+                accounts_by_holder[holder_id]["total_rmb"] += acc_info['current_balance']
+    
+    return accounts_by_holder
+
+
+def get_account_balances_for_dropdowns():
+    """獲取基於交易紀錄的帳戶餘額，供下拉選單使用"""
+    try:
+        # 獲取所有持有人和帳戶
+        holders_obj = (
+            db.session.execute(db.select(Holder).filter_by(is_active=True))
+            .scalars()
+            .all()
+        )
+        all_accounts_obj = (
+            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            .scalars()
+            .all()
+        )
+
+        # 獲取所有交易記錄
+        purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
+        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+
+        # 構建統一的交易流
+        unified_stream = []
+        
+        # 處理買入記錄
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                unified_stream.append({
+                    "type": "買入",
+                    "date": p.purchase_date.isoformat(),
+                    "twd_change": -p.twd_cost,
+                    "rmb_change": p.rmb_amount,
+                    "payment_account": p.payment_account.name,
+                    "deposit_account": p.deposit_account.name,
+                })
+        
+        # 處理銷售記錄
+        for s in sales:
+            if s.customer:
+                unified_stream.append({
+                    "type": "售出",
+                    "date": s.created_at.isoformat(),
+                    "twd_change": s.twd_amount,
+                    "rmb_change": -s.rmb_amount,
+                    "payment_account": "N/A",
+                    "deposit_account": "N/A",
+                })
+        
+        # 處理其他記帳記錄
+        for entry in misc_entries:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+                twd_change = 0
+                rmb_change = 0
+                
+                if entry.account and entry.account.currency == "TWD":
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        twd_change = entry.amount
+                    else:
+                        twd_change = -entry.amount
+                elif entry.account and entry.account.currency == "RMB":
+                    rmb_change = (
+                        entry.amount
+                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
+                        else -entry.amount
+                    )
+                
+                unified_stream.append({
+                    "type": entry.entry_type,
+                    "date": entry.entry_date.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                    "payment_account": entry.account.name if entry.account else "N/A",
+                    "deposit_account": "N/A",
+                })
+        
+        # 處理現金日誌記錄
+        for log in cash_logs:
+            if log.type != "BUY_IN":
+                twd_change = 0
+                rmb_change = 0
+                
+                if log.type == "CARD_PURCHASE":
+                    twd_change = -log.amount
+                elif log.type == "SETTLEMENT":
+                    twd_change = log.amount
+                
+                unified_stream.append({
+                    "type": log.type,
+                    "date": log.time.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                    "payment_account": "N/A",
+                    "deposit_account": "N/A",
+                })
+        
+        # 按日期排序並計算累積餘額
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        
+        # 為每個帳戶創建餘額追蹤器，從0開始
+        account_balances = {}
+        for acc in all_accounts_obj:
+            account_balances[acc.id] = {
+                'holder_id': acc.holder_id,
+                'name': acc.name,
+                'currency': acc.currency,
+                'current_balance': 0  # 從0開始，基於交易紀錄計算
+            }
+        
+        # 從最早的交易開始，向後累積計算每個帳戶的餘額
+        for transaction in reversed(unified_stream):
+            payment_account = transaction.get('payment_account')
+            deposit_account = transaction.get('deposit_account')
+            twd_change = transaction.get('twd_change', 0) or 0
+            rmb_change = transaction.get('rmb_change', 0) or 0
+            
+            # 處理出款帳戶（通常是減少餘額）
+            if payment_account != 'N/A':
+                for acc_id, acc_info in account_balances.items():
+                    if acc_info['name'] == payment_account:
+                        if acc_info['currency'] == 'TWD' and twd_change != 0:
+                            acc_info['current_balance'] += twd_change
+                        elif acc_info['currency'] == 'RMB' and rmb_change != 0:
+                            acc_info['current_balance'] += rmb_change
+                        break
+            
+            # 處理入款帳戶（通常是增加餘額）
+            if deposit_account != 'N/A':
+                for acc_id, acc_info in account_balances.items():
+                    if acc_info['name'] == deposit_account:
+                        if acc_info['currency'] == 'TWD' and twd_change != 0:
+                            acc_info['current_balance'] += twd_change
+                        elif acc_info['currency'] == 'RMB' and rmb_change != 0:
+                            acc_info['current_balance'] += rmb_change
+                        break
+            
+            # 特殊處理：如果沒有明確的出款/入款帳戶，但有金額變動
+            if payment_account == 'N/A' and deposit_account == 'N/A':
+                if transaction.get('type') == 'SETTLEMENT':
+                    # 銷帳：TWD增加，影響TWD帳戶
+                    for acc_id, acc_info in account_balances.items():
+                        if acc_info['currency'] == 'TWD':
+                            acc_info['current_balance'] += twd_change
+                            break
+                elif transaction.get('type') == 'DEPOSIT':
+                    # 存款：根據幣種影響對應帳戶
+                    if twd_change != 0:
+                        for acc_id, acc_info in account_balances.items():
+                            if acc_info['currency'] == 'TWD':
+                                acc_info['current_balance'] += twd_change
+                                break
+                    if rmb_change != 0:
+                        for acc_id, acc_info in account_balances.items():
+                            if acc_info['currency'] == 'RMB':
+                                acc_info['current_balance'] += rmb_change
+                                break
+        
+        # 構建分組的帳戶數據
+        owner_twd_accounts_grouped = []
+        owner_rmb_accounts_grouped = []
+        
+        for holder in holders_obj:
+            twd_accs = []
+            rmb_accs = []
+            
+            for acc in all_accounts_obj:
+                if acc.holder_id == holder.id and acc.is_active:
+                    # 使用基於交易紀錄計算的餘額
+                    current_balance = account_balances.get(acc.id, {}).get('current_balance', 0)
+                    
+                    if acc.currency == "TWD":
+                        twd_accs.append({
+                            "id": acc.id,
+                            "name": acc.name,
+                            "balance": float(current_balance),
+                            "currency": acc.currency,
+                            "is_active": acc.is_active
+                        })
+                    elif acc.currency == "RMB":
+                        rmb_accs.append({
+                            "id": acc.id,
+                            "name": acc.name,
+                            "balance": float(current_balance),
+                            "currency": acc.currency,
+                            "is_active": acc.is_active
+                        })
+            
+            if twd_accs:
+                owner_twd_accounts_grouped.append({
+                    "holder_name": holder.name, 
+                    "accounts": twd_accs
+                })
+            if rmb_accs:
+                owner_rmb_accounts_grouped.append({
+                    "holder_name": holder.name, 
+                    "accounts": rmb_accs
+                })
+        
+        return owner_twd_accounts_grouped, owner_rmb_accounts_grouped
+        
+    except Exception as e:
+        print(f"獲取帳戶餘額時發生錯誤: {e}")
+        return [], []
+
+
+def get_accurate_account_balances():
+    """獲取準確的帳戶餘額，使用帳戶ID匹配，確保計算準確性"""
+    try:
+        # 獲取所有持有人和帳戶
+        holders_obj = (
+            db.session.execute(db.select(Holder).filter_by(is_active=True))
+            .scalars()
+            .all()
+        )
+        all_accounts_obj = (
+            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            .scalars()
+            .all()
+        )
+
+        # 獲取所有交易記錄
+        purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
+        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+
+        # 構建統一的交易流，使用帳戶ID而不是名稱
+        unified_stream = []
+        
+        # 處理買入記錄
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                unified_stream.append({
+                    "type": "買入",
+                    "date": p.purchase_date.isoformat(),
+                    "twd_change": -p.twd_cost,
+                    "rmb_change": p.rmb_amount,
+                    "payment_account_id": p.payment_account.id,
+                    "deposit_account_id": p.deposit_account.id,
+                    "payment_account_name": p.payment_account.name,
+                    "deposit_account_name": p.deposit_account.name,
+                })
+        
+        # 處理銷售記錄
+        for s in sales:
+            if s.customer:
+                unified_stream.append({
+                    "type": "售出",
+                    "date": s.created_at.isoformat(),
+                    "twd_change": s.twd_amount,
+                    "rmb_change": -s.rmb_amount,
+                    "payment_account_id": None,
+                    "deposit_account_id": None,
+                    "payment_account_name": "N/A",
+                    "deposit_account_name": "N/A",
+                })
+        
+        # 處理其他記帳記錄
+        for entry in misc_entries:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+                twd_change = 0
+                rmb_change = 0
+                
+                if entry.account and entry.account.currency == "TWD":
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        twd_change = entry.amount
+                    else:
+                        twd_change = -entry.amount
+                elif entry.account and entry.account.currency == "RMB":
+                    rmb_change = (
+                        entry.amount
+                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
+                        else -entry.amount
+                    )
+                
+                unified_stream.append({
+                    "type": entry.entry_type,
+                    "date": entry.entry_date.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                    "payment_account_id": entry.account.id if entry.account else None,
+                    "deposit_account_id": None,
+                    "payment_account_name": entry.account.name if entry.account else "N/A",
+                    "deposit_account_name": "N/A",
+                })
+        
+        # 處理現金日誌記錄
+        for log in cash_logs:
+            if log.type != "BUY_IN":
+                twd_change = 0
+                rmb_change = 0
+                
+                if log.type == "CARD_PURCHASE":
+                    twd_change = -log.amount
+                elif log.type == "SETTLEMENT":
+                    twd_change = log.amount
+                
+                unified_stream.append({
+                    "type": log.type,
+                    "date": log.time.isoformat(),
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                    "payment_account_id": None,
+                    "deposit_account_id": None,
+                    "payment_account_name": "N/A",
+                    "deposit_account_name": "N/A",
+                })
+        
+        # 按日期排序（從舊到新）
+        unified_stream.sort(key=lambda x: x["date"])
+        
+        # 為每個帳戶創建餘額追蹤器，從0開始
+        account_balances = {}
+        for acc in all_accounts_obj:
+            account_balances[acc.id] = {
+                'holder_id': acc.holder_id,
+                'name': acc.name,
+                'currency': acc.currency,
+                'current_balance': 0  # 從0開始，基於交易紀錄計算
+            }
+        
+        print(f"🔍 調試：開始處理 {len(unified_stream)} 筆交易...")
+        
+        # 按時間順序處理每筆交易，累積計算每個帳戶的餘額
+        for i, transaction in enumerate(unified_stream):
+            payment_account_id = transaction.get('payment_account_id')
+            deposit_account_id = transaction.get('deposit_account_id')
+            twd_change = transaction.get('twd_change', 0) or 0
+            rmb_change = transaction.get('rmb_change', 0) or 0
+            
+            # 處理出款帳戶（通常是減少餘額）
+            if payment_account_id and payment_account_id in account_balances:
+                acc_info = account_balances[payment_account_id]
+                if acc_info['currency'] == 'TWD' and twd_change != 0:
+                    old_balance = acc_info['current_balance']
+                    acc_info['current_balance'] += twd_change
+                    print(f"  交易 {i+1}: {acc_info['name']} TWD {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {twd_change:,.2f})")
+                elif acc_info['currency'] == 'RMB' and rmb_change != 0:
+                    old_balance = acc_info['current_balance']
+                    acc_info['current_balance'] += rmb_change
+                    print(f"  交易 {i+1}: {acc_info['name']} RMB {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {rmb_change:,.2f})")
+            
+            # 處理入款帳戶（通常是增加餘額）
+            if deposit_account_id and deposit_account_id in account_balances:
+                acc_info = account_balances[deposit_account_id]
+                if acc_info['currency'] == 'TWD' and twd_change != 0:
+                    old_balance = acc_info['current_balance']
+                    acc_info['current_balance'] += twd_change
+                    print(f"  交易 {i+1}: {acc_info['name']} TWD {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {twd_change:,.2f})")
+                elif acc_info['currency'] == 'RMB' and rmb_change != 0:
+                    old_balance = acc_info['current_balance']
+                    acc_info['current_balance'] += rmb_change
+                    print(f"  交易 {i+1}: {acc_info['name']} RMB {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {rmb_change:,.2f})")
+            
+            # 特殊處理：如果沒有明確的出款/入款帳戶，但有金額變動
+            if not payment_account_id and not deposit_account_id:
+                if transaction.get('type') == 'SETTLEMENT':
+                    # 銷帳：TWD增加，影響第一個TWD帳戶
+                    for acc_id, acc_info in account_balances.items():
+                        if acc_info['currency'] == 'TWD':
+                            acc_info['current_balance'] += twd_change
+                            break
+                elif transaction.get('type') == 'DEPOSIT':
+                    # 存款：根據幣種影響對應帳戶
+                    if twd_change != 0:
+                        for acc_id, acc_info in account_balances.items():
+                            if acc_info['currency'] == 'TWD':
+                                acc_info['current_balance'] += twd_change
+                                break
+                    if rmb_change != 0:
+                        for acc_id, acc_info in account_balances.items():
+                            if acc_info['currency'] == 'RMB':
+                                acc_info['current_balance'] += rmb_change
+                                break
+        
+        # 構建分組的帳戶數據
+        owner_twd_accounts_grouped = []
+        owner_rmb_accounts_grouped = []
+        
+        for holder in holders_obj:
+            twd_accs = []
+            rmb_accs = []
+            
+            for acc in all_accounts_obj:
+                if acc.holder_id == holder.id and acc.is_active:
+                    # 使用基於交易紀錄計算的餘額
+                    current_balance = account_balances.get(acc.id, {}).get('current_balance', 0)
+                    
+                    if acc.currency == "TWD":
+                        twd_accs.append({
+                            "id": acc.id,
+                            "name": acc.name,
+                            "balance": float(current_balance),
+                            "currency": acc.currency,
+                            "is_active": acc.is_active
+                        })
+                    elif acc.currency == "RMB":
+                        rmb_accs.append({
+                            "id": acc.id,
+                            "name": acc.name,
+                            "balance": float(current_balance),
+                            "currency": acc.currency,
+                            "is_active": acc.is_active
+                        })
+            
+            if twd_accs:
+                owner_twd_accounts_grouped.append({
+                    "holder_name": holder.name, 
+                    "accounts": twd_accs
+                })
+            if rmb_accs:
+                owner_rmb_accounts_grouped.append({
+                    "holder_name": holder.name, 
+                    "accounts": rmb_accs
+                })
+        
+        return owner_twd_accounts_grouped, owner_rmb_accounts_grouped
+        
+    except Exception as e:
+        print(f"獲取準確帳戶餘額時發生錯誤: {e}")
+        return [], []
 
 
 # ===================================================================
