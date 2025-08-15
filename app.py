@@ -1666,19 +1666,24 @@ def cash_management_operator():
             acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
         )
 
-        # 查詢應收帳款數據
-        customers_with_receivables = (
-            db.session.execute(
-                db.select(Customer)
-                .filter_by(is_active=True)
-                .filter(Customer.total_receivables_twd > 0)
-                .order_by(Customer.total_receivables_twd.desc())
+        # 查詢應收帳款數據 - 添加錯誤處理
+        try:
+            customers_with_receivables = (
+                db.session.execute(
+                    db.select(Customer)
+                    .filter_by(is_active=True)
+                    .filter(Customer.total_receivables_twd > 0)
+                    .order_by(Customer.total_receivables_twd.desc())
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-        
-        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+            
+            total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+        except Exception as customer_error:
+            print(f"⚠️ Customer表查詢失敗，可能表不存在: {customer_error}")
+            customers_with_receivables = []
+            total_receivables = 0.0
 
         accounts_by_holder = {}
         # 先為所有持有人創建條目，即使沒有帳戶
@@ -1929,19 +1934,24 @@ def cash_management():
             acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
         )
 
-        # 查詢應收帳款數據
-        customers_with_receivables = (
-            db.session.execute(
-                db.select(Customer)
-                .filter_by(is_active=True)
-                .filter(Customer.total_receivables_twd > 0)
-                .order_by(Customer.total_receivables_twd.desc())
+        # 查詢應收帳款數據 - 添加錯誤處理
+        try:
+            customers_with_receivables = (
+                db.session.execute(
+                    db.select(Customer)
+                    .filter_by(is_active=True)
+                    .filter(Customer.total_receivables_twd > 0)
+                    .order_by(Customer.total_receivables_twd.desc())
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-        
-        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+            
+            total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
+        except Exception as customer_error:
+            print(f"⚠️ Customer表查詢失敗，可能表不存在: {customer_error}")
+            customers_with_receivables = []
+            total_receivables = 0.0
 
         accounts_by_holder = {}
         # 先為所有持有人創建條目，即使沒有帳戶
@@ -3861,6 +3871,170 @@ def manage_channel():
         channel.is_active = False
         db.session.commit()
         return jsonify({"status": "success", "message": "渠道已刪除"})
+
+
+@app.route("/export_test.html", methods=["GET"])
+def export_test_page():
+    """提供數據導出測試頁面"""
+    return '''<!DOCTYPE html>
+<html>
+<head>
+    <title>數據庫導出測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; margin: 5px; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 400px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>🔍 數據庫導出測試</h1>
+    
+    <p>點擊下面的按鈕來導出您的本地數據庫數據：</p>
+    
+    <button onclick="exportData()">📥 導出數據庫數據</button>
+    <button onclick="downloadAsJson()">💾 下載為JSON文件</button>
+    
+    <div id="status"></div>
+    <div id="result"></div>
+
+    <script>
+        let exportedData = null;
+        
+        async function exportData() {
+            const statusDiv = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            
+            statusDiv.innerHTML = '<div class="status">正在導出數據...</div>';
+            resultDiv.innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/export_database');
+                
+                if (response.ok) {
+                    exportedData = await response.json();
+                    
+                    // 顯示統計信息
+                    const stats = `
+                        <div class="status success">
+                            ✅ 導出成功！<br>
+                            👥 用戶: ${exportedData.users ? exportedData.users.length : 0} 個<br>
+                            🏢 持有人: ${exportedData.holders ? exportedData.holders.length : 0} 個<br>
+                            💰 現金帳戶: ${exportedData.cash_accounts ? exportedData.cash_accounts.length : 0} 個<br>
+                            👤 客戶: ${exportedData.customers ? exportedData.customers.length : 0} 個<br>
+                            📡 渠道: ${exportedData.channels ? exportedData.channels.length : 0} 個
+                        </div>
+                    `;
+                    statusDiv.innerHTML = stats;
+                    
+                    // 顯示詳細數據
+                    resultDiv.innerHTML = `
+                        <h3>📋 導出的數據：</h3>
+                        <pre>${JSON.stringify(exportedData, null, 2)}</pre>
+                    `;
+                    
+                } else {
+                    const error = await response.text();
+                    statusDiv.innerHTML = `<div class="status error">❌ 導出失敗: ${error}</div>`;
+                }
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ 請求失敗: ${error.message}</div>`;
+            }
+        }
+        
+        function downloadAsJson() {
+            if (!exportedData) {
+                alert('請先導出數據！');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(exportedData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `database_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>'''
+
+
+@app.route("/api/export_database", methods=["GET"])
+def export_database_api():
+    """通過API導出數據庫數據"""
+    try:
+        export_data = {
+            "export_time": datetime.utcnow().isoformat(),
+            "users": [],
+            "holders": [],
+            "cash_accounts": [],
+            "customers": [],
+            "channels": []
+        }
+        
+        # 導出用戶
+        users = db.session.execute(db.select(User)).scalars().all()
+        for user in users:
+            export_data["users"].append({
+                "username": user.username,
+                "is_admin": user.is_admin,
+                "is_active": user.is_active
+            })
+        
+        # 導出持有人
+        holders = db.session.execute(db.select(Holder)).scalars().all()
+        for holder in holders:
+            export_data["holders"].append({
+                "name": holder.name,
+                "is_active": holder.is_active
+            })
+        
+        # 導出現金帳戶
+        accounts = db.session.execute(db.select(CashAccount)).scalars().all()
+        for account in accounts:
+            export_data["cash_accounts"].append({
+                "name": account.name,
+                "currency": account.currency,
+                "balance": float(account.balance),
+                "holder_name": account.holder.name if account.holder else None
+            })
+        
+        # 導出客戶
+        try:
+            customers = db.session.execute(db.select(Customer)).scalars().all()
+            for customer in customers:
+                export_data["customers"].append({
+                    "name": customer.name,
+                    "is_active": customer.is_active,
+                    "total_receivables_twd": float(customer.total_receivables_twd)
+                })
+        except Exception:
+            pass
+        
+        # 導出渠道
+        try:
+            channels = db.session.execute(db.select(Channel)).scalars().all()
+            for channel in channels:
+                export_data["channels"].append({
+                    "name": channel.name,
+                    "is_active": channel.is_active
+                })
+        except Exception:
+            pass
+        
+        return jsonify(export_data)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/customer", methods=["POST", "DELETE"])
