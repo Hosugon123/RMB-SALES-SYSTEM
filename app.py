@@ -1636,11 +1636,13 @@ def cash_management_operator():
     try:
         page = request.args.get("page", 1, type=int)
 
+        # 暫時移除過濾，直接查詢所有持有人
         holders_obj = (
             db.session.execute(db.select(Holder).filter_by(is_active=True))
             .scalars()
             .all()
         )
+        
         # 轉換為可序列化的字典格式
         holders_data = [
             {
@@ -1907,11 +1909,13 @@ def cash_management():
     try:
         page = request.args.get("page", 1, type=int)
 
+        # 暫時移除過濾，直接查詢所有持有人
         holders_obj = (
             db.session.execute(db.select(Holder).filter_by(is_active=True))
             .scalars()
             .all()
         )
+        
         all_accounts_obj = (
             db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
             .scalars()
@@ -2642,13 +2646,13 @@ def process_payment_api():
 
     try:
         # --- 1. 獲取核心物件 ---
-        customer = db.session.get(Holder, customer_id)
+        customer = db.session.get(Customer, customer_id)
         twd_account = db.session.get(CashAccount, twd_account_id)
 
         # --- 2. 業務邏輯驗證 ---
-        if not customer or customer.type != "CUSTOMER":
+        if not customer:
             return jsonify({"status": "error", "message": "無效的客戶 ID。"}), 404
-        if not twd_account or customer.currency != "TWD":
+        if not twd_account or twd_account.currency != "TWD":
             return jsonify({"status": "error", "message": "無效的 TWD 收款帳戶。"}), 400
         if customer.total_receivables_twd < payment_amount:
             return (
@@ -3421,51 +3425,20 @@ def record_sale_cost(sale_rmb_amount):
     return average_cost, cost
 
 
-@app.route("/add_customer_ajax", methods=["POST"])
-@admin_required
-def add_customer_ajax():
-    data = request.get_json()
-    username = data.get("username", "").strip()
-    if not username:
-        return jsonify({"status": "error", "message": "未提供用戶名"}), 400
-
-    # 我們假設客戶也是一種 Holder
-    existing_user = Holder.query.filter_by(name=username).first()
-    if existing_user:
-        return jsonify({"status": "error", "message": "此客戶名稱已存在"}), 409
-
-    new_customer = Holder(name=username)
-    db.session.add(new_customer)
-    db.session.commit()
-
-    customer_data = {"id": new_customer.id, "username": new_customer.name}
-    return jsonify(
-        {"status": "success", "message": "客戶新增成功", "customer": customer_data}
-    )
 
 
-@app.route("/delete_customer_ajax", methods=["POST"])
-@admin_required
-def delete_customer_ajax():
-    data = request.get_json()
-    customer_id = data.get("customer_id")
-
-    customer_to_deactivate = db.session.get(Holder, int(customer_id))
-    if not customer_to_deactivate:
-        return jsonify({"status": "error", "message": "找不到該客戶"}), 404
-
-    customer_to_deactivate.is_active = False  # 軟刪除
-    db.session.commit()
-
-    return jsonify({"status": "success", "message": "客戶已從常用列表移除"})
 
 
-@app.route("/api/customers/frequent", methods=["GET"])
+
+
+@app.route("/api/frequent_customers", methods=["GET"])
 @login_required
 def get_frequent_customers():
     """獲取常用客戶列表"""
     try:
-        # 獲取所有活躍的客戶（常用客戶）
+        print(f"🔍 API調用: get_frequent_customers by user {current_user.username}")
+        
+        # 先檢查Customer表
         frequent_customers = (
             db.session.execute(
                 db.select(Customer).filter_by(is_active=True).order_by(Customer.name)
@@ -3473,6 +3446,12 @@ def get_frequent_customers():
             .scalars()
             .all()
         )
+        
+        print(f"📊 Customer表中找到 {len(frequent_customers)} 個客戶:")
+        for customer in frequent_customers:
+            print(f"   - {customer.name} (ID: {customer.id})")
+        
+
         
         # 轉換為可序列化的格式
         customers_data = []
@@ -3754,11 +3733,11 @@ def sales_action():
 
             target_customer = None
             if customer_id:
-                target_customer = db.session.get(Holder, int(customer_id))
+                target_customer = db.session.get(Customer, int(customer_id))
             elif customer_name:
-                target_customer = Holder.query.filter_by(name=customer_name).first()
+                target_customer = Customer.query.filter_by(name=customer_name).first()
                 if not target_customer:
-                    target_customer = Holder(name=customer_name)
+                    target_customer = Customer(name=customer_name, is_active=True)
                     db.session.add(target_customer)
                     db.session.flush()  # 取得 ID
 
@@ -3851,7 +3830,7 @@ def get_channels_public():
 
 
 @app.route("/api/channel", methods=["POST", "DELETE"])
-@admin_required
+@login_required
 def manage_channel():
     data = request.get_json()
     if request.method == "POST":
@@ -3882,6 +3861,44 @@ def manage_channel():
         channel.is_active = False
         db.session.commit()
         return jsonify({"status": "success", "message": "渠道已刪除"})
+
+
+@app.route("/api/customer", methods=["POST", "DELETE"])
+@login_required
+def manage_customer():
+    """客戶管理API - 仿照manage_channel的邏輯"""
+    data = request.get_json()
+    if request.method == "POST":
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"status": "error", "message": "客戶名稱不可為空"}), 400
+        if Customer.query.filter_by(name=name).first():
+            return jsonify({"status": "error", "message": "此客戶已存在"}), 409
+
+        new_customer = Customer(name=name, is_active=True)
+        db.session.add(new_customer)
+        db.session.commit()
+        return jsonify(
+            {
+                "status": "success",
+                "message": "客戶新增成功",
+                "customer": {"id": new_customer.id, "name": new_customer.name},
+            }
+        )
+
+
+
+
+    if request.method == "DELETE":
+        customer_id = data.get("id")
+        customer = db.session.get(Customer, customer_id)
+        if not customer:
+            return jsonify({"status": "error", "message": "找不到該客戶"}), 404
+
+        # 軟刪除
+        customer.is_active = False
+        db.session.commit()
+        return jsonify({"status": "success", "message": "客戶已刪除"})
 
 
 # API 1: 獲取現金管理的總資產數據，用於實時更新

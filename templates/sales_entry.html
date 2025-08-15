@@ -148,7 +148,12 @@
                                 </td>
                                 <td><small>{{ sale.created_at.strftime('%Y-%m-%d') }}</small></td>
                                 <td class="text-center">
-                                    <button class="btn btn-sm btn-outline-danger" onclick="cancelSalesRecord({{ sale.id }}, '{{ sale.customer.name }}', {{ sale.rmb_amount }}, {{ sale.twd_amount }})" title="取消此筆銷售記錄">
+                                    <button class="btn btn-sm btn-outline-danger cancel-sale-btn" 
+                                            data-sale-id="{{ sale.id }}" 
+                                            data-customer-name="{{ sale.customer.name }}" 
+                                            data-rmb-amount="{{ sale.rmb_amount }}" 
+                                            data-twd-amount="{{ sale.twd_amount }}" 
+                                            title="取消此筆銷售記錄">
                                         <i class="bi bi-x-circle"></i>
                                     </button>
                                 </td>
@@ -181,13 +186,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const twdDisplay = document.getElementById('twd-receivable-display');
     
     // --- API 端點 ---
-    const FREQUENT_CUSTOMERS_API = "{{ url_for('get_frequent_customers') }}";
-    const ADD_CUSTOMER_API = "{{ url_for('add_customer_ajax') }}";
+    const FREQUENT_CUSTOMERS_API = "/api/frequent_customers";
+    const ADD_CUSTOMER_API = "/api/add_customer";
     
     // --- 全局變數 ---
     let customersData = [];
     
     // --- 初始化 ---
+    console.log('🚀 sales_entry.html JavaScript 已載入');
+    console.log('🌐 API端點:', FREQUENT_CUSTOMERS_API);
     loadFrequentCustomers();
     
     // --- 事件監聽器 ---
@@ -195,30 +202,44 @@ document.addEventListener('DOMContentLoaded', function () {
     // 1. 載入常用客戶列表
     async function loadFrequentCustomers() {
         try {
+            console.log('🔍 開始載入常用客戶...', FREQUENT_CUSTOMERS_API);
             const response = await fetch(FREQUENT_CUSTOMERS_API);
+            console.log('📡 API回應狀態:', response.status);
+            
             const result = await response.json();
+            console.log('📊 API回應數據:', result);
             
             if (result.status === 'success') {
                 customersData = result.customers;
+                console.log('✅ 載入客戶數據成功:', customersData);
                 refreshCustomersDropdown();
             } else {
-                console.error('載入常用客戶失敗:', result.message);
+                console.error('❌ 載入常用客戶失敗:', result.message);
             }
         } catch (error) {
-            console.error('載入常用客戶時發生錯誤:', error);
+            console.error('❌ 載入常用客戶時發生錯誤:', error);
         }
     }
     
     // 2. 刷新客戶下拉選單
     function refreshCustomersDropdown() {
+        console.log('🔄 開始刷新客戶下拉選單...', customersData);
         customerSelect.innerHTML = '<option value="">--- 選擇常用客戶 ---</option>';
+        
+        if (!customersData || customersData.length === 0) {
+            console.log('⚠️ 沒有客戶數據可顯示');
+            return;
+        }
         
         customersData.forEach(customer => {
             const option = document.createElement('option');
             option.value = customer.id;
             option.textContent = customer.name;
             customerSelect.appendChild(option);
+            console.log('➕ 添加客戶選項:', customer.name);
         });
+        
+        console.log('✅ 客戶下拉選單刷新完成');
     }
     
     // 3. 客戶選擇變更事件
@@ -255,26 +276,30 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         
         try {
-            const response = await fetch(ADD_CUSTOMER_API, {
+            // 使用與買入頁面相同的邏輯
+            const response = await fetch('/api/customer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: customerName })
+                body: JSON.stringify({ name: customerName })
             });
             
             const result = await response.json();
             
             if (result.status === 'success') {
+                console.log('✅ 新增客戶成功:', result);
+                
+                Swal.fire('成功', '客戶已新增到常用列表！', 'success');
+                
+                // 清空輸入欄位
+                customerNameManual.value = '';
+                customerSelect.value = '';
+                customerNameManual.disabled = false;
+                
                 // 重新載入客戶列表
                 await loadFrequentCustomers();
                 
-                // 選擇新添加的客戶
-                const newCustomer = result.customer;
-                customerSelect.value = newCustomer.id;
-                customerNameManual.value = newCustomer.username;
-                customerNameManual.disabled = true;
-                
-                Swal.fire('成功', '客戶已新增到常用列表！', 'success');
             } else {
+                console.error('❌ 新增客戶失敗:', result);
                 Swal.fire('錯誤', result.message, 'error');
             }
         } catch (error) {
@@ -545,6 +570,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
         } catch (error) {
             Swal.fire('創建失敗', error.message, 'error');
+        }
+    });
+    
+    // 取消銷售記錄事件監聽器
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.cancel-sale-btn')) {
+            const btn = e.target.closest('.cancel-sale-btn');
+            const saleId = btn.dataset.saleId;
+            const customerName = btn.dataset.customerName;
+            const rmbAmount = btn.dataset.rmbAmount;
+            const twdAmount = btn.dataset.twdAmount;
+            
+            cancelSalesRecord(saleId, customerName, rmbAmount, twdAmount);
         }
     });
 });

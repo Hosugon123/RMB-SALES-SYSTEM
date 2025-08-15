@@ -459,7 +459,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<td>' + (m.operator || '') + '</td>' +
                 '<td>' + (m.payment_account || 'N/A') + '</td>' +
                 '<td>' + (m.deposit_account || 'N/A') + '</td>' +
-                '<td><small>' + (m.notes || '') + '</small></td>' +
+                '<td><small>' + (m.note || '') + '</small></td>' +
                 '<td class="text-end"><span class="text-primary">' + (twdChange >= 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</span></td>' +
                 '<td class="text-end"><span class="text-success">' + (rmbChange >= 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</span></td>' +
                 '<td class="text-end"><div><strong class="text-primary">NT$ ' + runningTwdBalance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></div><hr class="my-1"><div><strong class="text-success">¥ ' + runningRmbBalance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></div></td>' +
