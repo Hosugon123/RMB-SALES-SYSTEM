@@ -276,6 +276,7 @@ class SalesRecord(db.Model):
     )  # <---【修正】統一外鍵目標
     customer = db.relationship("Customer", back_populates="sales")
     operator = db.relationship("User", backref="sales_records")
+    rmb_account = db.relationship("CashAccount", foreign_keys=[rmb_account_id])
     transactions = db.relationship(
         "Transaction", back_populates="sales_record", cascade="all, delete-orphan"
     )
