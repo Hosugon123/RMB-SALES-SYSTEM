@@ -2691,6 +2691,16 @@ def process_payment_api():
             operator_id=current_user.id,
         )
         db.session.add(cash_log)
+        
+        # 同時創建LedgerEntry記錄以確保在流水中顯示
+        ledger_entry = LedgerEntry(
+            entry_type="SETTLEMENT",
+            description=f"客戶 {customer.name} 銷帳 NT$ {payment_amount:,.2f}",
+            amount=payment_amount,
+            account_id=twd_account_id,
+            operator_id=current_user.id,
+        )
+        db.session.add(ledger_entry)
 
         # 自動沖銷最早的未付訂單
         unpaid_sales = (
