@@ -4272,6 +4272,135 @@ def fix_database_api():
         }), 500
 
 
+@app.route("/debug_database.html", methods=["GET"])
+def debug_database_page():
+    """資料庫診斷頁面"""
+    return '''<!DOCTYPE html>
+<html>
+<head>
+    <title>資料庫診斷</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+        .info { background: #d1ecf1; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .error { background: #f8d7da; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 5px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 資料庫診斷</h1>
+        <div id="result"></div>
+        <button onclick="diagnose()">開始診斷</button>
+    </div>
+
+    <script>
+        async function diagnose() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="info">正在診斷...</div>';
+            
+            try {
+                const response = await fetch('/api/debug_database');
+                const data = await response.json();
+                
+                let html = '<h3>📊 診斷結果：</h3>';
+                
+                if (data.database_type) {
+                    html += `<div class="info"><strong>資料庫類型：</strong> ${data.database_type}</div>`;
+                }
+                
+                if (data.database_url) {
+                    html += `<div class="info"><strong>資料庫URL：</strong> ${data.database_url}</div>`;
+                }
+                
+                if (data.tables_count !== undefined) {
+                    html += `<div class="info"><strong>資料表數量：</strong> ${data.tables_count}</div>`;
+                }
+                
+                if (data.records_count) {
+                    html += '<div class="info"><strong>記錄數量：</strong>';
+                    for (const [table, count] of Object.entries(data.records_count)) {
+                        html += `<br>${table}: ${count} 筆`;
+                    }
+                    html += '</div>';
+                }
+                
+                if (data.environment) {
+                    html += `<div class="info"><strong>環境變數：</strong><pre>${JSON.stringify(data.environment, null, 2)}</pre></div>`;
+                }
+                
+                if (data.error) {
+                    html += `<div class="error"><strong>錯誤：</strong> ${data.error}</div>`;
+                }
+                
+                resultDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">診斷失敗: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>'''
+
+
+@app.route("/api/debug_database", methods=["GET"])
+def debug_database_api():
+    """資料庫診斷API"""
+    try:
+        result = {}
+        
+        # 檢查資料庫類型
+        database_url = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        if 'postgresql' in database_url or 'postgres' in database_url:
+            result['database_type'] = 'PostgreSQL'
+        elif 'sqlite' in database_url:
+            result['database_type'] = 'SQLite'
+        else:
+            result['database_type'] = 'Unknown'
+        
+        # 資料庫URL（隱藏敏感資訊）
+        if database_url:
+            if 'postgresql' in database_url:
+                # 隱藏密碼
+                import re
+                masked_url = re.sub(r'://([^:]+):([^@]+)@', r'://\1:****@', database_url)
+                result['database_url'] = masked_url
+            else:
+                result['database_url'] = database_url
+        
+        # 檢查環境變數
+        result['environment'] = {
+            'DATABASE_URL_SET': bool(os.environ.get('DATABASE_URL')),
+            'SECRET_KEY_SET': bool(os.environ.get('SECRET_KEY')),
+            'RENDER_SERVICE_ID': os.environ.get('RENDER_SERVICE_ID', 'Not Set'),
+        }
+        
+        # 檢查資料表
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        result['tables_count'] = len(tables)
+        result['tables'] = tables
+        
+        # 檢查記錄數量
+        records_count = {}
+        try:
+            records_count['users'] = db.session.execute(db.text('SELECT COUNT(*) FROM user')).scalar()
+            records_count['holders'] = db.session.execute(db.text('SELECT COUNT(*) FROM holders')).scalar()
+            records_count['cash_accounts'] = db.session.execute(db.text('SELECT COUNT(*) FROM cash_accounts')).scalar()
+            records_count['sales_records'] = db.session.execute(db.text('SELECT COUNT(*) FROM sales_records')).scalar()
+        except Exception as e:
+            records_count['error'] = str(e)
+        
+        result['records_count'] = records_count
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/import_data.html", methods=["GET"])
 def import_data_page():
     """提供數據導入頁面"""
