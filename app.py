@@ -26,9 +26,13 @@ app.config["SECRET_KEY"] = os.environ.get(
 if os.environ.get('DATABASE_URL'):
     # Render 雲端環境 - 使用 PostgreSQL
     database_url = os.environ.get('DATABASE_URL')
-    # 修復 Render PostgreSQL URL 格式問題
+    # 修復 Render PostgreSQL URL 格式問題，強制使用 psycopg3
     if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        database_url = database_url.replace('postgres://', 'postgresql+psycopg://', 1)
+    elif database_url.startswith('postgresql://'):
+        database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+    
+    print(f"使用資料庫連接字串: {database_url[:50]}...")
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 else:
     # 本地開發環境 - 使用 SQLite
