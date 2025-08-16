@@ -485,7 +485,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<td>' + (m.operator || '') + '</td>' +
                 '<td>' + (m.payment_account || 'N/A') + '</td>' +
                 '<td>' + (m.deposit_account || 'N/A') + '</td>' +
-                '<td><small>' + (m.note || '') + '</small></td>' +
+                '<td><small>' + extractNoteFromDescription(m.description || '') + '</small></td>' +
                 '<td class="text-end"><span class="text-primary">' + (twdChange >= 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</span></td>' +
                 '<td class="text-end"><span class="text-success">' + (rmbChange >= 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</span></td>' +
                 '<td class="text-end"><div><strong class="text-primary">NT$ ' + runningTwdBalance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></div><hr class="my-1"><div><strong class="text-success">¥ ' + runningRmbBalance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></div></td>' +
@@ -496,6 +496,25 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         
         console.log('✅ 資金流水渲染完成');
+    }
+    
+    // 從描述中提取備註
+    function extractNoteFromDescription(description) {
+        if (!description) return '';
+        
+        // 如果描述包含 " | " 分隔符，提取分隔符後的內容作為備註
+        const parts = description.split(' | ');
+        if (parts.length > 1) {
+            // 返回最後一部分，但排除成本匯率信息
+            const lastPart = parts[parts.length - 1];
+            if (lastPart.includes('成本匯率:') || lastPart.includes('已按FIFO')) {
+                // 如果有多個部分，返回倒數第二部分
+                return parts.length > 2 ? parts[parts.length - 2] : '';
+            }
+            return lastPart;
+        }
+        
+        return ''; // 沒有備註
     }
     
     // 更新總資產數據
