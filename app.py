@@ -3165,6 +3165,7 @@ def admin_update_cash_account():
                             account_id=account.id,
                             amount=amount,
                             description=description,
+                            note=note,  # 添加備註到 note 欄位
                             operator_id=current_user.id,
                         )
                         db.session.add(entry)
@@ -3185,6 +3186,7 @@ def admin_update_cash_account():
                         account_id=account.id,
                         amount=amount,
                         description=description,
+                        note=note,  # 添加備註到 note 欄位
                         operator_id=current_user.id,
                     )
                     db.session.add(entry)
