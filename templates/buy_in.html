@@ -206,17 +206,26 @@ document.addEventListener('DOMContentLoaded', function() {
     [rmbAmountInput, exchangeRateInput].forEach(el => el.addEventListener('input', updateCost));
 
     channelSelect.addEventListener('change', function() {
+        console.log('常用渠道選擇變更:', this.value);
+        console.log('可用渠道數據:', channelsData);
+        
         if (this.value) {
             // 當選擇下拉列表時，自動填寫渠道名稱
-            const selectedChannel = channelsData.find(c => c.id == this.value);
+            const selectedChannel = channelsData.find(c => c.id == this.value || c.id === parseInt(this.value));
+            console.log('找到的渠道:', selectedChannel);
+            
             if (selectedChannel) {
                 channelNameManual.value = selectedChannel.name;
                 channelNameManual.disabled = true;
+                console.log('已自動填入渠道名稱:', selectedChannel.name);
+            } else {
+                console.error('未找到對應的渠道數據');
             }
         } else {
             // 當清空選擇時，啟用手動輸入
             channelNameManual.value = '';
             channelNameManual.disabled = false;
+            console.log('已清空渠道選擇');
         }
     });
     
