@@ -207,6 +207,10 @@ document.addEventListener('DOMContentLoaded', function () {
     
     console.log('📊 數據檢查:', { holders: holders, accountsByHolder: accountsByHolder, movements: movements });
     
+    // 將帳戶數據保存到全局變量供模態框使用
+    window.ownerAccountsData = data.owner_accounts || [];
+    console.log('🔧 保存帳戶數據到全局變量:', window.ownerAccountsData);
+    
     // 獲取 DOM 元素
     const accountsContainer = document.getElementById('accounts-container');
     const movementsTbody = document.getElementById('movements-tbody');
@@ -544,8 +548,19 @@ document.addEventListener('DOMContentLoaded', function () {
             accountIdInput.value = accountId;
         }
         
-        // 判斷是否為 RMB 帳戶，控制成本匯率欄位顯示
-        const isRmbAccount = accountName.includes('RMB') || accountName.includes('人民幣');
+        // 從後端數據中查找該帳戶的幣別
+        let isRmbAccount = false;
+        const ownerAccounts = window.ownerAccountsData || [];
+        const account = ownerAccounts.find(acc => acc.id == accountId);
+        if (account) {
+            isRmbAccount = account.currency === 'RMB';
+            console.log('🔍 找到帳戶:', account, '是否為RMB:', isRmbAccount);
+        } else {
+            // 備用方案：從帳戶名稱判斷
+            isRmbAccount = accountName.includes('RMB') || accountName.includes('人民幣');
+            console.log('⚠️ 使用備用判斷邏輯，是否為RMB:', isRmbAccount);
+        }
+        
         const rmbCostRateDiv = document.getElementById('rmbCostRateDiv');
         const rmbCostRateInput = document.getElementById('rmbCostRate');
         
