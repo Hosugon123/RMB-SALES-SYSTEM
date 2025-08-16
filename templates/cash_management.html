@@ -658,7 +658,7 @@ document.addEventListener('DOMContentLoaded', function () {
             withdrawRadio.addEventListener('change', updateCostRateVisibility);
         }
         
-                // 初始化顯示狀態（在默認選擇存款後再檢查）
+        // 初始化顯示狀態（在默認選擇存款後再檢查）
         setTimeout(() => {
             updateCostRateVisibility();
             console.log('🔄 初始化RMB匯率欄位顯示狀態');
@@ -667,6 +667,34 @@ document.addEventListener('DOMContentLoaded', function () {
         // 顯示模態框
         const modal = new bootstrap.Modal(document.getElementById('addMovementModal'));
         modal.show();
+        
+        // 在模態框顯示後再次檢查RMB匯率欄位
+        modal._element.addEventListener('shown.bs.modal', function() {
+            console.log('🔧 模態框已顯示，重新檢查RMB匯率欄位');
+            const rmbDiv = document.getElementById('rmbCostRateDiv');
+            const rmbInput = document.getElementById('rmbCostRate');
+            const depositRadio = document.getElementById('movementDeposit');
+            
+            console.log('🔍 模態框顯示後的元素檢查:', {
+                rmbDiv: !!rmbDiv,
+                rmbInput: !!rmbInput,
+                depositRadio: !!depositRadio,
+                isRmbAccount: isRmbAccount,
+                depositChecked: depositRadio ? depositRadio.checked : false
+            });
+            
+            if (isRmbAccount && rmbDiv && depositRadio && depositRadio.checked) {
+                rmbDiv.style.display = 'block';
+                rmbDiv.style.visibility = 'visible';
+                rmbDiv.style.opacity = '1';
+                console.log('✅ 強制顯示RMB匯率欄位');
+            } else if (isRmbAccount && rmbDiv) {
+                console.log('⚠️ RMB帳戶但條件不滿足:', {
+                    depositRadio: !!depositRadio,
+                    depositChecked: depositRadio ? depositRadio.checked : false
+                });
+            }
+        });
     };
     
     // 打開銷帳模態框
