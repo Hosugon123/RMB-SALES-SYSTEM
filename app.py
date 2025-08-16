@@ -2655,6 +2655,7 @@ def process_payment_api():
         customer_id = int(data.get("customer_id"))
         payment_amount = float(data.get("payment_amount"))
         twd_account_id = int(data.get("twd_account_id"))  # 收款到哪個我方 TWD 帳戶
+        note = data.get("note", "").strip()  # 獲取備註
     except (ValueError, TypeError, AttributeError):
         return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
 
@@ -2695,12 +2696,17 @@ def process_payment_api():
         customer.total_receivables_twd -= payment_amount
 
         # 創建LedgerEntry記錄以確保在流水中顯示
+        description = f"客戶 {customer.name} 銷帳 NT$ {payment_amount:,.2f}"
+        if note:
+            description += f" - {note}"
+        
         ledger_entry = LedgerEntry(
             entry_type="SETTLEMENT",
-            description=f"客戶 {customer.name} 銷帳 NT$ {payment_amount:,.2f}",
+            description=description,
             amount=payment_amount,
             account_id=twd_account_id,
             operator_id=current_user.id,
+            note=note  # 添加備註欄位
         )
         db.session.add(ledger_entry)
 
@@ -2732,11 +2738,15 @@ def process_payment_api():
                 settled_sales.append(sale)
 
             # 創建交易記錄
+            transaction_note = f"客戶付款沖銷 - 訂單 #{sale.id}"
+            if note:
+                transaction_note += f" - {note}"
+            
             transaction = Transaction(
                 sales_record_id=sale.id,
                 twd_account_id=twd_account.id,
                 amount=settle_amount,
-                note=f"客戶付款沖銷 - 訂單 #{sale.id}",
+                note=transaction_note,
             )
             db.session.add(transaction)
 
@@ -2745,9 +2755,13 @@ def process_payment_api():
         # 準備回應訊息
         if settled_sales:
             settled_ids = [s.id for s in settled_sales]
-            message = f"付款成功！已沖銷 {len(settled_sales)} 筆訂單 (ID: {', '.join(map(str, settled_ids))})"
+            message = f"銷帳成功！已沖銷 {len(settled_sales)} 筆訂單 (ID: {', '.join(map(str, settled_ids))})"
         else:
-            message = "付款成功！但沒有可沖銷的訂單。"
+            # 檢查是否有未付訂單
+            if unpaid_sales:
+                message = f"銷帳成功！付款金額已記錄，但訂單僅部分沖銷。"
+            else:
+                message = f"銷帳成功！付款 NT$ {payment_amount:,.2f} 已記錄到帳戶。"
 
         return jsonify({"status": "success", "message": message})
 
