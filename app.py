@@ -3174,11 +3174,53 @@ def admin_update_cash_account():
                         )
                         return redirect(url_for('cash_management'))
                 else:
+                    # 處理存款
                     account.balance += amount
+                    
+                    # 獲取成本匯率（僅RMB帳戶需要）
+                    rmb_cost_rate = request.form.get("rmb_cost_rate")
+                    
                     # 將備註信息存儲在description中，用分隔符分離
                     description = "外部存款"
                     if note:
                         description += f" | {note}"
+                    
+                    # 如果是RMB帳戶且提供了成本匯率，創建虛擬買入記錄
+                    if account.currency == "RMB" and rmb_cost_rate:
+                        try:
+                            cost_rate = float(rmb_cost_rate)
+                            twd_cost = amount * cost_rate
+                            
+                            # 創建虛擬買入記錄（外部存入）
+                            virtual_purchase = PurchaseRecord(
+                                channel_id=None,  # 沒有渠道
+                                payment_account_id=None,  # 沒有付款帳戶
+                                deposit_account_id=account.id,
+                                rmb_amount=amount,
+                                exchange_rate=cost_rate,
+                                twd_cost=twd_cost,
+                                operator_id=current_user.id
+                            )
+                            db.session.add(virtual_purchase)
+                            db.session.flush()  # 獲取 ID
+                            
+                            # 創建對應的FIFO庫存記錄
+                            FIFOService.create_inventory_from_purchase(virtual_purchase)
+                            
+                            description += f" | 成本匯率: {cost_rate:.4f}"
+                            
+                        except (ValueError, TypeError) as e:
+                            flash(f"成本匯率格式錯誤: {e}", "danger")
+                            return redirect(url_for('cash_management'))
+                        except Exception as e:
+                            flash(f"創建庫存記錄失敗: {e}", "danger")
+                            return redirect(url_for('cash_management'))
+                    
+                    elif account.currency == "RMB" and not rmb_cost_rate:
+                        flash("RMB帳戶存款必須提供成本匯率！", "danger")
+                        return redirect(url_for('cash_management'))
+                    
+                    # 創建流水記錄
                     entry = LedgerEntry(
                         entry_type="DEPOSIT",
                         account_id=account.id,
@@ -3188,10 +3230,13 @@ def admin_update_cash_account():
                     )
                     db.session.add(entry)
                     db.session.commit()
-                    flash(
-                        f'已向 "{account.name}" 存入 {amount:,.2f}，並已記錄流水。',
-                        "success",
-                    )
+                    
+                    success_msg = f'已向 "{account.name}" 存入 {amount:,.2f}'
+                    if account.currency == "RMB" and rmb_cost_rate:
+                        success_msg += f'（成本匯率: {rmb_cost_rate}）'
+                    success_msg += '，並已記錄流水和庫存。'
+                    
+                    flash(success_msg, "success")
                     return redirect(url_for('cash_management'))
 
         elif action == "transfer_funds":

@@ -544,6 +544,63 @@ document.addEventListener('DOMContentLoaded', function () {
             accountIdInput.value = accountId;
         }
         
+        // 判斷是否為 RMB 帳戶，控制成本匯率欄位顯示
+        const isRmbAccount = accountName.includes('RMB') || accountName.includes('人民幣');
+        const rmbCostRateDiv = document.getElementById('rmbCostRateDiv');
+        const rmbCostRateInput = document.getElementById('rmbCostRate');
+        
+        if (rmbCostRateDiv && rmbCostRateInput) {
+            if (isRmbAccount) {
+                rmbCostRateDiv.style.display = 'block';
+                rmbCostRateInput.required = true;
+            } else {
+                rmbCostRateDiv.style.display = 'none';
+                rmbCostRateInput.required = false;
+                rmbCostRateInput.value = '';
+            }
+        }
+        
+        // 清空表單
+        const movementForm = document.getElementById('addMovementModal').querySelector('form');
+        if (movementForm) {
+            movementForm.reset();
+            // 重新設置帳戶ID
+            const accountIdInput = document.getElementById('movementAccountId');
+            if (accountIdInput) {
+                accountIdInput.value = accountId;
+            }
+        }
+        
+        // 設置操作類型變更監聽器
+        const depositRadio = document.getElementById('movementDeposit');
+        const withdrawRadio = document.getElementById('movementWithdraw');
+        
+        function updateCostRateVisibility() {
+            const isDeposit = depositRadio && depositRadio.checked;
+            const shouldShowCostRate = isRmbAccount && isDeposit;
+            
+            if (rmbCostRateDiv && rmbCostRateInput) {
+                if (shouldShowCostRate) {
+                    rmbCostRateDiv.style.display = 'block';
+                    rmbCostRateInput.required = true;
+                } else {
+                    rmbCostRateDiv.style.display = 'none';
+                    rmbCostRateInput.required = false;
+                    rmbCostRateInput.value = '';
+                }
+            }
+        }
+        
+        if (depositRadio) {
+            depositRadio.addEventListener('change', updateCostRateVisibility);
+        }
+        if (withdrawRadio) {
+            withdrawRadio.addEventListener('change', updateCostRateVisibility);
+        }
+        
+        // 初始化顯示狀態
+        updateCostRateVisibility();
+        
         // 顯示模態框
         const modal = new bootstrap.Modal(document.getElementById('addMovementModal'));
         modal.show();
