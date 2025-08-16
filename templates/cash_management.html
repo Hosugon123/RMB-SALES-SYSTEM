@@ -481,7 +481,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const row = '<tr>' +
                 '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : 'N/A') + '</small></td>' +
                 '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
-                '<td>' + (m.description || '') + '</td>' +
+                '<td>' + extractBaseDescriptionFromDescription(m.description || '') + '</td>' +
                 '<td>' + (m.operator || '') + '</td>' +
                 '<td>' + (m.payment_account || 'N/A') + '</td>' +
                 '<td>' + (m.deposit_account || 'N/A') + '</td>' +
@@ -496,6 +496,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         
         console.log('✅ 資金流水渲染完成');
+    }
+    
+    // 從描述中提取基本描述（去除備註和系統信息）
+    function extractBaseDescriptionFromDescription(description) {
+        if (!description) return '';
+        
+        // 如果描述包含 " | " 分隔符，只返回第一部分（基本操作描述）
+        const parts = description.split(' | ');
+        return parts[0] || '';
     }
     
     // 從描述中提取備註
@@ -583,15 +592,25 @@ document.addEventListener('DOMContentLoaded', function () {
         const rmbCostRateDiv = document.getElementById('rmbCostRateDiv');
         const rmbCostRateInput = document.getElementById('rmbCostRate');
         
+        console.log('🔧 RMB欄位元素檢查:', {
+            rmbCostRateDiv: !!rmbCostRateDiv,
+            rmbCostRateInput: !!rmbCostRateInput,
+            isRmbAccount: isRmbAccount
+        });
+        
         if (rmbCostRateDiv && rmbCostRateInput) {
             if (isRmbAccount) {
                 rmbCostRateDiv.style.display = 'block';
                 rmbCostRateInput.required = true;
+                console.log('✅ RMB匯率欄位已顯示');
             } else {
                 rmbCostRateDiv.style.display = 'none';
                 rmbCostRateInput.required = false;
                 rmbCostRateInput.value = '';
+                console.log('⏹️ RMB匯率欄位已隱藏');
             }
+        } else {
+            console.error('❌ RMB匯率欄位元素未找到');
         }
         
         // 清空表單
@@ -602,6 +621,13 @@ document.addEventListener('DOMContentLoaded', function () {
             const accountIdInput = document.getElementById('movementAccountId');
             if (accountIdInput) {
                 accountIdInput.value = accountId;
+            }
+            
+            // 默認選擇存款選項
+            const depositRadio = document.getElementById('movementDeposit');
+            if (depositRadio) {
+                depositRadio.checked = true;
+                console.log('✅ 默認選擇存款選項');
             }
         }
         
@@ -632,9 +658,12 @@ document.addEventListener('DOMContentLoaded', function () {
             withdrawRadio.addEventListener('change', updateCostRateVisibility);
         }
         
-        // 初始化顯示狀態
-        updateCostRateVisibility();
-        
+                // 初始化顯示狀態（在默認選擇存款後再檢查）
+        setTimeout(() => {
+            updateCostRateVisibility();
+            console.log('🔄 初始化RMB匯率欄位顯示狀態');
+        }, 100);
+
         // 顯示模態框
         const modal = new bootstrap.Modal(document.getElementById('addMovementModal'));
         modal.show();
