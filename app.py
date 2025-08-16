@@ -712,6 +712,60 @@ class FIFOService:
             return []
     
     @staticmethod
+    def reduce_rmb_inventory_fifo(amount, reason="外部提款"):
+        """按FIFO原則扣減RMB庫存"""
+        try:
+            remaining_to_reduce = amount
+            reduced_items = []
+            
+            # 按買入時間順序獲取有庫存的記錄（FIFO原則）
+            available_inventory = (
+                db.session.execute(
+                    db.select(FIFOInventory)
+                    .filter(FIFOInventory.remaining_rmb > 0)
+                    .order_by(FIFOInventory.purchase_date.asc())  # 最早的優先
+                )
+                .scalars()
+                .all()
+            )
+            
+            if not available_inventory:
+                raise ValueError("沒有可用的庫存")
+            
+            # 計算總可用庫存
+            total_available = sum(inv.remaining_rmb for inv in available_inventory)
+            if total_available < amount:
+                raise ValueError(f"庫存不足：需要 {amount:,.2f}，可用 {total_available:,.2f}")
+            
+            # 按FIFO順序扣減庫存
+            for inventory in available_inventory:
+                if remaining_to_reduce <= 0:
+                    break
+                
+                # 計算從這批庫存中扣減多少
+                reduce_from_this_batch = min(remaining_to_reduce, inventory.remaining_rmb)
+                
+                # 更新庫存剩餘數量
+                inventory.remaining_rmb -= reduce_from_this_batch
+                remaining_to_reduce -= reduce_from_this_batch
+                
+                reduced_items.append({
+                    'inventory_id': inventory.id,
+                    'reduced_amount': reduce_from_this_batch,
+                    'remaining_after': inventory.remaining_rmb
+                })
+                
+                print(f"📦 從庫存批次 {inventory.id} 扣減 {reduce_from_this_batch} RMB，剩餘 {inventory.remaining_rmb} RMB")
+            
+            db.session.flush()  # 確保更新被保存
+            print(f"✅ 成功按FIFO扣減庫存 {amount} RMB，原因：{reason}")
+            return reduced_items
+            
+        except Exception as e:
+            print(f"❌ 扣減庫存失敗: {e}")
+            raise
+    
+    @staticmethod
     def calculate_profit_for_sale(sales_record):
         """計算某筆銷售的利潤（使用FIFO方法）"""
         try:
@@ -3154,11 +3208,32 @@ def admin_update_cash_account():
                         flash(f"餘額不足，無法提出 {amount:,.2f}。當前可用餘額: {actual_balance:,.2f}", "danger")
                         return redirect(url_for('cash_management'))
                     else:
+                        # 處理提款
                         account.balance -= amount
+                        
                         # 將備註信息存儲在description中，用分隔符分離
                         description = "外部提款"
                         if note:
                             description += f" | {note}"
+                        
+                        # 如果是RMB帳戶，需要按FIFO原則扣減庫存
+                        if account.currency == "RMB":
+                            try:
+                                # 按FIFO順序扣減庫存
+                                FIFOService.reduce_rmb_inventory_fifo(amount, f"外部提款 - {account.name}")
+                                description += f" | 已按FIFO扣減庫存"
+                            except ValueError as e:
+                                # 庫存不足，回滾帳戶餘額變更
+                                account.balance += amount
+                                flash(f"庫存不足，無法提款: {e}", "danger")
+                                return redirect(url_for('cash_management'))
+                            except Exception as e:
+                                # 其他錯誤，回滾帳戶餘額變更
+                                account.balance += amount
+                                flash(f"扣減庫存失敗: {e}", "danger")
+                                return redirect(url_for('cash_management'))
+                        
+                        # 創建流水記錄
                         entry = LedgerEntry(
                             entry_type="WITHDRAW",
                             account_id=account.id,
@@ -3168,10 +3243,13 @@ def admin_update_cash_account():
                         )
                         db.session.add(entry)
                         db.session.commit()
-                        flash(
-                            f'已從 "{account.name}" 提出 {amount:,.2f}，並已記錄流水。',
-                            "success",
-                        )
+                        
+                        success_msg = f'已從 "{account.name}" 提出 {amount:,.2f}'
+                        if account.currency == "RMB":
+                            success_msg += '（已同步扣減庫存）'
+                        success_msg += '，並已記錄流水。'
+                        
+                        flash(success_msg, "success")
                         return redirect(url_for('cash_management'))
                 else:
                     # 處理存款
