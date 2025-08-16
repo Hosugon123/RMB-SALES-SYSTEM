@@ -2710,7 +2710,6 @@ def process_payment_api():
             amount=payment_amount,
             account_id=twd_account_id,
             operator_id=current_user.id,
-            note=note  # 添加備註欄位
         )
         db.session.add(ledger_entry)
 
@@ -3165,7 +3164,6 @@ def admin_update_cash_account():
                             account_id=account.id,
                             amount=amount,
                             description=description,
-                            note=note,  # 添加備註到 note 欄位
                             operator_id=current_user.id,
                         )
                         db.session.add(entry)
@@ -3186,7 +3184,6 @@ def admin_update_cash_account():
                         account_id=account.id,
                         amount=amount,
                         description=description,
-                        note=note,  # 添加備註到 note 欄位
                         operator_id=current_user.id,
                     )
                     db.session.add(entry)
