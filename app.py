@@ -489,10 +489,14 @@ class FIFOService:
                 # 計算已出帳數量（原始數量 - 剩餘數量）
                 sold_rmb = inv.rmb_amount - inv.remaining_rmb
                 
+                # 判斷是否為存款記錄（無渠道且無付款帳戶的虛擬買入記錄）
+                is_deposit_record = (inv.purchase_record.channel is None and 
+                                   inv.purchase_record.payment_account is None)
+                
                 inventory_summary.append({
                     'id': inv.id,
                     'purchase_date': inv.purchase_date.strftime('%Y-%m-%d'),
-                    'channel': inv.purchase_record.channel.name if inv.purchase_record.channel else 'N/A',
+                    'channel': '存款' if is_deposit_record else (inv.purchase_record.channel.name if inv.purchase_record.channel else 'N/A'),
                     'payment_account': inv.purchase_record.payment_account.name if inv.purchase_record.payment_account else 'N/A',
                     'deposit_account': inv.purchase_record.deposit_account.name if inv.purchase_record.deposit_account else 'N/A',
                     'original_rmb': inv.rmb_amount,
