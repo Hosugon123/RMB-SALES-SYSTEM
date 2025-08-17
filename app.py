@@ -1083,22 +1083,18 @@ def logout():
 def dashboard():
     """普通用戶的儀表板頁面"""
     try:
-        # --- 修正：直接使用實際帳戶餘額計算總資產，與其他頁面保持一致 ---
-        total_twd_cash = (
-            db.session.execute(
-                db.select(func.sum(CashAccount.balance)).filter(
-                    CashAccount.currency == "TWD"
-                )
-            ).scalar()
-            or 0.0
+        # --- 修正：直接使用實際帳戶餘額計算總資產，與現金管理頁面保持一致 ---
+        all_accounts_obj = (
+            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            .scalars()
+            .all()
         )
-        total_rmb_stock = (
-            db.session.execute(
-                db.select(func.sum(CashAccount.balance)).filter(
-                    CashAccount.currency == "RMB"
-                )
-            ).scalar()
-            or 0.0
+
+        total_twd_cash = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+        )
+        total_rmb_stock = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
         )
 
         # 計算總應收帳款
@@ -2285,7 +2281,7 @@ def buy_in():
             .all()
         )
 
-        # --- 修正：直接查詢實際的帳戶餘額 ---
+        # --- 修正：直接查詢實際的帳戶餘額並序列化 ---
         # 按持有人分組帳戶
         owner_twd_accounts_grouped = {}
         owner_rmb_accounts_grouped = {}
@@ -2295,9 +2291,27 @@ def buy_in():
             rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
             
             if twd_accounts:
-                owner_twd_accounts_grouped[holder.name] = twd_accounts
+                # 轉換為可序列化的格式
+                owner_twd_accounts_grouped[holder.name] = [
+                    {
+                        "id": acc.id,
+                        "name": acc.name,
+                        "currency": acc.currency,
+                        "balance": float(acc.balance)
+                    }
+                    for acc in twd_accounts
+                ]
             if rmb_accounts:
-                owner_rmb_accounts_grouped[holder.name] = rmb_accounts
+                # 轉換為可序列化的格式
+                owner_rmb_accounts_grouped[holder.name] = [
+                    {
+                        "id": acc.id,
+                        "name": acc.name,
+                        "currency": acc.currency,
+                        "balance": float(acc.balance)
+                    }
+                    for acc in rmb_accounts
+                ]
 
         recent_purchases = (
             db.session.execute(
