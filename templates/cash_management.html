@@ -783,15 +783,15 @@ document.addEventListener('DOMContentLoaded', function () {
         
         try {
             // 發送銷帳請求
-            const response = await fetch('/api/process_payment', {
+            const response = await fetch('/api/settlement', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     customer_id: parseInt(customerId),
-                    payment_amount: paymentAmount,
-                    twd_account_id: parseInt(twdAccountId),
+                    amount: paymentAmount,
+                    account_id: parseInt(twdAccountId),
                     note: note || null
                 })
             });
