@@ -3530,6 +3530,110 @@ def api_calculate_profit():
         return jsonify({"status": "error", "message": "伺服器內部錯誤，計算失敗。"}), 500
 
 
+@app.route("/api/clear-all-data", methods=["POST"])
+@login_required
+def api_clear_all_data():
+    """手動清空所有測試數據 - 僅供公測使用"""
+    # 安全檢查：僅管理員可使用
+    if not current_user.is_admin:
+        return jsonify({"status": "error", "message": "權限不足，僅管理員可執行此操作。"}), 403
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
+    
+    # 雙重確認機制
+    confirmation = data.get("confirmation")
+    if confirmation != "CONFIRM_CLEAR_ALL_DATA":
+        return jsonify({"status": "error", "message": "確認碼錯誤，操作已取消。"}), 400
+    
+    try:
+        print(f"🧹 管理員 {current_user.username} 開始執行數據清空操作...")
+        
+        # 1. 清空買入訂單 (PurchaseRecord)
+        purchase_count = db.session.execute(db.select(func.count(PurchaseRecord.id))).scalar()
+        db.session.execute(db.delete(PurchaseRecord))
+        print(f"✅ 已清空 {purchase_count} 筆買入訂單")
+        
+        # 2. 清空售出訂單 (SalesRecord)
+        sales_count = db.session.execute(db.select(func.count(SalesRecord.id))).scalar()
+        db.session.execute(db.delete(SalesRecord))
+        print(f"✅ 已清空 {sales_count} 筆售出訂單")
+        
+        # 3. 清空所有帳戶金額 (將餘額設為0，但保留帳戶結構)
+        accounts = db.session.execute(db.select(CashAccount)).scalars().all()
+        account_count = 0
+        for account in accounts:
+            if account.balance != 0:
+                print(f"  📊 清空帳戶: {account.name} ({account.currency}) 餘額: {account.balance} -> 0")
+                account.balance = 0
+                account_count += 1
+        print(f"✅ 已清空 {account_count} 個帳戶的餘額")
+        
+        # 4. 清空現金流水記錄 (LedgerEntry, CashLog)
+        ledger_count = db.session.execute(db.select(func.count(LedgerEntry.id))).scalar()
+        db.session.execute(db.delete(LedgerEntry))
+        print(f"✅ 已清空 {ledger_count} 筆帳本記錄")
+        
+        cash_log_count = db.session.execute(db.select(func.count(CashLog.id))).scalar()
+        db.session.execute(db.delete(CashLog))
+        print(f"✅ 已清空 {cash_log_count} 筆現金日誌")
+        
+        # 5. 清空應收帳款 (將客戶的應收帳款設為0，但保留客戶記錄)
+        customers = db.session.execute(db.select(Customer)).scalars().all()
+        receivable_count = 0
+        for customer in customers:
+            if customer.total_receivables_twd > 0:
+                print(f"  💰 清空客戶應收: {customer.name} 應收款: {customer.total_receivables_twd} -> 0")
+                customer.total_receivables_twd = 0
+                receivable_count += 1
+        print(f"✅ 已清空 {receivable_count} 位客戶的應收帳款")
+        
+        # 6. 清空FIFO庫存記錄 (如果存在)
+        try:
+            # 檢查是否有 FIFOInventory 表
+            fifo_count = db.session.execute(db.select(func.count()).select_from(db.text('fifo_inventory'))).scalar()
+            db.session.execute(db.text('DELETE FROM fifo_inventory'))
+            print(f"✅ 已清空 {fifo_count} 筆FIFO庫存記錄")
+        except Exception as fifo_error:
+            print(f"⚠️ FIFO庫存表可能不存在或已為空: {fifo_error}")
+        
+        # 7. 清空刷卡記錄 (如果存在)
+        try:
+            card_purchase_count = db.session.execute(db.select(func.count(CardPurchase.id))).scalar()
+            db.session.execute(db.delete(CardPurchase))
+            print(f"✅ 已清空 {card_purchase_count} 筆刷卡記錄")
+        except Exception as card_error:
+            print(f"⚠️ 刷卡記錄表可能不存在: {card_error}")
+        
+        # 提交所有更改
+        db.session.commit()
+        
+        total_message = f"數據清空完成！清空了 {purchase_count} 筆買入、{sales_count} 筆售出、{account_count} 個帳戶餘額、{ledger_count} 筆帳本記錄、{cash_log_count} 筆現金日誌、{receivable_count} 位客戶應收帳款。"
+        print(f"🎉 {total_message}")
+        
+        return jsonify({
+            "status": "success", 
+            "message": total_message,
+            "details": {
+                "purchases_cleared": purchase_count,
+                "sales_cleared": sales_count,
+                "accounts_cleared": account_count,
+                "ledger_entries_cleared": ledger_count,
+                "cash_logs_cleared": cash_log_count,
+                "receivables_cleared": receivable_count
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        error_msg = f"數據清空失敗: {e}"
+        print(f"❌ {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": error_msg}), 500
+
+
 @app.route("/api/settlement", methods=["POST"])
 @login_required
 def api_settlement():

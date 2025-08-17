@@ -189,6 +189,21 @@
                         </a>
                     </div>
                 </div>
+                
+                <!-- 系統管理功能 -->
+                <div class="mt-3 pt-3 border-top">
+                    <h6 class="text-muted mb-2">
+                        <i class="bi bi-gear me-1"></i>系統管理
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <button id="clearAllDataBtn" class="btn btn-outline-danger btn-sm quick-action-btn">
+                            <i class="bi bi-trash3 me-1"></i>清空測試數據
+                        </button>
+                    </div>
+                    <small class="text-muted d-block mt-1">
+                        <i class="bi bi-exclamation-triangle me-1"></i>僅供公測使用，將清空所有交易和帳務數據
+                    </small>
+                </div>
             </div>
         </div>
     </div>
@@ -197,6 +212,7 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     'use strict';
@@ -256,6 +272,153 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     new Chart(inventoryChartCanvas, { type: 'line', data: inventoryChartData, options: inventoryChartOptions });
+    
+    // 清空測試數據功能
+    const clearAllDataBtn = document.getElementById('clearAllDataBtn');
+    if (clearAllDataBtn) {
+        clearAllDataBtn.addEventListener('click', async function() {
+            console.log('🧹 點擊清空測試數據按鈕');
+            
+            // 第一層確認
+            const firstConfirm = await Swal.fire({
+                title: '⚠️ 危險操作警告',
+                html: `
+                    <div class="text-start">
+                        <p class="mb-3"><strong>即將清空以下所有數據：</strong></p>
+                        <ul class="text-muted">
+                            <li>所有買入訂單記錄</li>
+                            <li>所有售出訂單記錄</li>
+                            <li>所有帳戶餘額（設為0）</li>
+                            <li>所有現金流水記錄</li>
+                            <li>所有應收帳款</li>
+                            <li>所有FIFO庫存記錄</li>
+                            <li>所有刷卡記錄</li>
+                        </ul>
+                        <div class="alert alert-danger mt-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>此操作不可逆！</strong>所有交易數據將永久刪除。
+                        </div>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '繼續操作',
+                cancelButtonText: '取消',
+                width: '600px'
+            });
+            
+            if (!firstConfirm.isConfirmed) {
+                return;
+            }
+            
+            // 第二層確認 - 需要輸入確認碼
+            const { value: confirmationCode } = await Swal.fire({
+                title: '最終確認',
+                html: `
+                    <div class="text-start">
+                        <p class="mb-3">請輸入確認碼以完成清空操作：</p>
+                        <div class="alert alert-info">
+                            <strong>確認碼：</strong> <code>CLEAR_ALL_DATA</code>
+                        </div>
+                        <p class="text-muted small">
+                            <i class="bi bi-info-circle me-1"></i>
+                            此操作僅適用於公測階段，正式環境中請勿使用。
+                        </p>
+                    </div>
+                `,
+                input: 'text',
+                inputPlaceholder: '請輸入確認碼',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '確認清空',
+                cancelButtonText: '取消',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return '請輸入確認碼！';
+                    }
+                    if (value !== 'CLEAR_ALL_DATA') {
+                        return '確認碼錯誤！';
+                    }
+                },
+                width: '500px'
+            });
+            
+            if (!confirmationCode) {
+                return;
+            }
+            
+            try {
+                // 顯示處理中
+                Swal.fire({
+                    title: '正在清空數據...',
+                    html: '請稍候，正在執行清空操作',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+                
+                // 發送清空請求
+                const response = await fetch('/api/clear-all-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        confirmation: 'CONFIRM_CLEAR_ALL_DATA'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    await Swal.fire({
+                        title: '✅ 清空完成',
+                        html: `
+                            <div class="text-start">
+                                <p class="mb-3">${result.message}</p>
+                                <div class="alert alert-success">
+                                    <strong>詳細統計：</strong>
+                                    <ul class="mb-0 mt-2">
+                                        <li>買入記錄：${result.details.purchases_cleared} 筆</li>
+                                        <li>售出記錄：${result.details.sales_cleared} 筆</li>
+                                        <li>帳戶餘額：${result.details.accounts_cleared} 個</li>
+                                        <li>流水記錄：${result.details.ledger_entries_cleared} 筆</li>
+                                        <li>現金日誌：${result.details.cash_logs_cleared} 筆</li>
+                                        <li>應收帳款：${result.details.receivables_cleared} 位客戶</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        `,
+                        icon: 'success',
+                        confirmButtonText: '刷新頁面',
+                        width: '500px'
+                    });
+                    
+                    // 刷新頁面以顯示更新後的數據
+                    window.location.reload();
+                } else {
+                    Swal.fire({
+                        title: '❌ 清空失敗',
+                        text: result.message || '操作失敗，請稍後重試',
+                        icon: 'error',
+                        confirmButtonText: '確定'
+                    });
+                }
+            } catch (error) {
+                console.error('❌ 清空數據請求失敗:', error);
+                Swal.fire({
+                    title: '❌ 網路錯誤',
+                    text: '請求失敗，請檢查網路連接後重試',
+                    icon: 'error',
+                    confirmButtonText: '確定'
+                });
+            }
+        });
+    }
 });
 </script>
 {% endblock %}
