@@ -1097,13 +1097,7 @@ def dashboard():
             acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
         )
         
-        # 調試輸出
-        print(f"🔍 儀表板計算結果:")
-        print(f"  - 所有帳戶數量: {len(all_accounts_obj)}")
-        for acc in all_accounts_obj:
-            print(f"  - {acc.name} ({acc.currency}): {acc.balance}")
-        print(f"  - 總台幣: {total_twd_cash}")
-        print(f"  - 總人民幣: {total_rmb_stock}")
+
 
         # 計算總應收帳款
         customers_with_receivables = (
