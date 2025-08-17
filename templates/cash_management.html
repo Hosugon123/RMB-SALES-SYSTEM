@@ -207,8 +207,24 @@ document.addEventListener('DOMContentLoaded', function () {
     
             console.log('📊 數據檢查:', { holders: holders, accountsByHolder: accountsByHolder, movements: movements });
         
-        // 將帳戶數據保存到全局變量供模態框使用
-        window.ownerAccountsData = data.owner_accounts || [];
+        // 將帳戶數據轉換為平面數組供模態框使用
+        window.ownerAccountsData = [];
+        
+        // 從 accountsByHolder 結構中提取所有帳戶
+        Object.keys(accountsByHolder).forEach(holderId => {
+            const holderData = accountsByHolder[holderId];
+            if (holderData && holderData.accounts) {
+                holderData.accounts.forEach(account => {
+                    window.ownerAccountsData.push({
+                        id: account.id,
+                        name: account.name,
+                        currency: account.currency,
+                        holder_id: parseInt(holderId)
+                    });
+                });
+            }
+        });
+        
         console.log('🔧 保存帳戶數據到全局變量:', window.ownerAccountsData);
         console.log('🔍 詳細檢查每個帳戶:', window.ownerAccountsData.map(acc => ({
             id: acc.id,
