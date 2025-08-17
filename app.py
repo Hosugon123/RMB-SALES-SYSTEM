@@ -1881,34 +1881,32 @@ def cash_management_operator():
         # 按日期排序，最新的在前面
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
 
-        # --- 關鍵修正：使用交易紀錄的累積餘額作為總資產，而不是帳戶餘額 ---
-        # 計算每筆交易後的累積餘額
-        running_twd_balance = 0
-        running_rmb_balance = 0
+        # --- 修正：使用實際帳戶餘額作為總資產，而不是流水計算的累積餘額 ---
+        # 計算當前實際的帳戶總餘額
+        actual_total_twd = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+        )
+        actual_total_rmb = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+        )
         
-        # 從最早的交易開始，向後計算累積餘額
-        for movement in reversed(unified_stream):
-            # 計算此筆交易後的餘額
-            running_twd_balance += (movement.get('twd_change', 0) or 0)
-            running_rmb_balance += (movement.get('rmb_change', 0) or 0)
-            
-            # 添加累積餘額到交易記錄中
+        # 使用實際餘額作為總資產
+        total_twd = actual_total_twd
+        total_rmb = actual_total_rmb
+        
+        # 計算每筆交易後的累積餘額（用於流水顯示，從實際餘額開始倒推）
+        running_twd_balance = actual_total_twd
+        running_rmb_balance = actual_total_rmb
+        
+        # 從最新的交易開始，向前倒推每筆交易前的餘額
+        for movement in unified_stream:
+            # 記錄此筆交易後的餘額（當前累積餘額）
             movement['running_twd_balance'] = running_twd_balance
             movement['running_rmb_balance'] = running_rmb_balance
-        
-        # 使用最新一筆交易的累積餘額作為當前總資產
-        if unified_stream:
-            latest_transaction = unified_stream[0]  # 最新的交易（日期最晚）
-            total_twd = latest_transaction.get('running_twd_balance', 0)
-            total_rmb = latest_transaction.get('running_rmb_balance', 0)
-        else:
-            # 如果沒有交易紀錄，則使用帳戶餘額
-            total_twd = sum(
-                acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
-            )
-            total_rmb = sum(
-                acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
-            )
+            
+            # 計算此筆交易前的餘額（為下一筆交易準備）
+            running_twd_balance -= (movement.get('twd_change', 0) or 0)
+            running_rmb_balance -= (movement.get('rmb_change', 0) or 0)
 
         # --- 修正：使用實際的資料庫餘額，不重新計算 ---
         accounts_by_holder = {}
