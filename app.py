@@ -1083,112 +1083,23 @@ def logout():
 def dashboard():
     """普通用戶的儀表板頁面"""
     try:
-        # --- 關鍵修正：使用交易紀錄的累積餘額來計算總資產，與現金管理頁面保持一致 ---
-        # 獲取所有交易記錄來計算累積餘額
-        purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
-        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
-        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
-        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
-
-        # 構建統一的交易流
-        unified_stream = []
-        
-        # 處理買入記錄
-        for p in purchases:
-            if p.payment_account and p.deposit_account:
-                unified_stream.append({
-                    "type": "買入",
-                    "date": p.purchase_date.isoformat(),
-                    "twd_change": -p.twd_cost,
-                    "rmb_change": p.rmb_amount,
-                })
-        
-        # 處理銷售記錄
-        for s in sales:
-            if s.customer:
-                unified_stream.append({
-                    "type": "售出",
-                    "date": s.created_at.isoformat(),
-                    "twd_change": 0,  # 售出不直接增加現金，而是增加應收帳款
-                    "rmb_change": -s.rmb_amount,
-                })
-        
-        # 處理其他記帳記錄
-        for entry in misc_entries:
-            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
-                twd_change = 0
-                rmb_change = 0
-                
-                if entry.account and entry.account.currency == "TWD":
-                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
-                        twd_change = entry.amount
-                    else:
-                        twd_change = -entry.amount
-                elif entry.account and entry.account.currency == "RMB":
-                    rmb_change = (
-                        entry.amount
-                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
-                        else -entry.amount
-                    )
-                
-                unified_stream.append({
-                    "type": entry.entry_type,
-                    "date": entry.entry_date.isoformat(),
-                    "twd_change": twd_change,
-                    "rmb_change": rmb_change,
-                })
-        
-        # 處理現金日誌記錄
-        for log in cash_logs:
-            if log.type != "BUY_IN":
-                twd_change = 0
-                rmb_change = 0
-                
-                if log.type == "CARD_PURCHASE":
-                    twd_change = -log.amount
-                elif log.type == "SETTLEMENT":
-                    twd_change = log.amount
-                
-                unified_stream.append({
-                    "type": log.type,
-                    "date": log.time.isoformat(),
-                    "twd_change": twd_change,
-                    "rmb_change": rmb_change,
-                })
-        
-        # 按日期排序並計算累積餘額
-        unified_stream.sort(key=lambda x: x["date"], reverse=True)
-        
-        # 計算總資產（使用交易紀錄的累積餘額）
-        if unified_stream:
-            # 從最早的交易開始，向後計算累積餘額
-            running_twd_balance = 0
-            running_rmb_balance = 0
-            
-            for transaction in reversed(unified_stream):
-                running_twd_balance += (transaction.get('twd_change', 0) or 0)
-                running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
-            
-            total_twd_cash = running_twd_balance
-            total_rmb_stock = running_rmb_balance
-        else:
-            # 如果沒有交易紀錄，則使用帳戶餘額
-            total_twd_cash = (
-                db.session.execute(
-                    db.select(func.sum(CashAccount.balance)).filter(
-                        CashAccount.currency == "TWD"
-                    )
-                ).scalar()
-                or 0.0
-            )
-            total_rmb_stock = (
-                db.session.execute(
-                    db.select(func.sum(CashAccount.balance)).filter(
-                        CashAccount.currency == "RMB"
-                    )
-                ).scalar()
-                or 0.0
-            )
+        # --- 修正：直接使用實際帳戶餘額計算總資產，與其他頁面保持一致 ---
+        total_twd_cash = (
+            db.session.execute(
+                db.select(func.sum(CashAccount.balance)).filter(
+                    CashAccount.currency == "TWD"
+                )
+            ).scalar()
+            or 0.0
+        )
+        total_rmb_stock = (
+            db.session.execute(
+                db.select(func.sum(CashAccount.balance)).filter(
+                    CashAccount.currency == "RMB"
+                )
+            ).scalar()
+            or 0.0
+        )
 
         # 計算總應收帳款
         customers_with_receivables = (
