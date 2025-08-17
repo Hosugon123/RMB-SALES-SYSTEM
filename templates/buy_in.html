@@ -182,11 +182,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // 【核心修正】填充帶有分組的下拉選單
     function populateGroupedSelect(selectElement, groupedData, currency) {
         selectElement.innerHTML = `<option value="" disabled selected>--- 請選擇${currency}帳戶 ---</option>`;
-        groupedData.forEach(group => {
+        
+        // groupedData 現在是一個對象，鍵是持有人名稱，值是帳戶數組
+        Object.keys(groupedData).forEach(holderName => {
+            const accounts = groupedData[holderName];
             const optgroup = document.createElement('optgroup');
-            optgroup.label = group.holder_name;
-            group.accounts.forEach(acc => {
-                const optionText = `${acc.name} (餘額: ${acc.balance.toLocaleString()})`;
+            optgroup.label = holderName;
+            
+            accounts.forEach(acc => {
+                const optionText = `${acc.name} (餘額: ${acc.currency} ${acc.balance.toLocaleString()})`;
                 optgroup.appendChild(new Option(optionText, acc.id));
             });
             selectElement.appendChild(optgroup);
