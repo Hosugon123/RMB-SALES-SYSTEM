@@ -2285,8 +2285,19 @@ def buy_in():
             .all()
         )
 
-        # --- 關鍵修正：使用準確的帳戶餘額計算函數 ---
-        owner_twd_accounts_grouped, owner_rmb_accounts_grouped = get_accurate_account_balances()
+        # --- 修正：直接查詢實際的帳戶餘額 ---
+        # 按持有人分組帳戶
+        owner_twd_accounts_grouped = {}
+        owner_rmb_accounts_grouped = {}
+        
+        for holder in holders_with_accounts:
+            twd_accounts = [acc for acc in holder.cash_accounts if acc.currency == "TWD" and acc.is_active]
+            rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
+            
+            if twd_accounts:
+                owner_twd_accounts_grouped[holder.name] = twd_accounts
+            if rmb_accounts:
+                owner_rmb_accounts_grouped[holder.name] = rmb_accounts
 
         recent_purchases = (
             db.session.execute(
@@ -4729,29 +4740,13 @@ def get_cash_management_totals():
                     "rmb_change": rmb_change,
                 })
         
-        # 按日期排序並計算累積餘額
-        unified_stream.sort(key=lambda x: x["date"], reverse=True)
-        
-        # 計算總資產（使用交易紀錄的累積餘額）
-        if unified_stream:
-            # 從最早的交易開始，向後計算累積餘額
-            running_twd_balance = 0
-            running_rmb_balance = 0
-            
-            for transaction in reversed(unified_stream):
-                running_twd_balance += (transaction.get('twd_change', 0) or 0)
-                running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
-            
-            total_twd = running_twd_balance
-            total_rmb = running_rmb_balance
-        else:
-            # 如果沒有交易紀錄，則使用帳戶餘額
-            total_twd = sum(
-                acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
-            )
-            total_rmb = sum(
-                acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
-            )
+        # --- 修正：直接使用實際帳戶餘額，與其他頁面保持一致 ---
+        total_twd = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+        )
+        total_rmb = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+        )
 
         # 查詢應收帳款數據
         customers_with_receivables = (
