@@ -3910,6 +3910,9 @@ def sales_action():
             order_date_str = request.form.get("order_date")
             twd = rmb * rate
 
+            # 更新客戶應收帳款
+            target_customer.total_receivables_twd += twd
+
             new_sale = SalesRecord(
                 customer_id=target_customer.id,
                 rmb_amount=rmb,
@@ -3919,7 +3922,15 @@ def sales_action():
                 status="PENDING",  # 假設初始狀態為 PENDING
             )
             db.session.add(new_sale)
-            db.session.commit()
+            
+            # 分配FIFO庫存
+            try:
+                db.session.flush()  # 獲取 new_sale.id
+                FIFOService.allocate_inventory_for_sale(new_sale)
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({"status": "error", "message": f"庫存分配失敗: {e}"}), 500
 
             transaction_data = {
                 "id": new_sale.id,
@@ -3942,22 +3953,33 @@ def sales_action():
             if not sale_to_delete:
                 return jsonify({"status": "error", "message": "找不到該訂單"}), 404
 
-            # --- 關鍵修正：使用正確的取消邏輯，而不是直接刪除 ---
-            # 調用FIFO服務來正確回滾銷售分配和應收帳款
+            # --- 關鍵修正：正確回滾銷售分配和應收帳款 ---
             try:
-                success = FIFOService.reverse_sale_allocation(sale_to_delete.id)
-                if success:
-                    # 如果FIFO回滾成功，再刪除銷售記錄
-                    db.session.delete(sale_to_delete)
-                    db.session.commit()
-                    return jsonify(
-                        {"status": "success", "message": "訂單已成功取消，應收帳款已更新。", "deleted_id": tx_id}
-                    )
-                else:
-                    db.session.rollback()
-                    return jsonify(
-                        {"status": "error", "message": "取消訂單失敗，請檢查庫存狀態。"}
-                    ), 400
+                # 1. 回滾客戶應收帳款
+                customer = sale_to_delete.customer
+                if customer:
+                    customer.total_receivables_twd -= sale_to_delete.twd_amount
+                
+                # 2. 回滾FIFO庫存分配
+                allocations = db.session.execute(
+                    db.select(FIFOSalesAllocation).filter_by(sales_record_id=sale_to_delete.id)
+                ).scalars().all()
+                
+                for allocation in allocations:
+                    # 恢復庫存
+                    inventory = allocation.fifo_inventory
+                    inventory.remaining_rmb += allocation.allocated_rmb
+                    
+                    # 刪除分配記錄
+                    db.session.delete(allocation)
+                
+                # 3. 刪除銷售記錄
+                db.session.delete(sale_to_delete)
+                db.session.commit()
+                
+                return jsonify(
+                    {"status": "success", "message": "訂單已成功取消，應收帳款和庫存已回滾。", "deleted_id": tx_id}
+                )
             except Exception as e:
                 db.session.rollback()
                 return jsonify(
