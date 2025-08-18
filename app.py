@@ -1630,8 +1630,17 @@ def cash_management_operator():
                     accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
 
         purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
-        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
-        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        sales = db.session.execute(
+            db.select(SalesRecord)
+            .options(
+                db.selectinload(SalesRecord.customer),
+                db.selectinload(SalesRecord.rmb_account)
+            )
+        ).scalars().all()
+        misc_entries = db.session.execute(
+            db.select(LedgerEntry)
+            .options(db.selectinload(LedgerEntry.account))
+        ).scalars().all()
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         unified_stream = []
@@ -1896,8 +1905,17 @@ def cash_management():
                     accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
 
         purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
-        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
-        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        sales = db.session.execute(
+            db.select(SalesRecord)
+            .options(
+                db.selectinload(SalesRecord.customer),
+                db.selectinload(SalesRecord.rmb_account)
+            )
+        ).scalars().all()
+        misc_entries = db.session.execute(
+            db.select(LedgerEntry)
+            .options(db.selectinload(LedgerEntry.account))
+        ).scalars().all()
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         unified_stream = []
@@ -4838,8 +4856,17 @@ def get_cash_management_totals():
 
         # 獲取所有交易記錄來計算累積餘額
         purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
-        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
-        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        sales = db.session.execute(
+            db.select(SalesRecord)
+            .options(
+                db.selectinload(SalesRecord.customer),
+                db.selectinload(SalesRecord.rmb_account)
+            )
+        ).scalars().all()
+        misc_entries = db.session.execute(
+            db.select(LedgerEntry)
+            .options(db.selectinload(LedgerEntry.account))
+        ).scalars().all()
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         # 構建統一的交易流
@@ -5224,8 +5251,17 @@ def get_account_balances_for_dropdowns():
 
         # 獲取所有交易記錄
         purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
-        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
-        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        sales = db.session.execute(
+            db.select(SalesRecord)
+            .options(
+                db.selectinload(SalesRecord.customer),
+                db.selectinload(SalesRecord.rmb_account)
+            )
+        ).scalars().all()
+        misc_entries = db.session.execute(
+            db.select(LedgerEntry)
+            .options(db.selectinload(LedgerEntry.account))
+        ).scalars().all()
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         # 構建統一的交易流
@@ -5428,8 +5464,17 @@ def get_accurate_account_balances():
 
         # 獲取所有交易記錄
         purchases = db.session.execute(db.select(PurchaseRecord)).scalars().all()
-        sales = db.session.execute(db.select(SalesRecord)).scalars().all()
-        misc_entries = db.session.execute(db.select(LedgerEntry)).scalars().all()
+        sales = db.session.execute(
+            db.select(SalesRecord)
+            .options(
+                db.selectinload(SalesRecord.customer),
+                db.selectinload(SalesRecord.rmb_account)
+            )
+        ).scalars().all()
+        misc_entries = db.session.execute(
+            db.select(LedgerEntry)
+            .options(db.selectinload(LedgerEntry.account))
+        ).scalars().all()
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         # 構建統一的交易流，使用帳戶ID而不是名稱
