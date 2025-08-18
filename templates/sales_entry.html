@@ -26,11 +26,16 @@
                             <div class="col-md-4">
                                 <input type="text" id="customer-name-manual" name="customer_name_manual" class="form-control" placeholder="輸入客戶名稱">
                             </div>
-                            <!-- 新增到常用客戶按鈕 -->
+                            <!-- 管理常用客戶按鈕組 -->
                             <div class="col-md-2">
-                                <button type="button" class="btn btn-outline-primary" id="add-to-frequent-btn" title="新增到常用客戶">
-                                    <i class="bi bi-plus-circle"></i>
-                                </button>
+                                <div class="btn-group w-100">
+                                    <button type="button" class="btn btn-outline-primary" id="add-to-frequent-btn" title="新增到常用客戶">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="manage-customers-btn" title="管理常用客戶" data-bs-toggle="modal" data-bs-target="#customersManageModal">
+                                        <i class="bi bi-gear"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <small class="text-muted">您可以從下拉選單選擇常用客戶，或直接輸入新客戶名稱</small>
@@ -573,6 +578,160 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
     
+    // 管理常用客戶按鈕事件
+    document.getElementById('manage-customers-btn').addEventListener('click', function() {
+        loadCustomersManagement();
+    });
+
+    // 載入客戶管理數據
+    function loadCustomersManagement() {
+        fetch('/api/customers/manage')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    displayCustomersManagement(data.customers);
+                } else {
+                    console.error('載入客戶管理數據失敗:', data.message);
+                    Swal.fire('錯誤', '載入客戶數據失敗: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('網路錯誤:', error);
+                Swal.fire('錯誤', '網路錯誤，請稍後再試', 'error');
+            });
+    }
+
+    // 顯示客戶管理數據
+    function displayCustomersManagement(customers) {
+        const tableBody = document.getElementById('customersManageTable');
+        const emptyState = document.getElementById('customersManageEmpty');
+        
+        if (!customers || customers.length === 0) {
+            if (tableBody) {
+                tableBody.innerHTML = '';
+            }
+            if (emptyState) {
+                emptyState.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (emptyState) {
+            emptyState.style.display = 'none';
+        }
+        
+        if (tableBody) {
+            let html = '';
+            customers.forEach(function(customer) {
+                const createdAt = new Date(customer.created_at).toLocaleDateString('zh-TW');
+                const statusBadge = customer.is_active 
+                    ? '<span class="badge bg-success">活躍</span>'
+                    : '<span class="badge bg-secondary">已停用</span>';
+                
+                html += `
+                    <tr>
+                        <td>${customer.name}</td>
+                        <td>${createdAt}</td>
+                        <td>${statusBadge}</td>
+                        <td class="text-center">
+                            ${customer.is_active ? 
+                                `<button class="btn btn-danger btn-sm delete-customer-btn" 
+                                    data-customer-id="${customer.id}" 
+                                    data-customer-name="${customer.name}"
+                                    title="刪除客戶">
+                                    <i class="bi bi-trash"></i> 刪除
+                                </button>` : 
+                                `<button class="btn btn-success btn-sm restore-customer-btn" 
+                                    data-customer-id="${customer.id}" 
+                                    data-customer-name="${customer.name}"
+                                    title="恢復客戶">
+                                    <i class="bi bi-arrow-clockwise"></i> 恢復
+                                </button>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            });
+            tableBody.innerHTML = html;
+        }
+    }
+
+    // 刪除客戶功能
+    function deleteCustomer(customerId, customerName) {
+        Swal.fire({
+            title: '確認刪除',
+            text: `確定要刪除客戶「${customerName}」嗎？這將會將客戶設為停用狀態。`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '確定刪除',
+            cancelButtonText: '取消'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch(`/api/customers/${customerId}/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        Swal.fire('成功', data.message, 'success');
+                        loadCustomersManagement(); // 重新載入列表
+                        loadCustomersDropdown(); // 更新下拉選單
+                    } else {
+                        Swal.fire('錯誤', data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('刪除客戶失敗:', error);
+                    Swal.fire('錯誤', '網路錯誤，請稍後再試', 'error');
+                });
+            }
+        });
+    }
+
+    // 恢復客戶功能
+    function restoreCustomer(customerId, customerName) {
+        fetch(`/api/customers/${customerId}/restore`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                Swal.fire('成功', data.message, 'success');
+                loadCustomersManagement(); // 重新載入列表
+                loadCustomersDropdown(); // 更新下拉選單
+            } else {
+                Swal.fire('錯誤', data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('恢復客戶失敗:', error);
+            Swal.fire('錯誤', '網路錯誤，請稍後再試', 'error');
+        });
+    }
+
+    // 為客戶管理表格添加事件委託
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.delete-customer-btn')) {
+            const btn = e.target.closest('.delete-customer-btn');
+            const customerId = btn.dataset.customerId;
+            const customerName = btn.dataset.customerName;
+            deleteCustomer(customerId, customerName);
+        } else if (e.target.closest('.restore-customer-btn')) {
+            const btn = e.target.closest('.restore-customer-btn');
+            const customerId = btn.dataset.customerId;
+            const customerName = btn.dataset.customerName;
+            restoreCustomer(customerId, customerName);
+        }
+    });
+
     // 取消銷售記錄事件監聽器
     document.addEventListener('click', function(e) {
         if (e.target.closest('.cancel-sale-btn')) {
@@ -587,4 +746,44 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+
+<!-- 管理常用客戶模態框 -->
+<div class="modal fade" id="customersManageModal" tabindex="-1" aria-labelledby="customersManageTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="customersManageTitle">
+                    <i class="bi bi-people me-2"></i>管理常用客戶
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>客戶名稱</th>
+                                <th>創建時間</th>
+                                <th>狀態</th>
+                                <th class="text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customersManageTable">
+                            <!-- JavaScript 將動態填充這裡 -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="customersManageEmpty" class="text-center p-4 text-muted" style="display: none;">
+                    <i class="bi bi-inbox display-6"></i>
+                    <p class="mt-2">尚無常用客戶</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

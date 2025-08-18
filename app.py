@@ -3752,6 +3752,105 @@ def api_settlement():
         return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
 
 
+@app.route("/api/customers/manage")
+@login_required
+def api_customers_manage():
+    """API端點：獲取所有客戶用於管理"""
+    try:
+        # 獲取所有客戶（包括已停用的）
+        customers = (
+            db.session.execute(
+                db.select(Customer)
+                .order_by(Customer.is_active.desc(), Customer.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        customers_data = []
+        for customer in customers:
+            customers_data.append({
+                'id': customer.id,
+                'name': customer.name,
+                'is_active': customer.is_active,
+                'created_at': customer.created_at.isoformat() if customer.created_at else None,
+                'total_receivables_twd': customer.total_receivables_twd
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'customers': customers_data
+        })
+        
+    except Exception as e:
+        print(f"❌ 獲取客戶管理數據失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'獲取客戶數據失敗: {e}'
+        }), 500
+
+
+@app.route("/api/customers/<int:customer_id>/delete", methods=["POST"])
+@login_required
+def api_customer_delete(customer_id):
+    """API端點：刪除（停用）客戶"""
+    try:
+        customer = db.session.get(Customer, customer_id)
+        if not customer:
+            return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 404
+        
+        # 檢查客戶是否還有應收帳款
+        if customer.total_receivables_twd > 0:
+            return jsonify({
+                "status": "error", 
+                "message": f"無法刪除客戶「{customer.name}」，該客戶還有 NT$ {customer.total_receivables_twd:,.2f} 的應收帳款。"
+            }), 400
+        
+        # 設為停用而非真正刪除
+        customer.is_active = False
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"客戶「{customer.name}」已成功停用。"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 刪除客戶失敗: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"刪除客戶失敗: {e}"
+        }), 500
+
+
+@app.route("/api/customers/<int:customer_id>/restore", methods=["POST"])
+@login_required
+def api_customer_restore(customer_id):
+    """API端點：恢復客戶"""
+    try:
+        customer = db.session.get(Customer, customer_id)
+        if not customer:
+            return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 404
+        
+        # 恢復客戶
+        customer.is_active = True
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"客戶「{customer.name}」已成功恢復。"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 恢復客戶失敗: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"恢復客戶失敗: {e}"
+        }), 500
+
+
 @app.route("/api/customer/transactions/<int:customer_id>")
 @login_required
 def api_customer_transactions(customer_id):
