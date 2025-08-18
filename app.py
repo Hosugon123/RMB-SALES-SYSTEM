@@ -165,6 +165,7 @@ class Customer(db.Model):
     name = db.Column(db.String(100), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     total_receivables_twd = db.Column(db.Float, nullable=False, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     sales = db.relationship(
         "SalesRecord",
         back_populates="customer",
@@ -1983,8 +1984,8 @@ def cash_management():
                     else -entry.amount
                 )
             
-            # 只顯示非買入相關的記帳記錄
-            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT"]:
+            # 只顯示非買入和非銷帳相關的記帳記錄（銷帳由CashLog統一處理）
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT"]:
                 # 根據交易類型設置出入款帳戶
                 payment_account = "N/A"
                 deposit_account = "N/A"
@@ -2068,9 +2069,23 @@ def cash_management():
                     payment_account = "刷卡"
                     deposit_account = "N/A"
                 elif log.type == "SETTLEMENT":
-                    # 銷帳收入
+                    # 銷帳收入：從對應的LedgerEntry中找到帳戶信息
                     payment_account = "客戶付款"
-                    deposit_account = log.account.name if hasattr(log, 'account') and log.account else "現金"
+                    deposit_account = "N/A"
+                    
+                    # 查找對應的LedgerEntry來獲取帳戶信息
+                    matching_entry = None
+                    for entry in misc_entries:
+                        if (entry.entry_type == "SETTLEMENT" and 
+                            entry.description == log.description and
+                            abs((entry.entry_date - log.time).total_seconds()) < 10):  # 10秒內的記錄認為是同一筆
+                            matching_entry = entry
+                            break
+                    
+                    if matching_entry and matching_entry.account:
+                        deposit_account = matching_entry.account.name
+                    else:
+                        deposit_account = "現金帳戶"
                 else:
                     # 其他類型的現金日誌
                     payment_account = "N/A"
@@ -4842,6 +4857,208 @@ def manage_customer():
 
 
 # API 1: 獲取現金管理的總資產數據，用於實時更新
+@app.route("/api/cash_management/transactions", methods=["GET"])
+@login_required  
+def get_cash_management_transactions():
+    """獲取現金管理的分頁流水記錄"""
+    try:
+        page = request.args.get("page", 1, type=int)
+        per_page = 10  # 每頁10筆資料
+        
+        # 獲取流水記錄數據（與cash_management路由相同的邏輯）
+        purchases = db.session.execute(
+            db.select(PurchaseRecord)
+            .options(
+                db.selectinload(PurchaseRecord.payment_account),
+                db.selectinload(PurchaseRecord.deposit_account),
+                db.selectinload(PurchaseRecord.channel)
+            )
+        ).scalars().all()
+        
+        sales = db.session.execute(
+            db.select(SalesRecord)
+            .options(
+                db.selectinload(SalesRecord.customer),
+                db.selectinload(SalesRecord.rmb_account)
+            )
+        ).scalars().all()
+        
+        misc_entries = db.session.execute(
+            db.select(LedgerEntry)
+            .options(db.selectinload(LedgerEntry.account))
+        ).scalars().all()
+        
+        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+
+        unified_stream = []
+        
+        # 處理買入記錄
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                channel_name = "未知渠道"
+                if p.channel:
+                    channel_name = p.channel.name
+                elif hasattr(p, 'channel_name_manual') and p.channel_name_manual:
+                    channel_name = p.channel_name_manual
+                
+                unified_stream.append({
+                    "type": "買入",
+                    "date": p.purchase_date.isoformat(),
+                    "description": f"向 {channel_name} 買入",
+                    "twd_change": -p.twd_cost,
+                    "rmb_change": p.rmb_amount,
+                    "operator": p.operator.username if p.operator else "未知",
+                    "payment_account": p.payment_account.name if p.payment_account else "N/A",
+                    "deposit_account": p.deposit_account.name if p.deposit_account else "N/A",
+                    "note": p.note if hasattr(p, 'note') and p.note else None,
+                })
+
+        # 處理售出記錄
+        for s in sales:
+            if s.customer:
+                profit_info = FIFOService.calculate_profit_for_sale(s)
+                profit = profit_info['profit_twd'] if profit_info else 0
+                
+                unified_stream.append({
+                    "type": "售出",
+                    "date": s.created_at.isoformat(),
+                    "description": f"售予 {s.customer.name}",
+                    "twd_change": 0,
+                    "rmb_change": -s.rmb_amount,
+                    "operator": s.operator.username if s.operator else "未知",
+                    "profit": profit,
+                    "payment_account": s.rmb_account.name if s.rmb_account else "N/A",
+                    "deposit_account": "應收帳款",
+                    "note": s.note if hasattr(s, 'note') and s.note else None,
+                })
+
+        # 處理其他記帳記錄（排除銷帳）
+        for entry in misc_entries:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT"]:
+                twd_change = 0
+                rmb_change = 0
+                
+                if entry.account and entry.account.currency == "TWD":
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        twd_change = entry.amount
+                    else:
+                        twd_change = -entry.amount
+                elif entry.account and entry.account.currency == "RMB":
+                    rmb_change = (
+                        entry.amount
+                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
+                        else -entry.amount
+                    )
+
+                # 設置出入款帳戶
+                payment_account = "N/A"
+                deposit_account = "N/A"
+                
+                if entry.entry_type in ["DEPOSIT"]:
+                    payment_account = "外部存款"
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                elif entry.entry_type in ["WITHDRAW"]:
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    deposit_account = "外部提款"
+                elif entry.entry_type in ["TRANSFER_OUT"]:
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    if "轉出至" in entry.description:
+                        deposit_account = entry.description.replace("轉出至 ", "")
+                    else:
+                        deposit_account = "N/A"
+                elif entry.entry_type in ["TRANSFER_IN"]:
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                    if "從" in entry.description and "轉入" in entry.description:
+                        payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
+                    else:
+                        payment_account = "N/A"
+
+                unified_stream.append({
+                    "type": entry.entry_type,
+                    "date": entry.entry_date.isoformat(),
+                    "description": entry.description,
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                    "operator": entry.operator.username if entry.operator else "未知",
+                    "payment_account": payment_account,
+                    "deposit_account": deposit_account,
+                    "note": getattr(entry, 'note', None),
+                })
+
+        # 處理現金日誌記錄
+        for log in cash_logs:
+            if log.type != "BUY_IN":
+                twd_change = 0
+                rmb_change = 0
+                
+                if log.type == "CARD_PURCHASE":
+                    twd_change = -log.amount
+                    payment_account = "刷卡"
+                    deposit_account = "N/A"
+                elif log.type == "SETTLEMENT":
+                    twd_change = log.amount
+                    payment_account = "客戶付款"
+                    deposit_account = "N/A"
+                    
+                    # 查找對應的LedgerEntry來獲取帳戶信息
+                    matching_entry = None
+                    for entry in misc_entries:
+                        if (entry.entry_type == "SETTLEMENT" and 
+                            entry.description == log.description and
+                            abs((entry.entry_date - log.time).total_seconds()) < 10):
+                            matching_entry = entry
+                            break
+                    
+                    if matching_entry and matching_entry.account:
+                        deposit_account = matching_entry.account.name
+                    else:
+                        deposit_account = "現金帳戶"
+                else:
+                    payment_account = "N/A"
+                    deposit_account = "N/A"
+
+                unified_stream.append({
+                    "type": log.type,
+                    "date": log.time.isoformat(),
+                    "description": log.description,
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                    "operator": log.operator.username if log.operator else "未知",
+                    "payment_account": payment_account,
+                    "deposit_account": deposit_account,
+                    "note": getattr(log, 'note', None),
+                })
+
+        # 按日期排序（新的在前）
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        
+        # 計算分頁
+        total_records = len(unified_stream)
+        total_pages = (total_records + per_page - 1) // per_page
+        start_index = (page - 1) * per_page
+        end_index = start_index + per_page
+        paginated_records = unified_stream[start_index:end_index]
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "transactions": paginated_records,
+                "pagination": {
+                    "current_page": page,
+                    "total_pages": total_pages,
+                    "total_records": total_records,
+                    "per_page": per_page,
+                    "has_prev": page > 1,
+                    "has_next": page < total_pages
+                }
+            }
+        })
+
+    except Exception as e:
+        print(f"❌ 獲取分頁流水記錄時出錯: {e}")
+        return jsonify({"status": "error", "message": f"系統錯誤: {str(e)}"}), 500
+
+
 @app.route("/api/cash_management/totals", methods=["GET"])
 @login_required
 def get_cash_management_totals():

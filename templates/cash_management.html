@@ -144,7 +144,6 @@
                             <th>備註</th>
                             <th class="text-end">TWD 變動</th>
                             <th class="text-end">RMB 變動</th>
-                            <th class="text-end">累積餘額</th>
                             <th class="text-end pe-3">利潤</th>
                         </tr>
                     </thead>
@@ -153,30 +152,22 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- 分頁控制項 -->
+            <div class="card-footer">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div id="pagination-info" class="text-muted">
+                        <!-- 分頁信息將動態填充 -->
+                    </div>
+                    <nav aria-label="流水記錄分頁">
+                        <ul class="pagination pagination-sm mb-0" id="pagination-controls">
+                            <!-- 分頁按鈕將動態填充 -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
         </div>
-        
-        <!-- 分頁控制項 -->
-        {% if pagination and pagination.pages > 1 %}
-        <div class="card-footer d-flex justify-content-center">
-            <nav aria-label="Page navigation">
-                <ul class="pagination mb-0">
-                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('cash_management', page=pagination.prev_num) }}">&laquo;</a>
-                    </li>
-                    
-                    {% for p in range(1, pagination.pages + 1) %}
-                        <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                            <a class="page-link" href="{{ url_for('cash_management', page=p) }}">{{ p }}</a>
-                        </li>
-                    {% endfor %}
 
-                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                        <a class="page-link" href="{{ url_for('cash_management', page=pagination.next_num) }}">&raquo;</a>
-                    </li>
-                </ul>
-            </nav>
-        </div>
-        {% endif %}
     </div>
 </div>
 
@@ -445,8 +436,44 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
     
+    // 分頁相關變量
+    let currentPage = 1;
+    let currentPagination = null;
+
+    // 載入分頁流水記錄
+    function loadMovements(page = 1) {
+        console.log('🔍 開始載入第', page, '頁流水記錄...');
+        
+        if (!movementsTbody) {
+            console.error('❌ 找不到 movements-tbody 元素');
+            return;
+        }
+        
+        // 顯示載入中
+        movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
+        
+        // 發送API請求
+        fetch(`/api/cash_management/transactions?page=${page}`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    currentPage = page;
+                    currentPagination = result.data.pagination;
+                    renderMovements(result.data.transactions);
+                    renderPagination(result.data.pagination);
+                } else {
+                    console.error('❌ 載入流水記錄失敗:', result.message);
+                    movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('❌ 網路錯誤:', error);
+                movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+            });
+    }
+
     // 渲染資金流水
-    function renderMovements() {
+    function renderMovements(transactions) {
         console.log('🔍 開始渲染資金流水...');
         
         if (!movementsTbody) {
@@ -456,20 +483,18 @@ document.addEventListener('DOMContentLoaded', function () {
         
         movementsTbody.innerHTML = '';
         
-        if (!movements || movements.length === 0) {
+        if (!transactions || transactions.length === 0) {
             console.log('⚠️ 沒有資金流水數據');
-            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
         
-        console.log('✅ 找到 ' + movements.length + ' 筆資金流水，開始渲染...');
+        console.log('✅ 找到 ' + transactions.length + ' 筆資金流水，開始渲染...');
         
-        movements.forEach(function(m, index) {
+        transactions.forEach(function(m, index) {
             const twdChange = parseFloat(m.twd_change) || 0;
             const rmbChange = parseFloat(m.rmb_change) || 0;
             const profit = m.profit || 0;
-            const runningTwdBalance = parseFloat(m.running_twd_balance) || 0;
-            const runningRmbBalance = parseFloat(m.running_rmb_balance) || 0;
             
             // 將類型轉換為中文顯示
             let typeDisplay = m.type;
@@ -484,7 +509,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 case 'SALES':
                 case '售出':
                     typeDisplay = '售出';
-                    typeClass = 'badge bg-success-subtle text-success-emphasis';
+                    typeClass = 'badge bg-primary-subtle text-primary-emphasis';  // 藍色
                     break;
                 case 'TRANSFER':
                 case '轉帳':
@@ -494,7 +519,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 case 'SETTLEMENT':
                 case '銷帳':
                     typeDisplay = '銷帳';
-                    typeClass = 'badge bg-info-subtle text-info-emphasis';
+                    typeClass = 'badge bg-danger-subtle text-danger-emphasis';  // 紅色
                     break;
                 case 'DEPOSIT':
                 case '存款':
@@ -506,6 +531,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     typeDisplay = '提款';
                     typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                     break;
+                case 'CARD_PURCHASE':
+                    typeDisplay = '刷卡';
+                    typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+                    break;
                 case 'CUSTOMER_PAYMENT':
                     typeDisplay = '客戶付款';
                     typeClass = 'badge bg-success-subtle text-success-emphasis';
@@ -514,34 +543,113 @@ document.addEventListener('DOMContentLoaded', function () {
                     typeDisplay = '記帳';
                     typeClass = 'badge bg-secondary-subtle text-secondary-emphasis';
                     break;
-                case '存款':
-                    typeDisplay = '存款';
-                    typeClass = 'badge bg-light-subtle text-light-emphasis';
-                    break;
                 default:
                     typeDisplay = m.type;
                     typeClass = 'badge bg-light-subtle text-muted';
                     break;
             }
             
+            // 只在售出交易時顯示利潤
+            const profitDisplay = (m.type === '售出' && profit) ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '';
+            
             const row = '<tr>' +
                 '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : 'N/A') + '</small></td>' +
                 '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
-                '<td>' + extractBaseDescriptionFromDescription(m.description || '') + '</td>' +
+                '<td>' + (m.description || '') + '</td>' +
                 '<td>' + (m.operator || '') + '</td>' +
                 '<td>' + (m.payment_account || 'N/A') + '</td>' +
                 '<td>' + (m.deposit_account || 'N/A') + '</td>' +
-                '<td><small>' + extractNoteFromDescription(m.description || '') + '</small></td>' +
+                '<td><small>' + (m.note || '') + '</small></td>' +
                 '<td class="text-end"><span class="text-primary">' + (twdChange >= 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</span></td>' +
                 '<td class="text-end"><span class="text-success">' + (rmbChange >= 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</span></td>' +
-                '<td class="text-end"><div><strong class="text-primary">NT$ ' + runningTwdBalance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></div><hr class="my-1"><div><strong class="text-success">¥ ' + runningRmbBalance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></div></td>' +
-                '<td class="text-end pe-3">' + (profit ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '') + '</td>' +
+                '<td class="text-end pe-3">' + profitDisplay + '</td>' +
                 '</tr>';
             
             movementsTbody.innerHTML += row;
         });
         
         console.log('✅ 資金流水渲染完成');
+    }
+
+    // 渲染分頁控制項
+    function renderPagination(pagination) {
+        const paginationInfo = document.getElementById('pagination-info');
+        const paginationControls = document.getElementById('pagination-controls');
+        
+        if (!paginationInfo || !paginationControls) {
+            console.error('❌ 找不到分頁控制元素');
+            return;
+        }
+        
+        // 顯示分頁信息
+        const startRecord = (pagination.current_page - 1) * pagination.per_page + 1;
+        const endRecord = Math.min(pagination.current_page * pagination.per_page, pagination.total_records);
+        paginationInfo.textContent = `第 ${startRecord}-${endRecord} 筆，共 ${pagination.total_records} 筆記錄`;
+        
+        // 清空並重建分頁按鈕
+        paginationControls.innerHTML = '';
+        
+        // 上一頁按鈕
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${pagination.has_prev ? '' : 'disabled'}`;
+        prevLi.innerHTML = `<a class="page-link" href="#" data-page="${pagination.current_page - 1}">上一頁</a>`;
+        paginationControls.appendChild(prevLi);
+        
+        // 頁碼按鈕
+        const startPage = Math.max(1, pagination.current_page - 2);
+        const endPage = Math.min(pagination.total_pages, pagination.current_page + 2);
+        
+        if (startPage > 1) {
+            const firstLi = document.createElement('li');
+            firstLi.className = 'page-item';
+            firstLi.innerHTML = '<a class="page-link" href="#" data-page="1">1</a>';
+            paginationControls.appendChild(firstLi);
+            
+            if (startPage > 2) {
+                const ellipsisLi = document.createElement('li');
+                ellipsisLi.className = 'page-item disabled';
+                ellipsisLi.innerHTML = '<span class="page-link">...</span>';
+                paginationControls.appendChild(ellipsisLi);
+            }
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const pageLi = document.createElement('li');
+            pageLi.className = `page-item ${i === pagination.current_page ? 'active' : ''}`;
+            pageLi.innerHTML = `<a class="page-link" href="#" data-page="${i}">${i}</a>`;
+            paginationControls.appendChild(pageLi);
+        }
+        
+        if (endPage < pagination.total_pages) {
+            if (endPage < pagination.total_pages - 1) {
+                const ellipsisLi = document.createElement('li');
+                ellipsisLi.className = 'page-item disabled';
+                ellipsisLi.innerHTML = '<span class="page-link">...</span>';
+                paginationControls.appendChild(ellipsisLi);
+            }
+            
+            const lastLi = document.createElement('li');
+            lastLi.className = 'page-item';
+            lastLi.innerHTML = `<a class="page-link" href="#" data-page="${pagination.total_pages}">${pagination.total_pages}</a>`;
+            paginationControls.appendChild(lastLi);
+        }
+        
+        // 下一頁按鈕
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${pagination.has_next ? '' : 'disabled'}`;
+        nextLi.innerHTML = `<a class="page-link" href="#" data-page="${pagination.current_page + 1}">下一頁</a>`;
+        paginationControls.appendChild(nextLi);
+        
+        // 為分頁按鈕添加點擊事件
+        paginationControls.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (e.target.classList.contains('page-link')) {
+                const page = parseInt(e.target.getAttribute('data-page'));
+                if (page && page >= 1 && page <= pagination.total_pages) {
+                    loadMovements(page);
+                }
+            }
+        });
     }
     
     // 從描述中提取基本描述（去除備註和系統信息）
@@ -1132,7 +1240,7 @@ document.addEventListener('DOMContentLoaded', function () {
         console.log('🔄 手動刷新數據...');
         updateTotalAssets();
         renderAccounts();
-        renderMovements();
+        loadMovements(1);
         // 重新初始化下拉選單
         initializeDropdowns();
         console.log('✅ 手動刷新完成');
@@ -1143,7 +1251,7 @@ document.addEventListener('DOMContentLoaded', function () {
     
     // 初始化渲染
     renderAccounts();
-    renderMovements();
+    loadMovements(1);
     
     console.log('✅ 現金管理頁面初始化完成');
 });
