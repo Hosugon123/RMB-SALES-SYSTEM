@@ -623,7 +623,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (tableBody) {
             let html = '';
             customers.forEach(function(customer) {
-                const createdAt = customer.created_at ? new Date(customer.created_at).toLocaleDateString('zh-TW') : '舊客戶';
+                const customerId = customer.id;
                 const statusBadge = customer.is_active 
                     ? '<span class="badge bg-success">活躍</span>'
                     : '<span class="badge bg-secondary">已停用</span>';
@@ -631,7 +631,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 html += `
                     <tr>
                         <td>${customer.name}</td>
-                        <td>${createdAt}</td>
+                        <td>#${customerId}</td>
                         <td>${statusBadge}</td>
                         <td class="text-center">
                             ${customer.is_active ? 
@@ -763,7 +763,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         <thead class="table-light">
                             <tr>
                                 <th>客戶名稱</th>
-                                <th>創建時間</th>
+                                <th>客戶ID</th>
                                 <th>狀態</th>
                                 <th class="text-center">操作</th>
                             </tr>

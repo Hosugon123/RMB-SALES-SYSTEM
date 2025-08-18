@@ -165,7 +165,6 @@ class Customer(db.Model):
     name = db.Column(db.String(100), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     total_receivables_twd = db.Column(db.Float, nullable=False, default=0.0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
     sales = db.relationship(
         "SalesRecord",
         back_populates="customer",
