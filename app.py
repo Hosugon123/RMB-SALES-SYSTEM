@@ -1345,8 +1345,33 @@ def sales_entry():
             .all()
         )
 
-        # --- 關鍵修正：使用準確的帳戶餘額計算函數 ---
-        _, owner_rmb_accounts_grouped = get_accurate_account_balances()
+        # --- 關鍵修正：直接使用實際帳戶餘額 ---
+        # 獲取所有活躍的持有人和帳戶
+        holders_with_accounts = (
+            db.session.execute(
+                db.select(Holder)
+                .filter_by(is_active=True)
+                .options(db.selectinload(Holder.cash_accounts))
+            )
+            .scalars()
+            .all()
+        )
+
+        owner_rmb_accounts_grouped = []
+        for holder in holders_with_accounts:
+            rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
+            if rmb_accounts:
+                owner_rmb_accounts_grouped.append({
+                    "holder_name": holder.name,
+                    "accounts": [
+                        {
+                            "id": acc.id,
+                            "name": acc.name,
+                            "balance": float(acc.balance)  # 直接使用資料庫中的餘額
+                        }
+                        for acc in rmb_accounts
+                    ]
+                })
 
         # 3. 查詢最近 10 筆未結清 (is_settled = False) 的銷售紀錄
         recent_unsettled_sales = (
@@ -2198,7 +2223,7 @@ def buy_in():
         )
 
         # --- 修正：直接查詢實際的帳戶餘額並序列化 ---
-        # 按持有人分組帳戶
+        # 按持有人分組帳戶，直接使用資料庫中的餘額
         owner_twd_accounts_grouped = {}
         owner_rmb_accounts_grouped = {}
         
@@ -2207,24 +2232,24 @@ def buy_in():
             rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
             
             if twd_accounts:
-                # 轉換為可序列化的格式
+                # 轉換為可序列化的格式，直接使用資料庫餘額
                 owner_twd_accounts_grouped[holder.name] = [
                     {
                         "id": acc.id,
                         "name": acc.name,
                         "currency": acc.currency,
-                        "balance": float(acc.balance)
+                        "balance": float(acc.balance)  # 直接使用資料庫中的餘額
                     }
                     for acc in twd_accounts
                 ]
             if rmb_accounts:
-                # 轉換為可序列化的格式
+                # 轉換為可序列化的格式，直接使用資料庫餘額
                 owner_rmb_accounts_grouped[holder.name] = [
                     {
                         "id": acc.id,
                         "name": acc.name,
                         "currency": acc.currency,
-                        "balance": float(acc.balance)
+                        "balance": float(acc.balance)  # 直接使用資料庫中的餘額
                     }
                     for acc in rmb_accounts
                 ]
@@ -3030,23 +3055,8 @@ def admin_update_cash_account():
             account = db.session.get(CashAccount, account_id)
             if account:
                 if is_decrease:
-                    # 使用準確的帳戶餘額計算來檢查是否有足夠餘額
-                    owner_twd_accounts_grouped, owner_rmb_accounts_grouped = get_accurate_account_balances()
-                    
-                    # 找到這個帳戶的實際餘額
-                    actual_balance = None
-                    all_accounts = []
-                    if account.currency == 'TWD':
-                        for holder_group in owner_twd_accounts_grouped:
-                            all_accounts.extend(holder_group['accounts'])
-                    else:  # RMB
-                        for holder_group in owner_rmb_accounts_grouped:
-                            all_accounts.extend(holder_group['accounts'])
-                    
-                    for acc in all_accounts:
-                        if acc['id'] == account_id:
-                            actual_balance = acc['balance']
-                            break
+                    # 直接使用資料庫中的帳戶餘額進行檢查
+                    actual_balance = float(account.balance)
                     
                     if actual_balance is None:
                         actual_balance = account.balance  # 備用方案

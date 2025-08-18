@@ -419,6 +419,23 @@ document.addEventListener('DOMContentLoaded', function () {
                 openSettlementModal(customerId, customerName, receivableAmount);
             });
         });
+
+        // 設置客戶交易記錄點擊事件
+        const customerTransactionLinks = document.querySelectorAll('.customer-transactions');
+        customerTransactionLinks.forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const customerId = this.dataset.customerId;
+                const customerName = this.dataset.customerName;
+                console.log('👤 點擊客戶交易記錄:', customerId, customerName);
+                
+                if (customerId && customerName) {
+                    openCustomerTransactionsModal(customerId, customerName);
+                } else {
+                    console.error('❌ 客戶ID或名稱缺失:', { customerId, customerName });
+                }
+            });
+        });
     }
     
     // 渲染資金流水
@@ -775,6 +792,118 @@ document.addEventListener('DOMContentLoaded', function () {
         modal.show();
     };
     
+    // 打開客戶交易記錄模態框
+    window.openCustomerTransactionsModal = function(customerId, customerName) {
+        console.log('🔄 打開客戶交易記錄模態框:', customerId, customerName);
+        
+        // 更新模態框標題
+        const modalTitle = document.getElementById('customerTransactionsTitle');
+        const customerNameDisplay = document.getElementById('customerTransactionsName');
+        
+        if (modalTitle) {
+            modalTitle.innerHTML = '<i class="bi bi-person-lines-fill me-2"></i>' + customerName + ' 的交易紀錄';
+        }
+        
+        if (customerNameDisplay) {
+            customerNameDisplay.textContent = customerName;
+        }
+        
+        // 顯示載入狀態
+        const tableBody = document.getElementById('customerTransactionsTable');
+        const emptyState = document.getElementById('customerTransactionsEmpty');
+        
+        if (tableBody) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center p-3"><div class="spinner-border spinner-border-sm me-2"></div>載入中...</td></tr>';
+        }
+        
+        if (emptyState) {
+            emptyState.style.display = 'none';
+        }
+        
+        // 顯示模態框
+        const modal = new bootstrap.Modal(document.getElementById('customerTransactionsModal'));
+        modal.show();
+        
+        // 獲取客戶交易紀錄
+        fetchCustomerTransactions(customerId);
+    };
+    
+    // 獲取客戶交易紀錄
+    function fetchCustomerTransactions(customerId) {
+        fetch(`/api/customer/transactions/${customerId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    displayCustomerTransactions(data);
+                } else {
+                    console.error('❌ 獲取客戶交易記錄失敗:', data.message);
+                    const tableBody = document.getElementById('customerTransactionsTable');
+                    if (tableBody) {
+                        tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger p-3">載入失敗: ' + (data.message || '未知錯誤') + '</td></tr>';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('❌ 網路錯誤:', error);
+                const tableBody = document.getElementById('customerTransactionsTable');
+                if (tableBody) {
+                    tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger p-3">網路錯誤，請稍後再試</td></tr>';
+                }
+            });
+    }
+    
+    // 顯示客戶交易紀錄
+    function displayCustomerTransactions(data) {
+        const tableBody = document.getElementById('customerTransactionsTable');
+        const emptyState = document.getElementById('customerTransactionsEmpty');
+        const receivableDisplay = document.getElementById('customerTransactionsReceivable');
+        
+        // 更新應收帳款顯示
+        if (receivableDisplay && data.total_receivables_twd !== undefined) {
+            receivableDisplay.textContent = 'NT$ ' + data.total_receivables_twd.toLocaleString('en-US', {minimumFractionDigits: 2});
+        }
+        
+        if (!data.transactions || data.transactions.length === 0) {
+            if (tableBody) {
+                tableBody.innerHTML = '';
+            }
+            if (emptyState) {
+                emptyState.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (emptyState) {
+            emptyState.style.display = 'none';
+        }
+        
+        if (tableBody) {
+            let html = '';
+            data.transactions.forEach(function(transaction) {
+                const date = new Date(transaction.date).toLocaleString('zh-TW');
+                const type = transaction.type || '-';
+                const description = transaction.description || '-';
+                const rmb = transaction.rmb_amount ? transaction.rmb_amount.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+                const twd = transaction.twd_amount ? transaction.twd_amount.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+                const profit = transaction.profit ? transaction.profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+                const status = transaction.is_settled ? '已結清' : '未結清';
+                
+                html += `<tr>
+                    <td><small>${date}</small></td>
+                    <td><span class="badge bg-primary">${type}</span></td>
+                    <td>${description}</td>
+                    <td class="text-end">¥ ${rmb}</td>
+                    <td class="text-end">NT$ ${twd}</td>
+                    <td class="text-end">${profit}</td>
+                    <td class="text-center">
+                        <span class="badge ${transaction.is_settled ? 'bg-success' : 'bg-warning'}">${status}</span>
+                    </td>
+                </tr>`;
+            });
+            tableBody.innerHTML = html;
+        }
+    }
+
     // 處理銷帳表單提交
     document.getElementById('settlementForm').addEventListener('submit', async function(e) {
         e.preventDefault();
