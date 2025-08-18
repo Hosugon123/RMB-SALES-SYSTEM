@@ -3858,7 +3858,7 @@ def api_customer_transactions(customer_id):
         return jsonify({
             'status': 'success',
             'customer_name': customer.name,
-            'total_receivables': total_receivables,
+            'total_receivables_twd': total_receivables,  # 修正欄位名稱
             'transactions': transactions
         })
         

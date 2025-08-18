@@ -273,13 +273,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     const currencyBadgeClass = acc.currency === 'TWD' ? 'bg-primary' : 'bg-success';
                     const currencyTextClass = acc.currency === 'TWD' ? 'text-primary' : 'text-success';
                     
-                    accountsHtml += '<li class="list-group-item py-2 d-flex justify-content-between align-items-center ps-3">';
-                    accountsHtml += '<div>';
-                    accountsHtml += '<i class="bi bi-caret-right-fill text-muted me-1"></i>';
-                    accountsHtml += '<span>' + acc.name + ' <span class="badge ' + currencyBadgeClass + ' rounded-pill">' + acc.currency + '</span></span>';
-                    accountsHtml += '</div>';
+                    accountsHtml += '<li class="list-group-item py-2">';
+                    accountsHtml += '<div class="d-flex justify-content-between align-items-center">';
+                    
+                    // 左側：貨幣標籤和帳戶名稱
                     accountsHtml += '<div class="d-flex align-items-center">';
-                    accountsHtml += '<strong class="me-2 ' + currencyTextClass + ' account-balance">' + acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong>';
+                    accountsHtml += '<span class="badge ' + currencyBadgeClass + ' me-2" style="min-width: 50px;">' + acc.currency + '</span>';
+                    accountsHtml += '<span class="fw-medium">' + acc.name + '</span>';
+                    accountsHtml += '</div>';
+                    
+                    // 右側：金額和操作按鈕
+                    accountsHtml += '<div class="d-flex align-items-center">';
+                    accountsHtml += '<strong class="me-3 ' + currencyTextClass + ' account-balance" style="min-width: 120px; text-align: right;">' + acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong>';
                     accountsHtml += '<div class="btn-group btn-group-sm">';
                     accountsHtml += '<button class="btn btn-outline-primary btn-movement btn-sm" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" title="存入/提出">';
                     accountsHtml += '<i class="bi bi-arrow-down-up"></i>';
@@ -288,6 +293,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     accountsHtml += '&times;';
                     accountsHtml += '</button>';
                     accountsHtml += '</div>';
+                    accountsHtml += '</div>';
+                    
                     accountsHtml += '</div>';
                     accountsHtml += '</li>';
                 });
@@ -813,7 +820,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const emptyState = document.getElementById('customerTransactionsEmpty');
         
         if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="7" class="text-center p-3"><div class="spinner-border spinner-border-sm me-2"></div>載入中...</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center p-3"><div class="spinner-border spinner-border-sm me-2"></div>載入中...</td></tr>';
         }
         
         if (emptyState) {
@@ -839,7 +846,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     console.error('❌ 獲取客戶交易記錄失敗:', data.message);
                     const tableBody = document.getElementById('customerTransactionsTable');
                     if (tableBody) {
-                        tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger p-3">載入失敗: ' + (data.message || '未知錯誤') + '</td></tr>';
+                        tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger p-3">載入失敗: ' + (data.message || '未知錯誤') + '</td></tr>';
                     }
                 }
             })
@@ -847,7 +854,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.error('❌ 網路錯誤:', error);
                 const tableBody = document.getElementById('customerTransactionsTable');
                 if (tableBody) {
-                    tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger p-3">網路錯誤，請稍後再試</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger p-3">網路錯誤，請稍後再試</td></tr>';
                 }
             });
     }
@@ -858,9 +865,17 @@ document.addEventListener('DOMContentLoaded', function () {
         const emptyState = document.getElementById('customerTransactionsEmpty');
         const receivableDisplay = document.getElementById('customerTransactionsReceivable');
         
+        console.log('🔍 顯示客戶交易記錄數據:', data);
+        
         // 更新應收帳款顯示
         if (receivableDisplay && data.total_receivables_twd !== undefined) {
             receivableDisplay.textContent = 'NT$ ' + data.total_receivables_twd.toLocaleString('en-US', {minimumFractionDigits: 2});
+            console.log('✅ 更新應收帳款顯示:', data.total_receivables_twd);
+        } else {
+            console.error('❌ 應收帳款顯示更新失敗:', {
+                receivableDisplay: !!receivableDisplay,
+                total_receivables_twd: data.total_receivables_twd
+            });
         }
         
         if (!data.transactions || data.transactions.length === 0) {
@@ -880,27 +895,44 @@ document.addEventListener('DOMContentLoaded', function () {
         if (tableBody) {
             let html = '';
             data.transactions.forEach(function(transaction) {
-                const date = new Date(transaction.date).toLocaleString('zh-TW');
+                const date = transaction.date;
                 const type = transaction.type || '-';
                 const description = transaction.description || '-';
-                const rmb = transaction.rmb_amount ? transaction.rmb_amount.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-                const twd = transaction.twd_amount ? transaction.twd_amount.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-                const profit = transaction.profit ? transaction.profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-                const status = transaction.is_settled ? '已結清' : '未結清';
+                
+                // RMB金額顯示
+                const rmb = transaction.rmb_amount && transaction.rmb_amount > 0 
+                    ? `¥ ${transaction.rmb_amount.toLocaleString('en-US', {minimumFractionDigits: 2})}`
+                    : '-';
+                
+                // TWD金額顯示
+                const twd = transaction.twd_amount && transaction.twd_amount > 0
+                    ? `NT$ ${transaction.twd_amount.toLocaleString('en-US', {minimumFractionDigits: 2})}`
+                    : '-';
+                
+                // 利潤顯示：只有售出時才顯示利潤
+                const profit = (type === '售出' && transaction.profit_twd && transaction.profit_twd > 0)
+                    ? `NT$ ${transaction.profit_twd.toLocaleString('en-US', {minimumFractionDigits: 2})}`
+                    : '-';
+                
+                // 類型標籤顏色：售出為藍色，銷帳為紅色
+                let typeBadgeClass = 'bg-secondary';
+                if (type === '售出') {
+                    typeBadgeClass = 'bg-primary';
+                } else if (type === '銷帳') {
+                    typeBadgeClass = 'bg-danger';
+                }
                 
                 html += `<tr>
                     <td><small>${date}</small></td>
-                    <td><span class="badge bg-primary">${type}</span></td>
+                    <td><span class="badge ${typeBadgeClass}">${type}</span></td>
                     <td>${description}</td>
-                    <td class="text-end">¥ ${rmb}</td>
-                    <td class="text-end">NT$ ${twd}</td>
-                    <td class="text-end">${profit}</td>
-                    <td class="text-center">
-                        <span class="badge ${transaction.is_settled ? 'bg-success' : 'bg-warning'}">${status}</span>
-                    </td>
+                    <td class="text-end text-success fw-bold">${rmb}</td>
+                    <td class="text-end text-primary fw-bold">${twd}</td>
+                    <td class="text-end text-warning fw-bold">${profit}</td>
                 </tr>`;
             });
             tableBody.innerHTML = html;
+            console.log('✅ 交易記錄表格已更新，共', data.transactions.length, '筆記錄');
         }
     }
 
