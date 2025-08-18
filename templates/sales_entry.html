@@ -623,7 +623,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (tableBody) {
             let html = '';
             customers.forEach(function(customer) {
-                const createdAt = new Date(customer.created_at).toLocaleDateString('zh-TW');
+                const createdAt = customer.created_at ? new Date(customer.created_at).toLocaleDateString('zh-TW') : '舊客戶';
                 const statusBadge = customer.is_active 
                     ? '<span class="badge bg-success">活躍</span>'
                     : '<span class="badge bg-secondary">已停用</span>';
