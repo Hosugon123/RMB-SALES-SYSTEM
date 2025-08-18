@@ -165,6 +165,8 @@ class Customer(db.Model):
     name = db.Column(db.String(100), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     total_receivables_twd = db.Column(db.Float, nullable=False, default=0.0)
+    # 使用 server_default 來確保與現有數據庫兼容
+    created_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
     sales = db.relationship(
         "SalesRecord",
         back_populates="customer",
@@ -3793,7 +3795,7 @@ def api_customers_manage():
         customers = (
             db.session.execute(
                 db.select(Customer)
-                .order_by(Customer.is_active.desc(), Customer.created_at.desc())
+                .order_by(Customer.is_active.desc(), Customer.created_at.desc().nullslast())
             )
             .scalars()
             .all()
