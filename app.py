@@ -558,6 +558,13 @@ class FIFOService:
                     customer.total_receivables_twd = 0
                     print(f"⚠️  客戶 {customer.name} 的應收帳款已調整為 0")
             
+            # --- 關鍵修正：恢復現金帳戶餘額 ---
+            # 恢復RMB帳戶的餘額
+            if sales_record.rmb_account:
+                rmb_account = sales_record.rmb_account
+                rmb_account.balance += sales_record.rmb_amount
+                print(f"🔄 恢復RMB帳戶 {rmb_account.name} 的餘額: +{sales_record.rmb_amount} RMB")
+            
             # 回滾每個分配
             for allocation in allocations:
                 # 恢復庫存數量
