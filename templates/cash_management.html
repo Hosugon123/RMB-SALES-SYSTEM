@@ -1246,6 +1246,18 @@ document.addEventListener('DOMContentLoaded', function () {
         console.log('✅ 手動刷新完成');
     };
     
+    // 監聽銷售數據變更事件，自動刷新頁面數據
+    window.addEventListener('salesDataChanged', function(event) {
+        console.log('🔄 收到銷售數據變更事件:', event.detail);
+        if (event.detail.action === 'cancel_sale') {
+            console.log('🔄 檢測到銷售記錄取消，自動刷新現金管理數據...');
+            // 延遲一下再刷新，確保後端數據已更新
+            setTimeout(() => {
+                manualRefreshData();
+            }, 500);
+        }
+    });
+    
     // 初始化所有下拉選單
     initializeDropdowns();
     
