@@ -49,6 +49,9 @@
                 <button class="btn btn-secondary btn-sm" onclick="manualRefreshData()">
                     <i class="bi bi-arrow-clockwise me-1"></i>刷新數據
                 </button>
+                <button class="btn btn-warning btn-sm" onclick="debugAccountTotals()">
+                    <i class="bi bi-bug me-1"></i>調試總計
+                </button>
             </div>
         </div>
     </div>
@@ -1244,6 +1247,16 @@ document.addEventListener('DOMContentLoaded', function () {
         // 重新初始化下拉選單
         initializeDropdowns();
         console.log('✅ 手動刷新完成');
+        
+        // 添加調試信息
+        console.log('🔍 調試信息:');
+        console.log('   - 當前頁面數據:', {
+            holders: window.holders || [],
+            accountsByHolder: window.accountsByHolder || {},
+            totalTwd: document.getElementById('totalTwdDisplay')?.textContent,
+            totalRmb: document.getElementById('totalRmbDisplay')?.textContent,
+            totalReceivables: document.getElementById('totalReceivablesDisplay')?.textContent
+        });
     };
     
     // 監聽銷售數據變更事件，自動刷新頁面數據
@@ -1257,6 +1270,89 @@ document.addEventListener('DOMContentLoaded', function () {
             }, 500);
         }
     });
+    
+    // 調試帳戶總計函數
+    window.debugAccountTotals = function() {
+        console.log('🔍 開始調試帳戶總計...');
+        
+        // 1. 檢查頁面顯示的總計
+        const pageTotalTwd = document.getElementById('totalTwdDisplay')?.textContent;
+        const pageTotalRmb = document.getElementById('totalRmbDisplay')?.textContent;
+        const pageTotalReceivables = document.getElementById('totalReceivablesDisplay')?.textContent;
+        
+        console.log('📊 頁面顯示的總計:');
+        console.log('   TWD:', pageTotalTwd);
+        console.log('   RMB:', pageTotalRmb);
+        console.log('   應收帳款:', pageTotalReceivables);
+        
+        // 2. 檢查JavaScript變數中的總計
+        let jsTotalTwd = 0;
+        let jsTotalRmb = 0;
+        
+        if (window.accountsByHolder) {
+            Object.values(window.accountsByHolder).forEach(holderData => {
+                if (holderData.accounts) {
+                    holderData.accounts.forEach(acc => {
+                        if (acc.currency === 'TWD') {
+                            jsTotalTwd += parseFloat(acc.balance) || 0;
+                        } else if (acc.currency === 'RMB') {
+                            jsTotalRmb += parseFloat(acc.balance) || 0;
+                        }
+                    });
+                }
+            });
+        }
+        
+        console.log('📊 JavaScript計算的總計:');
+        console.log('   TWD:', jsTotalTwd.toLocaleString('en-US', {minimumFractionDigits: 2}));
+        console.log('   RMB:', jsTotalRmb.toLocaleString('en-US', {minimumFractionDigits: 2}));
+        
+        // 3. 檢查後端API返回的總計
+        fetch('/api/cash_management/totals')
+            .then(response => response.json())
+            .then(data => {
+                console.log('📊 後端API返回的總計:');
+                console.log('   TWD:', data.total_twd?.toLocaleString('en-US', {minimumFractionDigits: 2}));
+                console.log('   RMB:', data.total_rmb?.toLocaleString('en-US', {minimumFractionDigits: 2}));
+                console.log('   應收帳款:', data.total_receivables_twd?.toLocaleString('en-US', {minimumFractionDigits: 2}));
+                
+                // 4. 比較差異
+                console.log('🔍 差異分析:');
+                const apiRmb = parseFloat(data.total_rmb) || 0;
+                const diff = jsTotalRmb - apiRmb;
+                console.log('   RMB差異 (JS - API):', diff.toLocaleString('en-US', {minimumFractionDigits: 2));
+                
+                if (Math.abs(diff) < 0.01) {
+                    console.log('   ✅ JavaScript和API數據一致');
+                } else {
+                    console.log('   ❌ JavaScript和API數據不一致！');
+                }
+            })
+            .catch(error => {
+                console.error('❌ 調用API失敗:', error);
+            });
+        
+        // 5. 顯示彈窗
+        Swal.fire({
+            title: '調試總計',
+            html: `
+                <div class="text-start">
+                    <p><strong>頁面顯示:</strong></p>
+                    <p>TWD: ${pageTotalTwd}</p>
+                    <p>RMB: ${pageTotalRmb}</p>
+                    <p>應收帳款: ${pageTotalReceivables}</p>
+                    <hr>
+                    <p><strong>JavaScript計算:</strong></p>
+                    <p>TWD: ${jsTotalTwd.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                    <p>RMB: ${jsTotalRmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                    <hr>
+                    <p><strong>請查看控制台獲取詳細信息</strong></p>
+                </div>
+            `,
+            icon: 'info',
+            confirmButtonText: '確定'
+        });
+    };
     
     // 初始化所有下拉選單
     initializeDropdowns();
