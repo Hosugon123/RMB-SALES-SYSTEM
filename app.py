@@ -2938,7 +2938,7 @@ def api_inventory_status():
 @app.route("/api/reverse-sale-allocation/<int:sales_record_id>", methods=["POST"])
 @admin_required
 def api_reverse_sale_allocation(sales_record_id):
-    """API端點：完全回滾銷售記錄"""
+    """API端點：完全回滾銷售記錄（僅管理員）"""
     try:
         success = FIFOService.reverse_sale_allocation(sales_record_id)
         if success:
@@ -2953,6 +2953,45 @@ def api_reverse_sale_allocation(sales_record_id):
             }), 400
     except Exception as e:
         print(f"❌ 取消銷售記錄失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'取消失敗: {e}'
+        }), 500
+
+@app.route("/api/user-reverse-sale/<int:sales_record_id>", methods=["POST"])
+@login_required
+def api_user_reverse_sale(sales_record_id):
+    """API端點：普通用戶取消自己的銷售記錄"""
+    try:
+        # 檢查銷售記錄是否存在
+        sales_record = db.session.get(SalesRecord, sales_record_id)
+        if not sales_record:
+            return jsonify({
+                'status': 'error',
+                'message': f'找不到銷售記錄 {sales_record_id}'
+            }), 404
+        
+        # 檢查用戶權限（只能取消自己的記錄或管理員可以取消所有記錄）
+        if not current_user.is_admin and sales_record.operator_id != current_user.id:
+            return jsonify({
+                'status': 'error',
+                'message': '您只能取消自己的銷售記錄'
+            }), 403
+        
+        # 執行取消操作
+        success = FIFOService.reverse_sale_allocation(sales_record_id)
+        if success:
+            return jsonify({
+                'status': 'success',
+                'message': f'成功取消銷售記錄 {sales_record_id}，已完全刪除相關數據'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'取消銷售記錄 {sales_record_id} 失敗'
+            }), 400
+    except Exception as e:
+        print(f"❌ 用戶取消銷售記錄失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'取消失敗: {e}'

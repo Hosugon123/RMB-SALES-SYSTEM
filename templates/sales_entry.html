@@ -518,7 +518,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // 執行取消銷售記錄
     async function executeCancelSales(recordId) {
         try {
-            const response = await fetch(`/api/reverse-sale-allocation/${recordId}`, {
+            const response = await fetch(`/api/user-reverse-sale/${recordId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
