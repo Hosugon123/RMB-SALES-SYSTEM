@@ -5894,3 +5894,66 @@ def get_accurate_account_balances():
 # ===================================================================
 if __name__ == "__main__":
     app.run(debug=True)
+
+@app.route("/api/total-profit", methods=["GET"])
+@login_required
+def api_total_profit():
+    """計算系統總利潤的API，所有登入使用者都可以存取"""
+    try:
+        # 查詢所有已結清的銷售記錄
+        settled_sales = (
+            db.session.execute(
+                db.select(SalesRecord)
+                .filter_by(is_settled=True)
+                .order_by(SalesRecord.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        total_profit_twd = 0.0
+        total_revenue_twd = 0.0
+        total_cost_twd = 0.0
+        profit_breakdown = []
+        
+        for sale in settled_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                sale_profit = profit_info.get('profit_twd', 0.0)
+                sale_cost = profit_info.get('total_cost_twd', 0.0)
+                
+                total_profit_twd += sale_profit
+                total_cost_twd += sale_cost
+                total_revenue_twd += sale.twd_amount
+                
+                profit_breakdown.append({
+                    'sale_id': sale.id,
+                    'customer_name': sale.customer.name,
+                    'rmb_amount': sale.rmb_amount,
+                    'twd_amount': sale.twd_amount,
+                    'profit_twd': sale_profit,
+                    'cost_twd': sale_cost,
+                    'date': sale.created_at.strftime('%Y-%m-%d')
+                })
+        
+        # 計算整體利潤率
+        overall_profit_margin = (total_profit_twd / total_revenue_twd * 100) if total_revenue_twd > 0 else 0
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'total_profit_twd': round(total_profit_twd, 2),
+                'total_revenue_twd': round(total_revenue_twd, 2),
+                'total_cost_twd': round(total_cost_twd, 2),
+                'overall_profit_margin': round(overall_profit_margin, 2),
+                'settled_sales_count': len(settled_sales),
+                'profit_breakdown': profit_breakdown
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ 計算總利潤失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'計算總利潤時發生錯誤: {str(e)}'
+        }), 500

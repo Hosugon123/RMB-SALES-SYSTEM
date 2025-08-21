@@ -117,6 +117,32 @@
 
     <!-- 右側：待收款列表 -->
     <div class="col-lg-7">
+        <!-- 總利潤顯示卡片 -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0 fw-light"><i class="bi bi-graph-up me-2"></i>系統總利潤概覽</h5>
+            </div>
+            <div class="card-body p-3">
+                <div class="row text-center">
+                    <div class="col-4">
+                        <small class="text-muted d-block">總利潤</small>
+                        <span id="total-profit-display" class="fw-bold text-success">NT$ 0.00</span>
+                    </div>
+                    <div class="col-4">
+                        <small class="text-muted d-block">總營收</small>
+                        <span id="total-revenue-display" class="fw-bold text-primary">NT$ 0.00</span>
+                    </div>
+                    <div class="col-4">
+                        <small class="text-muted d-block">利潤率</small>
+                        <span id="total-margin-display" class="fw-bold text-info">0.0%</span>
+                    </div>
+                </div>
+                <div class="text-center mt-2">
+                    <small class="text-muted">已結清訂單：<span id="settled-count">0</span> 筆</small>
+                </div>
+            </div>
+        </div>
+        
         <div class="card shadow-sm">
             <div class="card-header bg-warning-subtle">
                 <h4 class="mb-0 fw-light"><i class="bi bi-hourglass-split me-2"></i>近期訂單</h4>
@@ -201,6 +227,7 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 sales_entry.html JavaScript 已載入');
     console.log('🌐 API端點:', FREQUENT_CUSTOMERS_API);
     loadFrequentCustomers();
+    loadTotalProfit(); // 載入總利潤數據
     
     // --- 事件監聽器 ---
     
@@ -245,6 +272,38 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         
         console.log('✅ 客戶下拉選單刷新完成');
+    }
+    
+    // 載入總利潤數據
+    async function loadTotalProfit() {
+        try {
+            console.log('💰 開始載入總利潤數據...');
+            const response = await fetch('/api/total-profit');
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                const data = result.data;
+                console.log('✅ 載入總利潤數據成功:', data);
+                
+                // 更新顯示
+                document.getElementById('total-profit-display').textContent = `NT$ ${data.total_profit_twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                document.getElementById('total-revenue-display').textContent = `NT$ ${data.total_revenue_twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                document.getElementById('total-margin-display').textContent = `${data.overall_profit_margin.toFixed(1)}%`;
+                document.getElementById('settled-count').textContent = data.settled_sales_count;
+                
+                // 根據利潤設置顏色
+                const profitDisplay = document.getElementById('total-profit-display');
+                if (data.total_profit_twd >= 0) {
+                    profitDisplay.className = 'fw-bold text-success';
+                } else {
+                    profitDisplay.className = 'fw-bold text-danger';
+                }
+            } else {
+                console.error('❌ 載入總利潤數據失敗:', result.message);
+            }
+        } catch (error) {
+            console.error('❌ 載入總利潤數據時發生錯誤:', error);
+        }
     }
     
     // 3. 客戶選擇變更事件
@@ -422,13 +481,17 @@ document.addEventListener('DOMContentLoaded', function () {
     
     // 取消銷售記錄函數
     window.cancelSalesRecord = function(recordId, customerName, rmbAmount, twdAmount) {
+        // 確保數值類型正確
+        const rmb = parseFloat(rmbAmount) || 0;
+        const twd = parseFloat(twdAmount) || 0;
+        
         Swal.fire({
             title: '確認取消銷售記錄',
             html: `
                 <div class="text-start">
                     <p><strong>客戶:</strong> ${customerName}</p>
-                    <p><strong>售出金額:</strong> ¥${rmbAmount.toFixed(2)}</p>
-                    <p><strong>應收帳款:</strong> NT$${twdAmount.toFixed(2)}</p>
+                    <p><strong>售出金額:</strong> ¥${rmb.toFixed(2)}</p>
+                    <p><strong>應收帳款:</strong> NT$${twd.toFixed(2)}</p>
                     <p class="text-danger"><strong>⚠️ 警告:</strong> 此操作將：</p>
                     <ul class="text-start text-danger">
                         <li>完全刪除此筆銷售記錄</li>
