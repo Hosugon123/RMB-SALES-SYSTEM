@@ -1138,11 +1138,27 @@ def dashboard():
             .all()
         )
 
+        # 計算總利潤（從所有銷售記錄計算）
+        total_profit_twd = 0.0
+        all_sales = (
+            db.session.execute(
+                db.select(SalesRecord)
+            )
+            .scalars()
+            .all()
+        )
+        
+        for sale in all_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                total_profit_twd += profit_info.get('profit_twd', 0.0)
+
         return render_template(
             "dashboard.html",
             total_twd=total_twd_cash,
             total_rmb=total_rmb_stock,
             total_receivables=total_receivables,
+            total_profit_twd=total_profit_twd,
             recent_purchases=recent_purchases,
             recent_sales=recent_sales,
             is_admin=False

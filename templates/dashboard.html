@@ -111,17 +111,15 @@
     <div class="col-lg-3 col-md-6 mb-4">
         <div class="card h-100 metric-card">
             <div class="card-body">
-                <div class="icon-circle bg-success-subtle text-success">
-                    <i class="bi bi-graph-up fs-3"></i>
+                <div class="icon-circle bg-warning-subtle text-warning">
+                    <i class="bi bi-cash-stack fs-3"></i>
                 </div>
                 <div>
-                    <p class="text-muted mb-1 small">系統總利潤 (TWD)</p>
-                    <h3 class="fw-bold mb-0" id="dashboard-total-profit">NT$ 0</h3>
+                    <p class="text-muted mb-1 small">總利潤 (TWD)</p>
+                    <h3 class="fw-bold mb-0">NT$ {{ "{:,.0f}".format(total_profit_twd or 0) }}</h3>
                 </div>
             </div>
-            <div class="card-footer text-center">
-                <small class="text-muted">利潤率: <span id="dashboard-profit-margin">0.0%</span></small>
-            </div>
+            <a href="{{ url_for('fifo_inventory') }}" class="card-footer text-decoration-none text-muted d-block">查看利潤分析 <i class="bi bi-arrow-right-circle float-end></i></a>
         </div>
     </div>
     
@@ -260,43 +258,6 @@
     </div>
 </div>
 
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // 載入總利潤數據
-    loadTotalProfit();
-    
-    // 載入總利潤數據函數
-    async function loadTotalProfit() {
-        try {
-            console.log('💰 開始載入儀表板總利潤數據...');
-            const response = await fetch('/api/total-profit');
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                const data = result.data;
-                console.log('✅ 載入儀表板總利潤數據成功:', data);
-                
-                // 更新顯示
-                const profitDisplay = document.getElementById('dashboard-total-profit');
-                const marginDisplay = document.getElementById('dashboard-profit-margin');
-                
-                profitDisplay.textContent = `NT$ ${data.total_profit_twd.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                marginDisplay.textContent = `${data.overall_profit_margin.toFixed(1)}%`;
-                
-                // 根據利潤設置顏色
-                if (data.total_profit_twd >= 0) {
-                    profitDisplay.className = 'fw-bold mb-0 text-success';
-                } else {
-                    profitDisplay.className = 'fw-bold mb-0 text-danger';
-                }
-            } else {
-                console.error('❌ 載入儀表板總利潤數據失敗:', result.message);
-            }
-        } catch (error) {
-            console.error('❌ 載入儀表板總利潤數據時發生錯誤:', error);
-        }
-    }
-});
-</script>
+
 {% endblock %}
+
