@@ -1389,13 +1389,31 @@ def sales_entry():
                     ]
                 })
 
-        # 3. 查詢最近 10 筆未結清 (is_settled = False) 的銷售紀錄
+        # 3. 查詢所有未結清 (is_settled = False) 的銷售紀錄，實現分頁
+        page = request.args.get('page', 1, type=int)
+        per_page = 10
+        
+        # 獲取總數
+        total_sales = (
+            db.session.execute(
+                db.select(func.count(SalesRecord.id))
+                .filter_by(is_settled=False)
+            )
+            .scalar()
+        )
+        
+        # 計算分頁
+        total_pages = (total_sales + per_page - 1) // per_page
+        offset = (page - 1) * per_page
+        
+        # 查詢當前頁的銷售記錄
         recent_unsettled_sales = (
             db.session.execute(
                 db.select(SalesRecord)
                 .filter_by(is_settled=False)
                 .order_by(SalesRecord.created_at.desc())
-                .limit(10)
+                .offset(offset)
+                .limit(per_page)
             )
             .scalars()
             .all()
@@ -1409,12 +1427,25 @@ def sales_entry():
             else:
                 sale.profit_info = None
 
+        # 準備分頁資訊
+        pagination = {
+            'page': page,
+            'per_page': per_page,
+            'total': total_sales,
+            'pages': total_pages,
+            'has_prev': page > 1,
+            'has_next': page < total_pages,
+            'prev_num': page - 1,
+            'next_num': page + 1,
+        }
+
         # --- 將所有查詢到的資料傳遞給前端模板 ---
         return render_template(
             "sales_entry.html",
             customers=customers,
             owner_rmb_accounts_grouped=owner_rmb_accounts_grouped,
             recent_unsettled_sales=recent_unsettled_sales,
+            pagination=pagination,
         )
 
     except Exception as e:

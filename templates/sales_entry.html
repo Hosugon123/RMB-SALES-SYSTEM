@@ -197,6 +197,71 @@
                         </tbody>
                     </table>
                 </div>
+                
+                <!-- 分頁導航 -->
+                {% if pagination and pagination.pages > 1 %}
+                <div class="card-footer bg-light">
+                    <nav aria-label="訂單分頁導航">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-muted small">
+                                第 {{ (pagination.page - 1) * pagination.per_page + 1 }}-{{ pagination.page * pagination.per_page if pagination.page * pagination.per_page < pagination.total else pagination.total }} 筆，共 {{ pagination.total }} 筆記錄
+                            </div>
+                            <ul class="pagination pagination-sm mb-0">
+                                <!-- 上一頁 -->
+                                {% if pagination.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('sales_entry', page=pagination.prev_num) }}" aria-label="上一頁">
+                                        <i class="bi bi-chevron-left"></i>
+                                    </a>
+                                </li>
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">
+                                        <i class="bi bi-chevron-left"></i>
+                                    </span>
+                                </li>
+                                {% endif %}
+                                
+                                <!-- 頁碼 -->
+                                {% for page_num in range(1, pagination.pages + 1) %}
+                                    {% if page_num == pagination.page %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                    {% elif page_num <= 3 or page_num > pagination.pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('sales_entry', page=page_num) }}">{{ page_num }}</a>
+                                    </li>
+                                    {% elif page_num == 4 and pagination.page > 6 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                    {% elif page_num == pagination.pages - 3 and pagination.page < pagination.pages - 5 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                <!-- 下一頁 -->
+                                {% if pagination.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('sales_entry', page=pagination.next_num) }}" aria-label="下一頁">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </li>
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </span>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </nav>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
