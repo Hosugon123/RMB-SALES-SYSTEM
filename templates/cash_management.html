@@ -139,8 +139,9 @@
                             <th>出款帳戶</th>
                             <th>入款帳戶</th>
                             <th>備註</th>
-                            <th class="text-end">TWD 變動</th>
-                            <th class="text-end">RMB 變動</th>
+                            <th class="text-end" id="twd-header">TWD 變動</th>
+                            <th class="text-end" id="rmb-header">RMB 變動</th>
+                            <th class="text-end">累積餘額</th>
                             <th class="text-end pe-3">利潤</th>
                         </tr>
                     </thead>
@@ -181,6 +182,26 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* 累積餘額列的樣式 */
+.running-balance {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+/* 交易行的樣式 */
+.transaction-row {
+    transition: all 0.2s ease;
+}
+
+.transaction-row:hover {
+    background-color: #f8f9fa !important;
+    transform: translateX(2px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+</style>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 現金管理頁面載入完成，開始初始化...');
@@ -667,7 +688,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         
         // 顯示載入中
-        movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
+                                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
         
         // 發送API請求
         fetch(`/api/cash_management/transactions?page=${page}`)
@@ -680,12 +701,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     renderPagination(result.data.pagination);
                 } else {
                     console.error('❌ 載入流水記錄失敗:', result.message);
-                    movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+                                            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
                 }
             })
             .catch(error => {
                 console.error('❌ 網路錯誤:', error);
-                movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+                                    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
             });
     }
 
@@ -702,7 +723,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         if (!transactions || transactions.length === 0) {
             console.log('⚠️ 沒有資金流水數據');
-            movementsTbody.innerHTML = '<tr><td colspan="9" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
         
@@ -771,6 +792,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const rmbClass = rmbChange > 0 ? 'text-success' : (rmbChange < 0 ? 'text-danger' : 'text-muted');
             const profitClass = profit > 0 ? 'text-success' : (profit < 0 ? 'text-danger' : 'text-muted');
             
+            // 添加累積餘額顯示
+            const runningTwd = m.running_twd_balance || 0;
+            const runningRmb = m.running_rmb_balance || 0;
+            const runningBalanceHtml = '<div class="small running-balance">' +
+                '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + runningTwd.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-success">¥ ' + runningRmb.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '</div>';
+            
             const row = '<tr>' +
                 '<td class="ps-3"><small>' + new Date(m.date).toLocaleString('zh-TW') + '</small></td>' +
                 '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
@@ -781,6 +810,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<td><small>' + (m.note || '-') + '</small></td>' +
                 '<td class="text-end"><span class="' + twdClass + '">' + twdDisplay + '</span></td>' +
                 '<td class="text-end"><span class="' + rmbClass + '">' + rmbDisplay + '</span></td>' +
+                '<td class="text-end">' + runningBalanceHtml + '</td>' +
                 '<td class="text-end pe-3"><span class="' + profitClass + '">' + profitDisplay + '</span></td>' +
                 '</tr>';
             
