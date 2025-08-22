@@ -368,8 +368,75 @@ document.addEventListener('DOMContentLoaded', function () {
         
         // 設置RMB匯率欄位的顯示/隱藏邏輯
         setupRmbRateFieldLogic();
+        
+        // 填充模態框中的下拉選單
+        populateModalSelects();
     }
     
+    // 填充下拉選單的通用函式
+    function populateSelect(selectId, options) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        if (!Array.isArray(options)) {
+            select.innerHTML = '<option value="" disabled selected>--- 數據載入錯誤 ---</option>';
+            return;
+        }
+        select.innerHTML = '<option value="" disabled selected>--- 請選擇 ---</option>';
+        options.forEach(opt => select.add(new Option(opt.text, opt.value)));
+    }
+
+    // 填充帶有分組的下拉選單
+    function populateGroupedSelect(selectId, groupedOptions) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        select.innerHTML = '<option value="" disabled selected>--- 請選擇帳戶 ---</option>';
+        
+        groupedOptions.forEach(group => {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = group.holder_name; // 設定分組標題
+            group.accounts.forEach(acc => {
+                const optionText = `${acc.name} (${acc.currency})`;
+                optgroup.appendChild(new Option(optionText, acc.id));
+            });
+            select.appendChild(optgroup);
+        });
+    }
+
+    // 填充模態框中的下拉選單
+    function populateModalSelects() {
+        console.log('🔧 開始填充模態框下拉選單...');
+        
+        // 填充新增帳戶模態框中的持有人下拉選單
+        if (holders && holders.length > 0) {
+            console.log('✅ 填充持有人下拉選單，找到', holders.length, '個持有人');
+            populateSelect('accountHolder', holders.map(h => ({ value: h.id, text: h.name })));
+        } else {
+            console.log('⚠️ 沒有持有人數據可填充');
+        }
+        
+        // 填充內部轉帳模態框中的帳戶下拉選單
+        const groupedAccounts = [];
+        if (accountsByHolder && Object.keys(accountsByHolder).length > 0) {
+            Object.keys(accountsByHolder).forEach(holderId => {
+                const holderData = accountsByHolder[holderId];
+                if (holderData && holderData.accounts && holderData.accounts.length > 0) {
+                    const accountsInGroup = holderData.accounts.filter(acc => acc.balance > 0); // 只顯示有餘額的帳戶
+                    if (accountsInGroup.length > 0) {
+                        groupedAccounts.push({
+                            holder_name: holderData.holder_name,
+                            accounts: accountsInGroup
+                        });
+                    }
+                }
+            });
+        }
+        
+        populateGroupedSelect('fromAccount', groupedAccounts);
+        populateGroupedSelect('toAccount', groupedAccounts);
+        
+        console.log('✅ 模態框下拉選單填充完成');
+    }
+
     // 設置RMB匯率欄位的顯示/隱藏邏輯
     function setupRmbRateFieldLogic() {
         // 監聽操作類型選擇的變化
@@ -496,6 +563,70 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
     
+    // 填充下拉選單的通用函式
+    function populateSelect(selectId, options) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        if (!Array.isArray(options)) {
+            select.innerHTML = '<option value="" disabled selected>--- 數據載入錯誤 ---</option>';
+            return;
+        }
+        select.innerHTML = '<option value="" disabled selected>--- 請選擇 ---</option>';
+        options.forEach(opt => select.add(new Option(opt.text, opt.value)));
+    }
+
+    // 填充帶有分組的下拉選單
+    function populateGroupedSelect(selectId, groupedOptions) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        select.innerHTML = '<option value="" disabled selected>--- 請選擇帳戶 ---</option>';
+        
+        groupedOptions.forEach(group => {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = group.holder_name; // 設定分組標題
+            group.accounts.forEach(acc => {
+                const optionText = `${acc.name} (${acc.currency})`;
+                optgroup.appendChild(new Option(optionText, acc.id));
+            });
+            select.appendChild(optgroup);
+        });
+    }
+
+    // 填充模態框中的下拉選單
+    function populateModalSelects() {
+        console.log('🔧 開始填充模態框下拉選單...');
+        
+        // 填充新增帳戶模態框中的持有人下拉選單
+        if (holders && holders.length > 0) {
+            console.log('✅ 填充持有人下拉選單，找到', holders.length, '個持有人');
+            populateSelect('accountHolder', holders.map(h => ({ value: h.id, text: h.name })));
+        } else {
+            console.log('⚠️ 沒有持有人數據可填充');
+        }
+        
+        // 填充內部轉帳模態框中的帳戶下拉選單
+        const groupedAccounts = [];
+        if (accountsByHolder && Object.keys(accountsByHolder).length > 0) {
+            Object.keys(accountsByHolder).forEach(holderId => {
+                const holderData = accountsByHolder[holderId];
+                if (holderData && holderData.accounts && holderData.accounts.length > 0) {
+                    const accountsInGroup = holderData.accounts.filter(acc => acc.balance > 0); // 只顯示有餘額的帳戶
+                    if (accountsInGroup.length > 0) {
+                        groupedAccounts.push({
+                            holder_name: holderData.holder_name,
+                            accounts: accountsInGroup
+                        });
+                    }
+                }
+            });
+        }
+        
+        populateGroupedSelect('fromAccount', groupedAccounts);
+        populateGroupedSelect('toAccount', groupedAccounts);
+        
+        console.log('✅ 模態框下拉選單填充完成');
+    }
+
     // 刪除持有人
     function deleteHolder(holderId, holderName) {
         console.log('🗑️ 刪除持有人:', holderId, holderName);

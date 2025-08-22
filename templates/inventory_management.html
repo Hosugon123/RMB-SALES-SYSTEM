@@ -1,0 +1,1127 @@
+{% extends "base.html" %}
+
+{% block title %}庫存管理系統{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 頁面標題 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1"><i class="bi bi-box-seam me-2"></i>庫存管理系統</h2>
+            <p class="text-muted mb-0">管理RMB庫存、匯率變更、庫存調整等操作</p>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addInventoryModal">
+                <i class="bi bi-plus-circle me-1"></i>新增庫存
+            </button>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#adjustInventoryModal">
+                <i class="bi bi-gear me-1"></i>庫存調整
+            </button>
+            <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#exchangeRateModal">
+                <i class="bi bi-currency-exchange me-1"></i>匯率管理
+            </button>
+        </div>
+    </div>
+
+    <!-- 庫存概況卡片 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-primary">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-primary">總庫存RMB</h5>
+                    <h3 class="text-primary" id="totalInventoryRmb">¥0.00</h3>
+                    <small class="text-muted">當前可用庫存</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-success">庫存價值TWD</h5>
+                    <h3 class="text-success" id="totalInventoryTwd">NT$0.00</h3>
+                    <small class="text-muted">按當前匯率計算</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-info">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-info">平均匯率</h5>
+                    <h3 class="text-info" id="averageExchangeRate">0.0000</h3>
+                    <small class="text-muted">加權平均成本</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-warning">庫存批次</h5>
+                    <h3 class="text-warning" id="totalBatches">0</h3>
+                    <small class="text-muted">活躍庫存批次</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 庫存詳細表格 -->
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-table me-2"></i>庫存詳細 (FIFO順序)
+            </h5>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="refreshInventoryData()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                </button>
+                <button class="btn btn-outline-info" onclick="exportInventoryData()">
+                    <i class="bi bi-download"></i> 匯出
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">批次ID</th>
+                            <th>買入日期</th>
+                            <th>渠道</th>
+                            <th>原始數量</th>
+                            <th>剩餘數量</th>
+                            <th>已出帳數量</th>
+                            <th>買入匯率</th>
+                            <th>當前匯率</th>
+                            <th>庫存價值</th>
+                            <th>狀態</th>
+                            <th class="text-center pe-3">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-tbody">
+                        <!-- JavaScript 動態填充 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 庫存操作日誌 -->
+    <div class="card shadow-sm mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-journal-text me-2"></i>庫存操作日誌
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">時間</th>
+                            <th>操作類型</th>
+                            <th>操作人員</th>
+                            <th>批次ID</th>
+                            <th>變動數量</th>
+                            <th>變動前餘額</th>
+                            <th>變動後餘額</th>
+                            <th>來源/流向</th>
+                            <th>匯率</th>
+                            <th>備註</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-logs-tbody">
+                        <!-- JavaScript 動態填充 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增庫存模態框 -->
+<div class="modal fade" id="addInventoryModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="addInventoryForm">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle me-2"></i>新增庫存
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="inventoryChannel" class="form-label">渠道來源 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="inventoryChannel" name="channel_id" required>
+                                    <option value="">請選擇渠道</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inventoryRmbAmount" class="form-label">RMB數量 <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">¥</span>
+                                    <input type="number" class="form-control" id="inventoryRmbAmount" 
+                                           name="rmb_amount" step="0.01" min="0.01" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inventoryExchangeRate" class="form-label">買入匯率 <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">NT$</span>
+                                    <input type="number" class="form-control" id="inventoryExchangeRate" 
+                                           name="exchange_rate" step="0.0001" min="0.0001" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="inventoryPaymentAccount" class="form-label">付款帳戶 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="inventoryPaymentAccount" name="payment_account_id" required>
+                                    <option value="">請選擇付款帳戶</option>
+                                </select>
+                                <div class="form-text">從此帳戶扣除台幣款項</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inventoryDepositAccount" class="form-label">收款帳戶 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="inventoryDepositAccount" name="deposit_account_id" required>
+                                    <option value="">請選擇收款帳戶</option>
+                                </select>
+                                <div class="form-text">RMB將存入此帳戶</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inventoryNote" class="form-label">備註</label>
+                                <textarea class="form-control" id="inventoryNote" name="note" rows="3" 
+                                          placeholder="庫存相關說明..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>重要提醒：</strong>新增庫存時，系統將自動從付款帳戶扣除台幣款項，並將RMB存入收款帳戶。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-1"></i>確認新增
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 庫存調整模態框 -->
+<div class="modal fade" id="adjustInventoryModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="adjustInventoryForm">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-gear me-2"></i>庫存調整
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="adjustInventoryBatch" class="form-label">選擇批次 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="adjustInventoryBatch" name="batch_id" required>
+                                    <option value="">請選擇要調整的庫存批次</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="adjustType" class="form-label">調整類型 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="adjustType" name="adjust_type" required>
+                                    <option value="">請選擇調整類型</option>
+                                    <option value="increase">增加庫存</option>
+                                    <option value="decrease">減少庫存</option>
+                                    <option value="write_off">庫存報銷</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="adjustAmount" class="form-label">調整數量 <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">¥</span>
+                                    <input type="number" class="form-control" id="adjustAmount" 
+                                           name="amount" step="0.01" min="0.01" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="adjustSourceAccount" class="form-label">來源帳戶 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="adjustSourceAccount" name="source_account_id" required>
+                                    <option value="">請選擇來源帳戶</option>
+                                </select>
+                                <div class="form-text" id="sourceAccountHelp">增加庫存時從此帳戶扣除RMB</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="adjustTargetAccount" class="form-label">流向帳戶 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="adjustTargetAccount" name="target_account_id" required>
+                                    <option value="">請選擇流向帳戶</option>
+                                </select>
+                                <div class="form-text" id="targetAccountHelp">減少庫存時RMB將轉入此帳戶</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="adjustExchangeRate" class="form-label">調整匯率 <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">NT$</span>
+                                    <input type="number" class="form-control" id="adjustExchangeRate" 
+                                           name="exchange_rate" step="0.0001" min="0.0001" required>
+                                </div>
+                                <div class="form-text">用於計算台幣價值變動</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="adjustReason" class="form-label">調整原因 <span class="text-danger">*</span></label>
+                                <textarea class="form-control" id="adjustReason" name="reason" rows="3" 
+                                          placeholder="請說明調整原因..." required></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>注意：</strong>庫存調整將同時影響庫存數量和現金帳戶餘額，請謹慎操作。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-check-circle me-1"></i>確認調整
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 匯率管理模態框 -->
+<div class="modal fade" id="exchangeRateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="exchangeRateForm">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-currency-exchange me-2"></i>匯率管理
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="rateChangeType" class="form-label">匯率變更類型</label>
+                        <select class="form-select" id="rateChangeType" name="rate_change_type" required>
+                            <option value="">請選擇匯率變更類型</option>
+                            <option value="global">全局匯率調整</option>
+                            <option value="batch">批次匯率調整</option>
+                            <option value="market">市場匯率更新</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="oldExchangeRate" class="form-label">原匯率</label>
+                        <div class="input-group">
+                            <span class="input-group-text">NT$</span>
+                            <input type="number" class="form-control" id="oldExchangeRate" 
+                                   name="old_rate" step="0.0001" readonly>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newExchangeRate" class="form-label">新匯率</label>
+                        <div class="input-group">
+                            <span class="input-group-text">NT$</span>
+                            <input type="number" class="form-control" id="newExchangeRate" 
+                                   name="new_rate" step="0.0001" min="0.0001" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="rateChangeReason" class="form-label">變更原因</label>
+                        <textarea class="form-control" id="rateChangeReason" name="reason" rows="3" 
+                                  placeholder="請說明匯率變更原因..." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-info">
+                        <i class="bi bi-check-circle me-1"></i>確認變更
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    console.log('🚀 庫存管理頁面載入完成，開始初始化...');
+    
+    // 初始化頁面
+    initializeInventoryPage();
+    
+    // 設置表單提交事件
+    setupFormSubmissions();
+    
+    // 設置事件監聽器
+    setupEventListeners();
+});
+
+// 初始化庫存管理頁面
+function initializeInventoryPage() {
+    console.log('🔧 開始初始化庫存管理頁面...');
+    
+    // 載入庫存數據
+    loadInventoryData();
+    
+    // 載入操作日誌
+    loadInventoryLogs();
+    
+    // 填充下拉選單
+    populateDropdowns();
+    
+    console.log('✅ 庫存管理頁面初始化完成');
+}
+
+// 載入庫存數據
+async function loadInventoryData() {
+    try {
+        console.log('📊 開始載入庫存數據...');
+        
+        const response = await fetch('/api/inventory/status');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            console.log('✅ 庫存數據載入成功:', data);
+            
+            // 更新概況卡片
+            updateInventorySummary(data.summary);
+            
+            // 渲染庫存表格
+            renderInventoryTable(data.inventory);
+            
+        } else {
+            console.error('❌ 庫存數據載入失敗:', data.message);
+            showAlert('庫存數據載入失敗: ' + data.message, 'danger');
+        }
+        
+    } catch (error) {
+        console.error('❌ 載入庫存數據時發生錯誤:', error);
+        showAlert('載入庫存數據時發生錯誤', 'danger');
+    }
+}
+
+// 更新庫存概況
+function updateInventorySummary(summary) {
+    if (!summary) return;
+    
+    document.getElementById('totalInventoryRmb').textContent = `¥${summary.total_rmb.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    document.getElementById('totalInventoryTwd').textContent = `NT$${summary.total_twd.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    document.getElementById('averageExchangeRate').textContent = summary.average_rate.toFixed(4);
+    document.getElementById('totalBatches').textContent = summary.total_batches;
+}
+
+// 渲染庫存表格
+function renderInventoryTable(inventory) {
+    const tbody = document.getElementById('inventory-tbody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    if (!inventory || inventory.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">尚無庫存數據</td></tr>';
+        return;
+    }
+    
+    inventory.forEach(item => {
+        const row = createInventoryRow(item);
+        tbody.appendChild(row);
+    });
+}
+
+// 創建庫存行
+function createInventoryRow(item) {
+    const row = document.createElement('tr');
+    
+    // 計算庫存價值
+    const inventoryValue = item.remaining_rmb * item.exchange_rate;
+    
+    // 設置行內容
+    row.innerHTML = `
+        <td class="ps-3">
+            <span class="badge bg-secondary">#${item.id}</span>
+        </td>
+        <td>${formatDate(item.purchase_date)}</td>
+        <td>${item.channel_name || 'N/A'}</td>
+        <td class="text-end">¥${item.original_rmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td class="text-end">
+            <span class="text-success fw-bold">¥${item.remaining_rmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+        </td>
+        <td class="text-end">¥${item.allocated_rmb.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td class="text-end">NT$${item.exchange_rate.toFixed(4)}</td>
+        <td class="text-end">NT$${item.current_rate.toFixed(4)}</td>
+        <td class="text-end">
+            <span class="text-primary fw-bold">NT$${inventoryValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+        </td>
+        <td class="text-center">
+            ${getInventoryStatusBadge(item)}
+        </td>
+        <td class="text-center pe-3">
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" onclick="viewInventoryDetails(${item.id})" title="查看詳情">
+                    <i class="bi bi-eye"></i>
+                </button>
+                <button class="btn btn-outline-warning" onclick="editInventoryBatch(${item.id})" title="編輯批次">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-outline-danger" onclick="deleteInventoryBatch(${item.id})" title="刪除批次">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </td>
+    `;
+    
+    return row;
+}
+
+// 獲取庫存狀態標籤
+function getInventoryStatusBadge(item) {
+    if (item.remaining_rmb <= 0) {
+        return '<span class="badge bg-danger">已耗盡</span>';
+    } else if (item.remaining_rmb < item.original_rmb * 0.1) {
+        return '<span class="badge bg-warning">庫存不足</span>';
+    } else {
+        return '<span class="badge bg-success">正常</span>';
+    }
+}
+
+// 載入操作日誌
+async function loadInventoryLogs() {
+    try {
+        const response = await fetch('/api/inventory/logs');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            renderInventoryLogs(data.logs);
+        }
+    } catch (error) {
+        console.error('❌ 載入操作日誌失敗:', error);
+    }
+}
+
+// 渲染操作日誌
+function renderInventoryLogs(logs) {
+    const tbody = document.getElementById('inventory-logs-tbody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    if (!logs || logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">尚無操作記錄</td></tr>';
+        return;
+    }
+    
+    logs.forEach(log => {
+        const row = createLogRow(log);
+        tbody.appendChild(row);
+    });
+}
+
+// 創建日誌行
+function createLogRow(log) {
+    const row = document.createElement('tr');
+    
+    row.innerHTML = `
+        <td class="ps-3">${formatDateTime(log.created_at)}</td>
+        <td>${getOperationTypeBadge(log.operation_type)}</td>
+        <td>${log.operator_name}</td>
+        <td><span class="badge bg-secondary">#${log.batch_id}</span></td>
+        <td class="text-end">¥${log.change_amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td class="text-end">¥${log.balance_before.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td class="text-end">¥${log.balance_after.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td>${log.source_account_name || 'N/A'}</td>
+        <td>NT$${log.exchange_rate.toFixed(4)}</td>
+        <td>${log.note || '-'}</td>
+    `;
+    
+    return row;
+}
+
+// 獲取操作類型標籤
+function getOperationTypeBadge(type) {
+    const badges = {
+        'add': '<span class="badge bg-success">新增</span>',
+        'adjust': '<span class="badge bg-warning">調整</span>',
+        'withdraw': '<span class="badge bg-info">提款</span>',
+        'delete': '<span class="badge bg-danger">刪除</span>',
+        'rate_change': '<span class="badge bg-primary">匯率變更</span>'
+    };
+    
+    return badges[type] || `<span class="badge bg-secondary">${type}</span>`;
+}
+
+// 填充下拉選單
+async function populateDropdowns() {
+    try {
+        console.log('🔧 開始填充下拉選單...');
+        
+        // 載入渠道數據
+        const channelsResponse = await fetch('/api/channels');
+        if (channelsResponse.ok) {
+            const channelsData = await channelsResponse.json();
+            if (channelsData.status === 'success') {
+                populateChannelDropdown(channelsData.channels);
+            }
+        }
+        
+        // 載入帳戶數據
+        const accountsResponse = await fetch('/api/cash_management/accounts');
+        if (accountsResponse.ok) {
+            const accountsData = await accountsResponse.json();
+            if (accountsData.status === 'success') {
+                populateAccountDropdowns(accountsData.accounts);
+            }
+        }
+        
+        console.log('✅ 下拉選單填充完成');
+        
+    } catch (error) {
+        console.error('❌ 填充下拉選單失敗:', error);
+    }
+}
+
+// 填充渠道下拉選單
+function populateChannelDropdown(channels) {
+    const select = document.getElementById('inventoryChannel');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">請選擇渠道</option>';
+    channels.forEach(channel => {
+        const option = document.createElement('option');
+        option.value = channel.id;
+        option.textContent = channel.name;
+        select.appendChild(option);
+    });
+}
+
+// 填充帳戶下拉選單
+function populateAccountDropdowns(accounts) {
+    // 新增庫存模態框的帳戶選擇
+    const paymentAccountSelect = document.getElementById('inventoryPaymentAccount');
+    const depositAccountSelect = document.getElementById('inventoryDepositAccount');
+    
+    if (paymentAccountSelect) {
+        populateAccountSelect(paymentAccountSelect, accounts, 'TWD');
+    }
+    
+    if (depositAccountSelect) {
+        populateAccountSelect(depositAccountSelect, accounts, 'RMB');
+    }
+    
+    // 庫存調整模態框的帳戶選擇
+    const sourceAccountSelect = document.getElementById('adjustSourceAccount');
+    const targetAccountSelect = document.getElementById('adjustTargetAccount');
+    
+    if (sourceAccountSelect) {
+        populateAccountSelect(sourceAccountSelect, accounts, 'RMB');
+    }
+    
+    if (targetAccountSelect) {
+        populateAccountSelect(targetAccountSelect, accounts, 'RMB');
+    }
+}
+
+// 填充帳戶選擇下拉選單
+function populateAccountSelect(select, accounts, currency) {
+    select.innerHTML = '<option value="">請選擇帳戶</option>';
+    
+    // 按持有人分組
+    const groupedAccounts = {};
+    accounts.forEach(account => {
+        if (account.currency === currency) {
+            if (!groupedAccounts[account.holder_name]) {
+                groupedAccounts[account.holder_name] = [];
+            }
+            groupedAccounts[account.holder_name].push(account);
+        }
+    });
+    
+    // 創建分組選項
+    Object.keys(groupedAccounts).forEach(holderName => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = holderName;
+        
+        groupedAccounts[holderName].forEach(account => {
+            const option = document.createElement('option');
+            option.value = account.id;
+            option.textContent = `${account.name} (餘額: ${account.currency === 'TWD' ? 'NT$' : '¥'}${account.balance.toLocaleString('en-US', {minimumFractionDigits: 2})})`;
+            optgroup.appendChild(option);
+        });
+        
+        select.appendChild(optgroup);
+    });
+}
+
+// 設置表單提交事件
+function setupFormSubmissions() {
+    // 新增庫存表單
+    const addInventoryForm = document.getElementById('addInventoryForm');
+    if (addInventoryForm) {
+        addInventoryForm.addEventListener('submit', handleAddInventory);
+    }
+    
+    // 庫存調整表單
+    const adjustInventoryForm = document.getElementById('adjustInventoryForm');
+    if (adjustInventoryForm) {
+        adjustInventoryForm.addEventListener('submit', handleAdjustInventory);
+    }
+    
+    // 匯率管理表單
+    const exchangeRateForm = document.getElementById('exchangeRateForm');
+    if (exchangeRateForm) {
+        exchangeRateForm.addEventListener('submit', handleExchangeRateChange);
+    }
+}
+
+// 處理新增庫存
+async function handleAddInventory(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        console.log('📝 提交新增庫存表單:', data);
+        
+        // 驗證必填欄位
+        if (!validateRequiredFields(data, ['channel_id', 'rmb_amount', 'exchange_rate', 'payment_account_id', 'deposit_account_id'])) {
+            return;
+        }
+        
+        // 驗證帳戶餘額
+        if (!await validateAccountBalances(data)) {
+            return;
+        }
+        
+        const response = await fetch('/api/inventory/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showAlert('✅ 庫存新增成功！', 'success');
+            
+            // 關閉模態框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addInventoryModal'));
+            modal.hide();
+            
+            // 刷新數據
+            loadInventoryData();
+            loadInventoryLogs();
+            
+            // 重置表單
+            event.target.reset();
+            
+        } else {
+            showAlert('❌ 庫存新增失敗: ' + result.message, 'danger');
+        }
+        
+    } catch (error) {
+        console.error('❌ 新增庫存時發生錯誤:', error);
+        showAlert('❌ 新增庫存時發生錯誤', 'danger');
+    }
+}
+
+// 處理庫存調整
+async function handleAdjustInventory(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        console.log('🔧 提交庫存調整表單:', data);
+        
+        // 驗證必填欄位
+        if (!validateRequiredFields(data, ['batch_id', 'adjust_type', 'amount', 'source_account_id', 'target_account_id', 'exchange_rate', 'reason'])) {
+            return;
+        }
+        
+        // 驗證帳戶餘額
+        if (!await validateAdjustmentAccountBalances(data)) {
+            return;
+        }
+        
+        const response = await fetch('/api/inventory/adjust', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showAlert('✅ 庫存調整成功！', 'success');
+            
+            // 關閉模態框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('adjustInventoryModal'));
+            modal.hide();
+            
+            // 刷新數據
+            loadInventoryData();
+            loadInventoryLogs();
+            
+            // 重置表單
+            event.target.reset();
+            
+        } else {
+            showAlert('❌ 庫存調整失敗: ' + result.message, 'danger');
+        }
+        
+    } catch (error) {
+        console.error('❌ 庫存調整時發生錯誤:', error);
+        showAlert('❌ 庫存調整時發生錯誤', 'danger');
+    }
+}
+
+// 處理匯率變更
+async function handleExchangeRateChange(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        console.log('💱 提交匯率變更表單:', data);
+        
+        const response = await fetch('/api/inventory/exchange-rate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showAlert('✅ 匯率變更成功！', 'success');
+            
+            // 關閉模態框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('exchangeRateModal'));
+            modal.hide();
+            
+            // 刷新數據
+            loadInventoryData();
+            loadInventoryLogs();
+            
+            // 重置表單
+            event.target.reset();
+            
+        } else {
+            showAlert('❌ 匯率變更失敗: ' + result.message, 'danger');
+        }
+        
+    } catch (error) {
+        console.error('❌ 匯率變更時發生錯誤:', error);
+        showAlert('❌ 匯率變更時發生錯誤', 'danger');
+    }
+}
+
+// 驗證必填欄位
+function validateRequiredFields(data, requiredFields) {
+    for (const field of requiredFields) {
+        if (!data[field] || data[field].trim() === '') {
+            showAlert(`❌ 請填寫必填欄位: ${getFieldDisplayName(field)}`, 'danger');
+            return false;
+        }
+    }
+    return true;
+}
+
+// 獲取欄位顯示名稱
+function getFieldDisplayName(field) {
+    const fieldNames = {
+        'channel_id': '渠道來源',
+        'rmb_amount': 'RMB數量',
+        'exchange_rate': '匯率',
+        'payment_account_id': '付款帳戶',
+        'deposit_account_id': '收款帳戶',
+        'batch_id': '庫存批次',
+        'adjust_type': '調整類型',
+        'amount': '調整數量',
+        'source_account_id': '來源帳戶',
+        'target_account_id': '流向帳戶',
+        'reason': '調整原因'
+    };
+    
+    return fieldNames[field] || field;
+}
+
+// 驗證帳戶餘額（新增庫存）
+async function validateAccountBalances(data) {
+    try {
+        const rmbAmount = parseFloat(data.rmb_amount);
+        const exchangeRate = parseFloat(data.exchange_rate);
+        const twdAmount = rmbAmount * exchangeRate;
+        
+        // 檢查付款帳戶（台幣）餘額
+        const paymentAccount = await getAccountInfo(data.payment_account_id);
+        if (paymentAccount.balance < twdAmount) {
+            showAlert(`❌ 付款帳戶餘額不足！需要 NT$${twdAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}，當前餘額 NT$${paymentAccount.balance.toLocaleString('en-US', {minimumFractionDigits: 2})}`, 'danger');
+            return false;
+        }
+        
+        return true;
+        
+    } catch (error) {
+        console.error('❌ 驗證帳戶餘額失敗:', error);
+        showAlert('❌ 驗證帳戶餘額失敗', 'danger');
+        return false;
+    }
+}
+
+// 驗證調整帳戶餘額
+async function validateAdjustmentAccountBalances(data) {
+    try {
+        const amount = parseFloat(data.amount);
+        const adjustType = data.adjust_type;
+        
+        if (adjustType === 'increase') {
+            // 增加庫存：檢查來源帳戶（RMB）餘額
+            const sourceAccount = await getAccountInfo(data.source_account_id);
+            if (sourceAccount.balance < amount) {
+                showAlert(`❌ 來源帳戶餘額不足！需要 ¥${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}，當前餘額 ¥${sourceAccount.balance.toLocaleString('en-US', {minimumFractionDigits: 2})}`, 'danger');
+                return false;
+            }
+        }
+        
+        return true;
+        
+    } catch (error) {
+        console.error('❌ 驗證調整帳戶餘額失敗:', error);
+        showAlert('❌ 驗證調整帳戶餘額失敗', 'danger');
+        return false;
+    }
+}
+
+// 獲取帳戶信息
+async function getAccountInfo(accountId) {
+    try {
+        const response = await fetch(`/api/cash_management/account/${accountId}`);
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            return data.account;
+        } else {
+            throw new Error(data.message);
+        }
+        
+    } catch (error) {
+        console.error('❌ 獲取帳戶信息失敗:', error);
+        throw error;
+    }
+}
+
+// 設置事件監聽器
+function setupEventListeners() {
+    // 模態框顯示事件
+    const addInventoryModal = document.getElementById('addInventoryModal');
+    if (addInventoryModal) {
+        addInventoryModal.addEventListener('show.bs.modal', function () {
+            console.log('🔧 新增庫存模態框顯示');
+            populateDropdowns();
+        });
+    }
+    
+    const adjustInventoryModal = document.getElementById('adjustInventoryModal');
+    if (adjustInventoryModal) {
+        adjustInventoryModal.addEventListener('show.bs.modal', function () {
+            console.log('🔧 庫存調整模態框顯示');
+            populateAdjustInventoryDropdowns();
+        });
+    }
+    
+    const exchangeRateModal = document.getElementById('exchangeRateModal');
+    if (exchangeRateModal) {
+        exchangeRateModal.addEventListener('show.bs.modal', function () {
+            console.log('🔧 匯率管理模態框顯示');
+            populateExchangeRateModal();
+        });
+    }
+    
+    // 庫存調整類型變化事件
+    const adjustTypeSelect = document.getElementById('adjustType');
+    if (adjustTypeSelect) {
+        adjustTypeSelect.addEventListener('change', function() {
+            updateAdjustmentAccountHelp(this.value);
+        });
+    }
+}
+
+// 填充庫存調整下拉選單
+async function populateAdjustInventoryDropdowns() {
+    try {
+        // 載入有庫存的批次
+        const response = await fetch('/api/inventory/batches');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success') {
+                populateBatchDropdown(data.batches);
+            }
+        }
+        
+        // 載入帳戶數據
+        const accountsResponse = await fetch('/api/cash_management/accounts');
+        if (accountsResponse.ok) {
+            const accountsData = await accountsResponse.json();
+            if (accountsData.status === 'success') {
+                populateAdjustmentAccountDropdowns(accountsData.accounts);
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ 填充庫存調整下拉選單失敗:', error);
+    }
+}
+
+// 填充批次下拉選單
+function populateBatchDropdown(batches) {
+    const select = document.getElementById('adjustInventoryBatch');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">請選擇要調整的庫存批次</option>';
+    batches.forEach(batch => {
+        const option = document.createElement('option');
+        option.value = batch.id;
+        option.textContent = `批次 #${batch.id} - 剩餘 ¥${batch.remaining_rmb.toLocaleString('en-US', {minimumFractionDigits: 2})} (匯率: ${batch.exchange_rate.toFixed(4)})`;
+        select.appendChild(option);
+    });
+}
+
+// 填充調整帳戶下拉選單
+function populateAdjustmentAccountDropdowns(accounts) {
+    const sourceSelect = document.getElementById('adjustSourceAccount');
+    const targetSelect = document.getElementById('adjustTargetAccount');
+    
+    if (sourceSelect) {
+        populateAccountSelect(sourceSelect, accounts, 'RMB');
+    }
+    
+    if (targetSelect) {
+        populateAccountSelect(targetSelect, accounts, 'RMB');
+    }
+}
+
+// 更新調整帳戶幫助文字
+function updateAdjustmentAccountHelp(adjustType) {
+    const sourceHelp = document.getElementById('sourceAccountHelp');
+    const targetHelp = document.getElementById('targetAccountHelp');
+    
+    if (adjustType === 'increase') {
+        if (sourceHelp) sourceHelp.textContent = '增加庫存時從此帳戶扣除RMB';
+        if (targetHelp) targetHelp.textContent = '增加庫存時RMB將轉入庫存';
+    } else if (adjustType === 'decrease') {
+        if (sourceHelp) sourceHelp.textContent = '減少庫存時RMB將從庫存轉出';
+        if (targetHelp) targetHelp.textContent = '減少庫存時RMB將轉入此帳戶';
+    } else if (adjustType === 'write_off') {
+        if (sourceHelp) sourceHelp.textContent = '庫存報銷時RMB將從庫存轉出';
+        if (targetHelp) targetHelp.textContent = '庫存報銷時RMB將轉入此帳戶';
+    }
+}
+
+// 填充匯率管理模態框
+async function populateExchangeRateModal() {
+    try {
+        // 載入當前匯率信息
+        const response = await fetch('/api/inventory/current-rates');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success') {
+                document.getElementById('oldExchangeRate').value = data.average_rate.toFixed(4);
+            }
+        }
+    } catch (error) {
+        console.error('❌ 填充匯率管理模態框失敗:', error);
+    }
+}
+
+// 其他功能函數
+function viewInventoryDetails(batchId) {
+    console.log('👁️ 查看庫存批次詳情:', batchId);
+    // 實現查看詳情功能
+    showAlert('查看詳情功能開發中...', 'info');
+}
+
+function editInventoryBatch(batchId) {
+    console.log('✏️ 編輯庫存批次:', batchId);
+    // 實現編輯功能
+    showAlert('編輯功能開發中...', 'info');
+}
+
+function deleteInventoryBatch(batchId) {
+    console.log('🗑️ 刪除庫存批次:', batchId);
+    
+    if (!confirm('確定要刪除此庫存批次嗎？此操作不可逆轉！')) {
+        return;
+    }
+    
+    // 實現刪除功能
+    showAlert('刪除功能開發中...', 'info');
+}
+
+function refreshInventoryData() {
+    console.log('🔄 刷新庫存數據...');
+    loadInventoryData();
+    loadInventoryLogs();
+}
+
+function exportInventoryData() {
+    console.log('📤 匯出庫存數據...');
+    // 實現匯出功能
+    showAlert('匯出功能開發中...', 'info');
+}
+
+// 工具函數
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('zh-TW');
+}
+
+function formatDateTime(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString('zh-TW');
+}
+
+function showAlert(message, type = 'info') {
+    // 創建 Bootstrap 提示框
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // 自動關閉
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}
+

@@ -2072,6 +2072,9 @@ def cash_management():
             twd_change = 0
             rmb_change = 0
             
+            # 調試信息：檢查每個記帳記錄
+            print(f"🔍 DEBUG: 處理記帳記錄 - 類型: {entry.entry_type}, 帳戶: {entry.account.name if entry.account else 'N/A'}, 金額: {entry.amount}")
+            
             # 優化：移除對BUY_IN_DEBIT和BUY_IN_CREDIT的特殊處理
             # 因為買入交易現在只使用PurchaseRecord，不需要額外的LedgerEntry
             
@@ -2083,15 +2086,21 @@ def cash_management():
                 else:
                     # 其他類型（如提款、轉出）是減少TWD餘額
                     twd_change = -entry.amount
+                
+                print(f"  💰 TWD帳戶變動: {twd_change} (類型: {entry.entry_type})")
+                
             elif entry.account and entry.account.currency == "RMB":
                 rmb_change = (
                     entry.amount
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
                     else -entry.amount
                 )
+                
+                print(f"  💰 RMB帳戶變動: {rmb_change} (類型: {entry.entry_type})")
             
-            # 只顯示非買入和非銷帳相關的記帳記錄（銷帳由CashLog統一處理）
-            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT"]:
+            # 顯示所有記帳記錄，包括提款記錄
+            # 移除過濾，確保提款記錄被包含在內
+            if True:  # 暫時移除過濾，檢查所有記錄
                 # 根據交易類型設置出入款帳戶
                 payment_account = "N/A"
                 deposit_account = "N/A"
@@ -2128,6 +2137,9 @@ def cash_management():
                     # 其他類型
                     payment_account = entry.account.name if entry.account else "N/A"
                     deposit_account = "N/A"
+                
+                # 調試信息：檢查添加到流水記錄的數據
+                print(f"  📝 添加到流水記錄: 類型={entry.entry_type}, TWD變動={twd_change}, RMB變動={rmb_change}")
                 
                 unified_stream.append(
                     {
@@ -2236,13 +2248,25 @@ def cash_management():
         
         # 從最早的交易開始，正向計算每筆交易後的餘額
         for transaction in chronological_stream:
+            # 獲取變動值，確保不是None或0
+            twd_change = transaction.get('twd_change', 0)
+            rmb_change = transaction.get('rmb_change', 0)
+            
+            # 調試信息：檢查變動值
+            if twd_change != 0 or rmb_change != 0:
+                print(f"🔍 DEBUG: 交易 {transaction.get('type', 'N/A')} - TWD變動: {twd_change}, RMB變動: {rmb_change}")
+            
             # 計算此筆交易後的餘額
-            running_twd_balance += (transaction.get('twd_change', 0) or 0)
-            running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
+            running_twd_balance += twd_change
+            running_rmb_balance += rmb_change
             
             # 記錄此筆交易後的餘額
             transaction['running_twd_balance'] = running_twd_balance
             transaction['running_rmb_balance'] = running_rmb_balance
+            
+            # 調試信息：檢查累積餘額
+            if twd_change != 0 or rmb_change != 0:
+                print(f"  📊 累積餘額: TWD={running_twd_balance}, RMB={running_rmb_balance}")
         
         # 重新按日期倒序排列，保持顯示順序
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
@@ -3286,10 +3310,13 @@ def admin_update_cash_account():
                         entry = LedgerEntry(
                             entry_type="WITHDRAW",
                             account_id=account.id,
-                            amount=amount,
+                            amount=amount,  # 提款金額
                             description=description,
                             operator_id=current_user.id,
                         )
+                        
+                        # 調試信息：檢查提款記錄
+                        print(f"🔍 DEBUG: 創建提款記錄 - 金額: {amount}, 帳戶: {account.name}, 類型: WITHDRAW")
                         db.session.add(entry)
                         db.session.commit()
                         
