@@ -346,6 +346,236 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
     
+    // 打開出入帳模態框
+    function openMovementModal(accountId, accountName) {
+        console.log('🔄 打開出入帳模態框:', accountId, accountName);
+        
+        // 設置模態框標題和帳戶信息
+        const modalTitle = document.getElementById('movementModalTitle');
+        
+        if (modalTitle) modalTitle.textContent = `為「${accountName}」進行資金操作`;
+        
+        // 設置隱藏的帳戶ID
+        const accountIdInput = document.getElementById('movementAccountId');
+        if (accountIdInput) accountIdInput.value = accountId;
+        
+        // 顯示模態框
+        const modal = new bootstrap.Modal(document.getElementById('addMovementModal'));
+        modal.show();
+    }
+    
+    // 刪除帳戶
+    function deleteAccount(accountId, accountName) {
+        console.log('🗑️ 刪除帳戶:', accountId, accountName);
+        
+        if (!confirm(`確定要刪除帳戶「${accountName}」嗎？\n\n⚠️ 此操作不可逆轉！`)) {
+            return;
+        }
+        
+        // 發送刪除請求
+        fetch('/api/delete-account', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                account_id: accountId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('✅ 帳戶刪除成功！');
+                // 刷新頁面數據
+                manualRefreshData();
+            } else {
+                alert('❌ 刪除失敗: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('❌ 刪除帳戶時發生錯誤:', error);
+            alert('❌ 刪除失敗，請檢查網路連接');
+        });
+    }
+    
+    // 刪除持有人
+    function deleteHolder(holderId, holderName) {
+        console.log('🗑️ 刪除持有人:', holderId, holderName);
+        
+        if (!confirm(`確定要刪除持有人「${holderName}」嗎？\n\n⚠️ 此操作將同時刪除該持有人下的所有帳戶！\n⚠️ 此操作不可逆轉！`)) {
+            return;
+        }
+        
+        // 發送刪除請求
+        fetch('/api/delete-holder', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                holder_id: holderId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('✅ 持有人刪除成功！');
+                // 刷新頁面數據
+                manualRefreshData();
+            } else {
+                alert('❌ 刪除失敗: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('❌ 刪除持有人時發生錯誤:', error);
+            alert('❌ 刪除失敗，請檢查網路連接');
+        });
+    }
+    
+    // 全局函數：打開銷帳模態框
+    window.openSettlementModal = function(customerId, customerName, totalReceivable) {
+        console.log('打開銷帳模態框:', { customerId, customerName, totalReceivable });
+        
+        // 設置模態框數據
+        document.getElementById('settlementCustomerName').value = customerName;
+        document.getElementById('settlementTotalReceivable').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('settlementAmount').value = totalReceivable;
+        document.getElementById('settlementNote').value = '';
+        
+        // 添加隱藏的客戶ID和帳戶ID欄位
+        let customerIdInput = document.getElementById('settlementForm').querySelector('input[name="customer_id"]');
+        if (!customerIdInput) {
+            customerIdInput = document.createElement('input');
+            customerIdInput.type = 'hidden';
+            customerIdInput.name = 'customer_id';
+            document.getElementById('settlementForm').appendChild(customerIdInput);
+        }
+        customerIdInput.value = customerId;
+        
+        // 移除舊的隱藏帳戶ID欄位（如果存在）
+        let oldAccountIdInput = document.getElementById('settlementForm').querySelector('input[name="account_id"]');
+        if (oldAccountIdInput) {
+            oldAccountIdInput.remove();
+        }
+        
+        // 添加新的隱藏帳戶ID欄位
+        let accountIdInput = document.createElement('input');
+        accountIdInput.type = 'hidden';
+        accountIdInput.name = 'account_id';
+        accountIdInput.id = 'hiddenAccountId';
+        document.getElementById('settlementForm').appendChild(accountIdInput);
+        
+        // 監聽收款帳戶下拉選單的變化，自動更新隱藏的帳戶ID
+        const settlementAccountSelect = document.getElementById('settlementAccount');
+        if (settlementAccountSelect) {
+            settlementAccountSelect.addEventListener('change', function() {
+                document.getElementById('hiddenAccountId').value = this.value;
+            });
+        }
+        
+        // 顯示模態框
+        const modalElement = document.getElementById('settlementModal');
+        let modalInstance = bootstrap.Modal.getInstance(modalElement);
+        if (!modalInstance) {
+            modalInstance = new bootstrap.Modal(modalElement);
+        }
+        modalInstance.show();
+    };
+    
+    // 設置客戶交易紀錄相關功能
+    function setupCustomerTransactionsListeners() {
+        console.log('🔧 設置客戶交易紀錄點擊事件監聽器...');
+        
+        // 使用事件委託，監聽整個應收帳款表格的點擊事件
+        document.addEventListener('click', function(event) {
+            console.log('🖱️ 點擊事件:', event.target);
+            
+            if (event.target.closest('.customer-transactions')) {
+                const customerLink = event.target.closest('.customer-transactions');
+                const customerId = customerLink.dataset.customerId;
+                const customerName = customerLink.dataset.customerName;
+                
+                console.log('👤 點擊客戶:', { customerId, customerName });
+                
+                if (customerId && customerName) {
+                    openCustomerTransactionsModal(customerId, customerName);
+                } else {
+                    console.error('❌ 客戶ID或名稱缺失:', { customerId, customerName });
+                }
+            }
+        });
+        
+        console.log('✅ 客戶交易紀錄點擊事件監聽器設置完成');
+    }
+    
+    function openCustomerTransactionsModal(customerId, customerName) {
+        // 更新模態框標題
+        document.getElementById('customerTransactionsTitle').textContent = `${customerName} 的交易紀錄`;
+        document.getElementById('customerTransactionsName').textContent = customerName;
+        
+        // 顯示載入狀態
+        document.getElementById('customerTransactionsTable').innerHTML = '<tr><td colspan="7" class="text-center p-3"><div class="spinner-border spinner-border-sm me-2"></div>載入中...</td></tr>';
+        document.getElementById('customerTransactionsEmpty').style.display = 'none';
+        
+        // 顯示模態框
+        const modal = new bootstrap.Modal(document.getElementById('customerTransactionsModal'));
+        modal.show();
+        
+        // 獲取客戶交易紀錄
+        fetchCustomerTransactions(customerId);
+    }
+    
+    function fetchCustomerTransactions(customerId) {
+        fetch(`/api/customer/transactions/${customerId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    displayCustomerTransactions(data);
+                } else {
+                    console.error('❌ 獲取客戶交易紀錄失敗:', data.message);
+                    document.getElementById('customerTransactionsTable').innerHTML = '<tr><td colspan="7" class="text-center p-3 text-danger">載入失敗: ' + data.message + '</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('❌ 網路錯誤:', error);
+                document.getElementById('customerTransactionsTable').innerHTML = '<tr><td colspan="7" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+            });
+    }
+    
+    function displayCustomerTransactions(data) {
+        const tableBody = document.getElementById('customerTransactionsTable');
+        const emptyMessage = document.getElementById('customerTransactionsEmpty');
+        
+        if (!data.transactions || data.transactions.length === 0) {
+            tableBody.innerHTML = '';
+            emptyMessage.style.display = 'block';
+            return;
+        }
+        
+        emptyMessage.style.display = 'none';
+        
+        let tableHtml = '';
+        data.transactions.forEach(transaction => {
+            const date = new Date(transaction.date).toLocaleString('zh-TW');
+            const amount = transaction.amount ? `NT$ ${parseFloat(transaction.amount).toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
+            const rmbAmount = transaction.rmb_amount ? `¥ ${parseFloat(transaction.rmb_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
+            
+            tableHtml += `
+                <tr>
+                    <td><small>${date}</small></td>
+                    <td><span class="badge bg-primary">${transaction.type || 'N/A'}</span></td>
+                    <td><small>${transaction.description || '-'}</small></td>
+                    <td><small>${transaction.operator || '-'}</small></td>
+                    <td class="text-end"><small>${amount}</small></td>
+                    <td class="text-end"><small>${rmbAmount}</small></td>
+                    <td><small>${transaction.note || '-'}</small></td>
+                </tr>
+            `;
+        });
+        
+        tableBody.innerHTML = tableHtml;
+    }
+    
     // 分頁相關變數
     let currentPage = 1;
     let currentPagination = null;
@@ -581,6 +811,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // 初始化渲染
     renderAccounts();
     loadMovements(1);
+    setupCustomerTransactionsListeners(); // 初始化客戶交易紀錄監聽器
     
     console.log('✅ 現金管理頁面初始化完成');
 });

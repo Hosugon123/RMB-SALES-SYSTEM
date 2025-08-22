@@ -1571,7 +1571,7 @@ def api_sales_entry():
         db.session.add(new_sale)
         db.session.flush()  # 先獲取ID，但不提交
         
-        # 4. 更新FIFO庫存（關鍵修復！）
+        # 4. 更新FIFO庫存（關鍵修正！）
         try:
             # 使用FIFO服務分配庫存
             fifo_result = FIFOService.allocate_inventory_for_sale(new_sale)
@@ -1587,6 +1587,14 @@ def api_sales_entry():
         
         # 提交所有更改
         db.session.commit()
+
+        # 觸發全局數據同步（重新整理整個資料庫）
+        try:
+            from global_sync import sync_entire_database
+            sync_entire_database(db.session)
+            print("✅ 銷售記錄創建後全局數據同步完成")
+        except Exception as sync_error:
+            print(f"⚠️ 全局數據同步失敗（不影響銷售記錄）: {sync_error}")
 
         return jsonify(
             {
@@ -2639,6 +2647,14 @@ def api_buy_in():
             
             db.session.commit()
 
+            # 觸發全局數據同步（重新整理整個資料庫）
+            try:
+                from global_sync import sync_entire_database
+                sync_entire_database(db.session)
+                print("✅ 買入記錄創建後全局數據同步完成")
+            except Exception as sync_error:
+                print(f"⚠️ 全局數據同步失敗（不影響買入記錄）: {sync_error}")
+
             return jsonify(
                 {
                     "status": "success",
@@ -3234,6 +3250,14 @@ def admin_update_cash_account():
                         db.session.add(entry)
                         db.session.commit()
                         
+                        # 觸發全局數據同步（重新整理整個資料庫）
+                        try:
+                            from global_sync import sync_entire_database
+                            sync_entire_database(db.session)
+                            print("✅ 提款操作後全局數據同步完成")
+                        except Exception as sync_error:
+                            print(f"⚠️ 全局數據同步失敗: {sync_error}")
+                        
                         success_msg = f'已從 "{account.name}" 提出 {amount:,.2f}'
                         if account.currency == "RMB":
                             success_msg += '（已同步扣減庫存）'
@@ -3298,6 +3322,14 @@ def admin_update_cash_account():
                     )
                     db.session.add(entry)
                     db.session.commit()
+                    
+                    # 觸發全局數據同步（重新整理整個資料庫）
+                    try:
+                        from global_sync import sync_entire_database
+                        sync_entire_database(db.session)
+                        print("✅ 存款操作後全局數據同步完成")
+                    except Exception as sync_error:
+                        print(f"⚠️ 全局數據同步失敗: {sync_error}")
                     
                     success_msg = f'已向 "{account.name}" 存入 {amount:,.2f}'
                     if account.currency == "RMB" and rmb_cost_rate:
