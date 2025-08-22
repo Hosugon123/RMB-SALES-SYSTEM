@@ -200,10 +200,10 @@ function displayDataStatus(data) {
                 <div class="card border-primary">
                     <div class="card-body text-center">
                         <h6 class="card-title text-primary">庫存狀態</h6>
-                        <p class="mb-1">活躍批次: <strong>${data.inventory.active_batches}</strong></p>
-                        <p class="mb-1">原始總量: <strong>¥ ${data.inventory.total_original.toLocaleString()}</strong></p>
-                        <p class="mb-1">已出帳: <strong>¥ ${data.inventory.total_issued.toLocaleString()}</strong></p>
-                        <p class="mb-1">剩餘: <strong>¥ ${data.inventory.total_remaining.toLocaleString()}</strong></p>
+                        <p class="mb-1">總批次: <strong>${data.inventory.total_batches}</strong></p>
+                        <p class="mb-1">原始總量: <strong>¥ ${(data.inventory.total_original || 0).toLocaleString()}</strong></p>
+                        <p class="mb-1">已分配: <strong>¥ ${(data.inventory.total_allocated || 0).toLocaleString()}</strong></p>
+                        <p class="mb-1">剩餘: <strong>¥ ${(data.inventory.total_remaining || 0).toLocaleString()}</strong></p>
                         <p class="mb-0">一致性: ${consistencyIcon}</p>
                     </div>
                 </div>
@@ -214,8 +214,8 @@ function displayDataStatus(data) {
                         <h6 class="card-title text-success">現金帳戶</h6>
                         <p class="mb-1">TWD 帳戶: <strong>${data.cash_accounts.twd_accounts}</strong></p>
                         <p class="mb-1">RMB 帳戶: <strong>${data.cash_accounts.rmb_accounts}</strong></p>
-                        <p class="mb-1">總 TWD: <strong>NT$ ${data.cash_accounts.total_twd.toLocaleString()}</strong></p>
-                        <p class="mb-0">總 RMB: <strong>¥ ${data.cash_accounts.total_rmb.toLocaleString()}</strong></p>
+                        <p class="mb-1">總 TWD: <strong>NT$ ${(data.cash_accounts.total_twd || 0).toLocaleString()}</strong></p>
+                        <p class="mb-0">總 RMB: <strong>¥ ${(data.cash_accounts.total_rmb || 0).toLocaleString()}</strong></p>
                     </div>
                 </div>
             </div>
@@ -223,8 +223,8 @@ function displayDataStatus(data) {
                 <div class="card border-info">
                     <div class="card-body text-center">
                         <h6 class="card-title text-info">客戶狀態</h6>
-                        <p class="mb-1">活躍客戶: <strong>${data.customers.active_customers}</strong></p>
-                        <p class="mb-0">應收帳款: <strong>NT$ ${data.customers.total_receivables.toLocaleString()}</strong></p>
+                        <p class="mb-1">總客戶: <strong>${data.customers.total_customers}</strong></p>
+                        <p class="mb-0">應收帳款: <strong>NT$ ${(data.customers.total_receivables || 0).toLocaleString()}</strong></p>
                     </div>
                 </div>
             </div>
@@ -301,20 +301,19 @@ function displayRecoveryResults(data) {
             <div class="col-md-4">
                 <h6>庫存修復摘要</h6>
                 <p>批次數量: <strong>${data.summary.inventory_batches_fixed}</strong></p>
-                <p>原始總量: <strong>¥ ${data.final_status.inventory.total_original.toLocaleString()}</strong></p>
-                <p>已出帳: <strong>¥ ${data.final_status.inventory.total_issued.toLocaleString()}</strong></p>
-                <p>剩餘: <strong>¥ ${data.final_status.inventory.total_remaining.toLocaleString()}</strong></p>
+                <p>原始總量: <strong>¥ ${(data.final_status.inventory.total_original || 0).toLocaleString()}</strong></p>
+                <p>剩餘: <strong>¥ ${(data.final_status.inventory.total_remaining || 0).toLocaleString()}</strong></p>
             </div>
             <div class="col-md-4">
                 <h6>現金帳戶修復摘要</h6>
                 <p>帳戶數量: <strong>${data.summary.cash_accounts_fixed}</strong></p>
-                <p>總 TWD: <strong>NT$ ${data.final_status.cash_accounts.total_twd.toLocaleString()}</strong></p>
-                <p>總 RMB: <strong>¥ ${data.final_status.cash_accounts.total_rmb.toLocaleString()}</strong></p>
+                <p>總 TWD: <strong>NT$ ${(data.final_status.cash_accounts.total_twd || 0).toLocaleString()}</strong></p>
+                <p>總 RMB: <strong>¥ ${(data.final_status.cash_accounts.total_rmb || 0).toLocaleString()}</strong></p>
             </div>
             <div class="col-md-4">
                 <h6>客戶修復摘要</h6>
                 <p>客戶數量: <strong>${data.summary.customers_fixed}</strong></p>
-                <p>應收帳款: <strong>NT$ ${data.final_status.receivables.toLocaleString()}</strong></p>
+                <p>應收帳款: <strong>NT$ ${(data.final_status.receivables || 0).toLocaleString()}</strong></p>
             </div>
         </div>
         
@@ -335,19 +334,17 @@ function displayRecoveryResults(data) {
                                         <tr>
                                             <th>批次ID</th>
                                             <th>原始數量</th>
-                                            <th>已出帳(舊→新)</th>
+                                            <th>已分配數量</th>
                                             <th>剩餘(舊→新)</th>
-                                            <th>狀態</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         ${data.details.inventory_fixes.map(fix => `
                                             <tr>
                                                 <td>${fix.batch_id}</td>
-                                                <td>¥ ${fix.original.toLocaleString()}</td>
-                                                <td>¥ ${fix.old_issued.toLocaleString()} → ¥ ${fix.new_issued.toLocaleString()}</td>
-                                                <td>¥ ${fix.old_remaining.toLocaleString()} → ¥ ${fix.new_remaining.toLocaleString()}</td>
-                                                <td>${fix.is_active ? '<span class="badge bg-success">活躍</span>' : '<span class="badge bg-secondary">已出清</span>'}</td>
+                                                <td>¥ ${(fix.original || 0).toLocaleString()}</td>
+                                                <td>¥ ${(fix.allocated_rmb || 0).toLocaleString()}</td>
+                                                <td>¥ ${(fix.old_remaining || 0).toLocaleString()} → ¥ ${(fix.new_remaining || 0).toLocaleString()}</td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -379,7 +376,7 @@ function displayRecoveryResults(data) {
                                             <tr>
                                                 <td>${fix.account_name}</td>
                                                 <td>${fix.currency}</td>
-                                                <td>${fix.currency === 'TWD' ? 'NT$ ' : '¥ '}${fix.old_balance.toLocaleString()} → ${fix.currency === 'TWD' ? 'NT$ ' : '¥ '}${fix.new_balance.toLocaleString()}</td>
+                                                <td>${fix.currency === 'TWD' ? 'NT$ ' : '¥ '}${(fix.old_balance || 0).toLocaleString()} → ${fix.currency === 'TWD' ? 'NT$ ' : '¥ '}${(fix.new_balance || 0).toLocaleString()}</td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -411,9 +408,9 @@ function displayRecoveryResults(data) {
                                         ${data.details.customer_fixes.map(fix => `
                                             <tr>
                                                 <td>${fix.customer_name}</td>
-                                                <td>¥ ${fix.total_sales.toLocaleString()}</td>
-                                                <td>NT$ ${fix.received_amount.toLocaleString()}</td>
-                                                <td>NT$ ${fix.old_receivables.toLocaleString()} → NT$ ${fix.new_receivables.toLocaleString()}</td>
+                                                <td>¥ ${(fix.total_sales || 0).toLocaleString()}</td>
+                                                <td>NT$ ${(fix.received_amount || 0).toLocaleString()}</td>
+                                                <td>NT$ ${(fix.old_receivables || 0).toLocaleString()} → NT$ ${(fix.new_receivables || 0).toLocaleString()}</td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
