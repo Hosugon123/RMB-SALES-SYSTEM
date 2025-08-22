@@ -344,6 +344,43 @@ document.addEventListener('DOMContentLoaded', function () {
                 deleteHolder(holderId, holderName);
             });
         });
+        
+        // 設置RMB匯率欄位的顯示/隱藏邏輯
+        setupRmbRateFieldLogic();
+    }
+    
+    // 設置RMB匯率欄位的顯示/隱藏邏輯
+    function setupRmbRateFieldLogic() {
+        // 監聽操作類型選擇的變化
+        const depositRadio = document.getElementById('movementDeposit');
+        const withdrawRadio = document.getElementById('movementWithdraw');
+        
+        if (depositRadio && withdrawRadio) {
+            depositRadio.addEventListener('change', function() {
+                if (this.checked) {
+                    // 選擇存款時，檢查是否需要顯示匯率欄位
+                    const accountId = document.getElementById('movementAccountId')?.value;
+                    if (accountId) {
+                        checkAndShowRmbRateField(accountId);
+                    }
+                }
+            });
+            
+            withdrawRadio.addEventListener('change', function() {
+                if (this.checked) {
+                    // 選擇提款時，隱藏匯率欄位
+                    const rmbRateDiv = document.getElementById('rmbCostRateDiv');
+                    if (rmbRateDiv) {
+                        rmbRateDiv.style.display = 'none';
+                        const rmbRateInput = document.getElementById('rmbCostRate');
+                        if (rmbRateInput) {
+                            rmbRateInput.required = false;
+                            rmbRateInput.value = '';
+                        }
+                    }
+                }
+            });
+        }
     }
     
     // 打開出入帳模態框
@@ -359,9 +396,49 @@ document.addEventListener('DOMContentLoaded', function () {
         const accountIdInput = document.getElementById('movementAccountId');
         if (accountIdInput) accountIdInput.value = accountId;
         
+        // 檢查是否為RMB帳戶，如果是則顯示匯率欄位
+        checkAndShowRmbRateField(accountId);
+        
         // 顯示模態框
         const modal = new bootstrap.Modal(document.getElementById('addMovementModal'));
         modal.show();
+    }
+    
+    // 檢查並顯示RMB匯率欄位
+    function checkAndShowRmbRateField(accountId) {
+        // 從帳戶數據中查找該帳戶的幣別
+        let isRmbAccount = false;
+        for (const holderId in accountsByHolder) {
+            const holder = accountsByHolder[holderId];
+            for (const account of holder.accounts) {
+                if (account.id == accountId && account.currency === 'RMB') {
+                    isRmbAccount = true;
+                    break;
+                }
+            }
+            if (isRmbAccount) break;
+        }
+        
+        // 顯示或隱藏匯率欄位
+        const rmbRateDiv = document.getElementById('rmbCostRateDiv');
+        if (rmbRateDiv) {
+            if (isRmbAccount) {
+                rmbRateDiv.style.display = 'block';
+                // 設置匯率欄位為必填
+                const rmbRateInput = document.getElementById('rmbCostRate');
+                if (rmbRateInput) {
+                    rmbRateInput.required = true;
+                }
+            } else {
+                rmbRateDiv.style.display = 'none';
+                // 設置匯率欄位為非必填
+                const rmbRateInput = document.getElementById('rmbCostRate');
+                if (rmbRateInput) {
+                    rmbRateInput.required = false;
+                    rmbRateInput.value = '';
+                }
+            }
+        }
     }
     
     // 刪除帳戶
