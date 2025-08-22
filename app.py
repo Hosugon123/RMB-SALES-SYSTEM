@@ -5235,6 +5235,20 @@ def get_cash_management_transactions():
         # 按日期排序（新的在前）
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
         
+        # 計算累積餘額
+        running_twd_balance = 0
+        running_rmb_balance = 0
+        
+        # 從最早的記錄開始計算累積餘額（因為我們已經按日期倒序排列，所以需要反轉）
+        for record in reversed(unified_stream):
+            running_twd_balance += record.get("twd_change", 0)
+            running_rmb_balance += record.get("rmb_change", 0)
+            record["running_twd_balance"] = running_twd_balance
+            record["running_rmb_balance"] = running_rmb_balance
+        
+        # 重新按日期倒序排列（新的在前）
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        
         # 計算分頁
         total_records = len(unified_stream)
         total_pages = (total_records + per_page - 1) // per_page

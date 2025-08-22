@@ -101,7 +101,7 @@
                                 <span class="fw-bold text-danger">NT$ {{ "{:,.2f}".format(customer.total_receivables_twd) }}</span>
                             </td>
                             <td class="text-center">
-                                <button class="btn btn-success btn-sm" onclick="openSettlementModal({{ customer.id }}, '{{ customer.name }}', {{ customer.total_receivables_twd }})">
+                                <button class="btn btn-success btn-sm" onclick="openSettlementModal('{{ customer.id }}', '{{ customer.name }}', {{ customer.total_receivables_twd }})">
                                     <i class="bi bi-check-circle me-1"></i>銷帳
                                 </button>
                             </td>
@@ -960,9 +960,9 @@ document.addEventListener('DOMContentLoaded', function () {
         
         // 更新分頁信息
         const startItem = (pagination.current_page - 1) * pagination.per_page + 1;
-        const endItem = Math.min(pagination.current_page * pagination.per_page, pagination.total_items);
+        const endItem = Math.min(pagination.current_page * pagination.per_page, pagination.total_records);
         
-        paginationInfo.innerHTML = `顯示第 ${startItem}-${endItem} 筆，共 ${pagination.total_items} 筆記錄`;
+        paginationInfo.innerHTML = `顯示第 ${startItem}-${endItem} 筆，共 ${pagination.total_records} 筆記錄`;
         
         // 清空分頁按鈕
         paginationControls.innerHTML = '';
