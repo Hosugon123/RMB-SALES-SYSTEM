@@ -439,6 +439,12 @@ class FIFOService:
                 # 更新庫存剩餘數量
                 inventory.remaining_rmb -= allocate_from_this_batch
                 
+                # 關鍵修正：從實際的庫存來源帳戶扣款RMB
+                if inventory.purchase_record.deposit_account:
+                    deposit_account = inventory.purchase_record.deposit_account
+                    deposit_account.balance -= allocate_from_this_batch
+                    print(f"🔄 從庫存來源帳戶 {deposit_account.name} 扣款: -{allocate_from_this_batch} RMB")
+                
                 # 累計成本
                 total_cost += allocation.allocated_cost_twd
                 remaining_to_allocate -= allocate_from_this_batch
@@ -558,12 +564,13 @@ class FIFOService:
                     customer.total_receivables_twd = 0
                     print(f"⚠️  客戶 {customer.name} 的應收帳款已調整為 0")
             
-            # --- 關鍵修正：恢復現金帳戶餘額 ---
-            # 恢復RMB帳戶的餘額
-            if sales_record.rmb_account:
-                rmb_account = sales_record.rmb_account
-                rmb_account.balance += sales_record.rmb_amount
-                print(f"🔄 恢復RMB帳戶 {rmb_account.name} 的餘額: +{sales_record.rmb_amount} RMB")
+            # --- 關鍵修正：恢復FIFO庫存來源帳戶的餘額 ---
+            # 恢復每個FIFO分配對應的庫存來源帳戶餘額
+            for allocation in allocations:
+                if allocation.fifo_inventory and allocation.fifo_inventory.purchase_record.deposit_account:
+                    deposit_account = allocation.fifo_inventory.purchase_record.deposit_account
+                    deposit_account.balance += allocation.allocated_rmb
+                    print(f"🔄 恢復庫存來源帳戶 {deposit_account.name} 的餘額: +{allocation.allocated_rmb} RMB")
             
             # 回滾每個分配
             for allocation in allocations:
@@ -1546,9 +1553,10 @@ def api_sales_entry():
         # 3. 核心業務邏輯
         twd_amount = round(rmb_amount * exchange_rate, 2)
 
-        # 更新帳戶和客戶餘額
-        rmb_account.balance -= rmb_amount
+        # 更新客戶餘額（應收帳款增加）
         customer.total_receivables_twd += twd_amount
+        
+        # 注意：RMB帳戶餘額不在此處扣款，而是在FIFO庫存分配時從實際庫存來源帳戶扣款
 
         # 創建銷售紀錄
         new_sale = SalesRecord(
