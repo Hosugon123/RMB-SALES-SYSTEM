@@ -584,8 +584,21 @@ class FIFOService:
                         # 這裡需要根據業務邏輯來確定如何恢復RMB餘額
                         # 可能需要檢查是否有其他RMB帳戶需要恢復
                         
-                        # 暫時的解決方案：記錄這個問題，讓管理員手動處理
+                        # 實現智能RMB餘額恢復邏輯
+                        # 當庫存來源帳戶不是RMB帳戶時，需要找到對應的RMB帳戶
+                        # 這裡我們需要根據業務邏輯來確定如何恢復RMB餘額
+                        
+                        # 方案1：檢查是否有其他RMB帳戶需要恢復
+                        # 方案2：如果沒有明確的RMB帳戶，則記錄這個問題
+                        
+                        # 暫時記錄這個問題，讓管理員手動處理
                         print(f"⚠️  需要手動檢查RMB餘額恢復邏輯")
+                        print(f"    分配RMB: {allocation.allocated_rmb}")
+                        print(f"    庫存來源帳戶: {deposit_account.name} (非RMB帳戶)")
+                        
+                        # TODO: 實現更智能的RMB餘額恢復邏輯
+                        # 可能需要檢查是否有其他RMB帳戶需要恢復
+                        # 或者創建一個虛擬的RMB餘額記錄
             
             # 回滾每個分配
             for allocation in allocations:
@@ -2214,19 +2227,25 @@ def cash_management():
         total_twd = actual_total_twd
         total_rmb = actual_total_rmb
         
-        # 計算每筆交易後的累積餘額（用於流水顯示，從實際餘額開始倒推）
-        running_twd_balance = actual_total_twd
-        running_rmb_balance = actual_total_rmb
+        # 計算每筆交易後的累積餘額（用於流水顯示，從最早的交易開始正向計算）
+        # 先按日期正序排列，計算累積餘額
+        chronological_stream = sorted(unified_stream, key=lambda x: x["date"])
         
-        # 從最新的交易開始，向前倒推每筆交易前的餘額
-        for transaction in unified_stream:
-            # 記錄此筆交易後的餘額（當前累積餘額）
+        running_twd_balance = 0
+        running_rmb_balance = 0
+        
+        # 從最早的交易開始，正向計算每筆交易後的餘額
+        for transaction in chronological_stream:
+            # 計算此筆交易後的餘額
+            running_twd_balance += (transaction.get('twd_change', 0) or 0)
+            running_rmb_balance += (transaction.get('rmb_change', 0) or 0)
+            
+            # 記錄此筆交易後的餘額
             transaction['running_twd_balance'] = running_twd_balance
             transaction['running_rmb_balance'] = running_rmb_balance
-            
-            # 計算此筆交易前的餘額（為下一筆交易準備）
-            running_twd_balance -= (transaction.get('twd_change', 0) or 0)
-            running_rmb_balance -= (transaction.get('rmb_change', 0) or 0)
+        
+        # 重新按日期倒序排列，保持顯示順序
+        unified_stream.sort(key=lambda x: x["date"], reverse=True)
         
         # --- 修正：使用實際的資料庫餘額，不重新計算 ---
         accounts_by_holder = {}
