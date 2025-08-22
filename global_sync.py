@@ -44,18 +44,21 @@ def sync_entire_database(db_session):
         """))
         
         # 3. 檢查並修復庫存一致性
+        # 🚨 危險的 DELETE 操作已被禁用！
         # 清理孤立的庫存記錄
-        db_session.execute(text("""
-            DELETE FROM fifo_inventory 
-            WHERE purchase_record_id NOT IN (SELECT id FROM purchase_records)
-        """))
+        # db_session.execute(text("""
+        #     DELETE FROM fifo_inventory 
+        #     WHERE purchase_record_id NOT IN (SELECT id FROM purchase_records)
+        # """))
         
         # 清理破損的庫存分配記錄
-        db_session.execute(text("""
-            DELETE FROM fifo_sales_allocations 
-            WHERE fifo_inventory_id NOT IN (SELECT id FROM fifo_inventory)
-            OR sales_record_id NOT IN (SELECT id FROM sales_records)
-        """))
+        # db_session.execute(text("""
+        #     DELETE FROM fifo_sales_allocations 
+        #     WHERE fifo_inventory_id NOT IN (SELECT id FROM fifo_inventory)
+        #     OR sales_record_id NOT IN (SELECT id FROM sales_records)
+        # """))
+        
+        print("⚠️  危險的 DELETE 操作已被禁用，跳過庫存清理步驟")
         
         # 4. 重置負餘額帳戶為0
         db_session.execute(text("""
