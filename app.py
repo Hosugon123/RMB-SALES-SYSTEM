@@ -6266,13 +6266,9 @@ def remote_data_recovery():
                 SalesRecord.customer_id == customer.id
             ).with_entities(func.sum(SalesRecord.rmb_amount)).scalar() or 0
             
-            # 已收款金額
-            received_amount = LedgerEntry.query.filter(
-                and_(
-                    LedgerEntry.customer_id == customer.id,
-                    LedgerEntry.entry_type == 'SETTLEMENT'
-                )
-            ).with_entities(func.sum(LedgerEntry.amount)).scalar() or 0
+            # 已收款金額 - 由於 LedgerEntry 沒有 customer_id 字段，暫時設為 0
+            # TODO: 需要根據實際的數據結構來計算已收款金額
+            received_amount = 0
             
             # 應收帳款餘額
             receivables_balance = total_sales - received_amount
