@@ -6124,7 +6124,8 @@ def remote_data_recovery():
         
         # 檢查資料庫連接
         try:
-            db.session.execute("SELECT 1")
+            from sqlalchemy import text
+            db.session.execute(text("SELECT 1"))
             print("✅ 資料庫連接正常")
         except Exception as db_error:
             print(f"❌ 資料庫連接失敗: {db_error}")
