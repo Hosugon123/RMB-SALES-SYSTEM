@@ -1,4 +1,5 @@
 import os
+import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -12,7 +13,7 @@ from flask_login import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from sqlalchemy import func, and_
 
 # ===================================================================
@@ -6121,9 +6122,30 @@ def remote_data_recovery():
         
         print("🔧 開始遠程數據修復...")
         
+        # 檢查資料庫連接
+        try:
+            db.session.execute("SELECT 1")
+            print("✅ 資料庫連接正常")
+        except Exception as db_error:
+            print(f"❌ 資料庫連接失敗: {db_error}")
+            return jsonify({
+                "status": "error",
+                "message": f"資料庫連接失敗: {str(db_error)}",
+                "timestamp": datetime.now().isoformat()
+            }), 500
+        
         # 1. 修復庫存數據（基於實際的 FIFOInventory 結構）
         print("📦 修復庫存數據...")
-        inventories = FIFOInventory.query.all()
+        try:
+            inventories = FIFOInventory.query.all()
+            print(f"✅ 找到 {len(inventories)} 個庫存批次")
+        except Exception as inv_error:
+            print(f"❌ 查詢庫存數據失敗: {inv_error}")
+            return jsonify({
+                "status": "error",
+                "message": f"查詢庫存數據失敗: {str(inv_error)}",
+                "timestamp": datetime.now().isoformat()
+            }), 500
         
         inventory_fixes = []
         for inventory in inventories:
@@ -6148,7 +6170,16 @@ def remote_data_recovery():
         
         # 2. 修復現金帳戶餘額
         print("💰 修復現金帳戶餘額...")
-        cash_accounts = CashAccount.query.all()
+        try:
+            cash_accounts = CashAccount.query.all()
+            print(f"✅ 找到 {len(cash_accounts)} 個現金帳戶")
+        except Exception as cash_error:
+            print(f"❌ 查詢現金帳戶失敗: {cash_error}")
+            return jsonify({
+                "status": "error",
+                "message": f"查詢現金帳戶失敗: {str(cash_error)}",
+                "timestamp": datetime.now().isoformat()
+            }), 500
         
         account_fixes = []
         for account in cash_accounts:
@@ -6174,7 +6205,7 @@ def remote_data_recovery():
                     )
                 ).with_entities(func.sum(LedgerEntry.amount)).scalar() or 0
                 
-                new_balance = (account.initial_balance or 0) - payment_amount - ledger_debits + ledger_credits
+                new_balance = 0 - payment_amount - ledger_debits + ledger_credits
                 
             elif account.currency == "RMB":
                 # RMB 帳戶餘額計算
@@ -6200,13 +6231,13 @@ def remote_data_recovery():
                     )
                 ).with_entities(func.sum(LedgerEntry.amount)).scalar() or 0
                 
-                new_balance = (account.initial_balance or 0) + deposit_amount - sales_amount - ledger_debits + ledger_credits
+                new_balance = 0 + deposit_amount - sales_amount - ledger_debits + ledger_credits
             
             account.balance = new_balance
             
             account_fixes.append({
                 "account_id": account.id,
-                "account_name": account.account_name,
+                "account_name": account.name,
                 "currency": account.currency,
                 "old_balance": old_balance,
                 "new_balance": new_balance
@@ -6214,7 +6245,16 @@ def remote_data_recovery():
         
         # 3. 修復客戶應收帳款
         print("📋 修復客戶應收帳款...")
-        customers = Customer.query.all()
+        try:
+            customers = Customer.query.all()
+            print(f"✅ 找到 {len(customers)} 個客戶")
+        except Exception as cust_error:
+            print(f"❌ 查詢客戶數據失敗: {cust_error}")
+            return jsonify({
+                "status": "error",
+                "message": f"查詢客戶數據失敗: {str(cust_error)}",
+                "timestamp": datetime.now().isoformat()
+            }), 500
         
         customer_fixes = []
         for customer in customers:
