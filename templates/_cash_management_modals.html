@@ -140,21 +140,39 @@
                         <label class="form-label">客戶名稱</label>
                         <input type="text" class="form-control" id="settlementCustomerName" readonly>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">應收帳款總額</label>
-                        <input type="text" class="form-control" id="settlementTotalReceivable" readonly>
+                    
+                    <!-- 應收帳款資訊區塊 -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">銷帳前應收總額</label>
+                            <input type="text" class="form-control bg-light" id="settlementTotalReceivable" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">本次銷帳金額</label>
+                            <input type="text" class="form-control bg-success text-white" id="settlementAmountDisplay" readonly>
+                        </div>
                     </div>
+                    
                     <div class="mb-3">
-                        <label for="settlementAmount" class="form-label">銷帳金額 (TWD)</label>
+                        <label class="form-label">銷帳後剩餘應收</label>
+                        <input type="text" class="form-control bg-warning" id="settlementRemainingReceivable" readonly>
+                        <small class="text-muted">銷帳後客戶的應收帳款餘額</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="settlementAmount" class="form-label">銷帳金額 (TWD) <span class="text-danger">*</span></label>
                         <input type="number" step="0.01" class="form-control" id="settlementAmount" name="settlement_amount" required>
                         <small class="text-muted">請輸入實際收到的金額</small>
                     </div>
+                    
                     <div class="mb-3">
-                        <label for="settlementAccount" class="form-label">收款帳戶</label>
+                        <label for="settlementAccount" class="form-label">入庫帳戶 <span class="text-danger">*</span></label>
                         <select class="form-select" id="settlementAccount" name="settlement_account" required>
-                            <option value="">--- 請選擇收款帳戶 ---</option>
+                            <option value="">--- 請選擇收款入庫帳戶 ---</option>
                         </select>
+                        <small class="text-muted">選擇收款後資金將存入的帳戶</small>
                     </div>
+                    
                     <div class="mb-3">
                         <label for="settlementNote" class="form-label">備註</label>
                         <textarea class="form-control" id="settlementNote" name="settlement_note" rows="2" placeholder="可選：記錄收款相關信息"></textarea>

@@ -688,7 +688,37 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('settlementCustomerName').value = customerName;
         document.getElementById('settlementTotalReceivable').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
         document.getElementById('settlementAmount').value = totalReceivable;
+        document.getElementById('settlementAmountDisplay').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('settlementRemainingReceivable').value = `NT$ 0.00`;
         document.getElementById('settlementNote').value = '';
+        
+        // 添加銷帳金額變更事件監聽器，即時計算剩餘應收
+        const settlementAmountInput = document.getElementById('settlementAmount');
+        if (settlementAmountInput) {
+            // 移除舊的事件監聽器（避免重複綁定）
+            if (settlementAmountInput._inputHandler) {
+                settlementAmountInput.removeEventListener('input', settlementAmountInput._inputHandler);
+            }
+            
+            // 創建新的事件處理函數
+            settlementAmountInput._inputHandler = function() {
+                const amount = parseFloat(this.value) || 0;
+                const remaining = Math.max(0, totalReceivable - amount);
+                
+                // 更新顯示欄位
+                document.getElementById('settlementAmountDisplay').value = `NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                document.getElementById('settlementRemainingReceivable').value = `NT$ ${remaining.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                
+                console.log('銷帳金額變更:', { amount, remaining, totalReceivable });
+            };
+            
+            // 綁定事件監聽器
+            settlementAmountInput.addEventListener('input', settlementAmountInput._inputHandler);
+            console.log('✅ 銷帳金額變更事件監聽器綁定完成');
+            
+            // 觸發一次初始計算
+            settlementAmountInput._inputHandler();
+        }
         
         console.log('模態框數據設置完成:', {
             customerName: customerName,
