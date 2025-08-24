@@ -3955,11 +3955,6 @@ def api_delete_account():
         return jsonify({"status": "error", "message": error_msg}), 500
 
 
-@app.route("/api/cash_management/transactions", methods=["GET"])
-
-
-
-
 @app.route("/api/settlement", methods=["POST"])
 @login_required
 def api_settlement():
@@ -5422,38 +5417,7 @@ def get_cash_management_totals():
                     "rmb_change": rmb_change,
                 })
         
-        # --- 修正：直接使用實際帳戶餘額，與其他頁面保持一致 ---
-        total_twd = sum(
-            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
-        )
-        total_rmb = sum(
-            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
-        )
 
-        # 查詢應收帳款數據
-        customers_with_receivables = (
-            db.session.execute(
-                db.select(Customer)
-                .filter_by(is_active=True)
-                .filter(Customer.total_receivables_twd > 0)
-                .order_by(Customer.total_receivables_twd.desc())
-            )
-            .scalars()
-            .all()
-        )
-        
-        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
-
-        return jsonify({
-            'total_twd': float(total_twd),
-            'total_rmb': float(total_rmb),
-            'total_receivables_twd': float(total_receivables),
-            'timestamp': datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        app.logger.error(f"獲取現金管理總資產數據時發生錯誤: {e}")
-        return jsonify({'error': '獲取數據失敗'}), 500
 
 # API 2: 根據持有人 ID，查詢其名下的帳戶
 @login_required
