@@ -3926,6 +3926,12 @@ def api_delete_account():
         if not account_id:
             return jsonify({"status": "error", "message": "帳戶ID為必填項。"}), 400
         
+        # 確保 account_id 是整數類型
+        try:
+            account_id = int(account_id)
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "message": "帳戶ID格式無效，必須是數字。"}), 400
+        
         # 查詢帳戶
         account = db.session.get(CashAccount, account_id)
         if not account:
@@ -3951,16 +3957,9 @@ def api_delete_account():
                     "message": f'無法刪除！帳戶 "{account.name}" 仍有 {ledger_count} 筆帳本記錄，請先處理這些記錄。'
                 }), 400
             
-            # 檢查 CashLog 表
-            cash_log_count = db.session.execute(
-                db.select(func.count(CashLog.id)).filter(CashLog.account_id == account_id)
-            ).scalar()
-            
-            if cash_log_count > 0:
-                return jsonify({
-                    "status": "error",
-                    "message": f'無法刪除！帳戶 "{account.name}" 仍有 {cash_log_count} 筆現金流水記錄，請先處理這些記錄。'
-                }), 400
+            # 檢查 CashLog 表（注意：CashLog 目前沒有 account_id 欄位）
+            # 暫時跳過這個檢查，因為 CashLog 表結構已更改
+            cash_log_count = 0
             
             # 檢查其他可能的外鍵引用（如果有其他表的話）
             # 這裡可以根據實際的資料庫結構添加更多檢查
