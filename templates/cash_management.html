@@ -690,6 +690,12 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('settlementAmount').value = totalReceivable;
         document.getElementById('settlementNote').value = '';
         
+        console.log('模態框數據設置完成:', {
+            customerName: customerName,
+            totalReceivable: totalReceivable,
+            settlementAmount: totalReceivable
+        });
+        
         // 添加隱藏的客戶ID和帳戶ID欄位
         let customerIdInput = document.getElementById('settlementForm').querySelector('input[name="customer_id"]');
         if (!customerIdInput) {
@@ -699,6 +705,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('settlementForm').appendChild(customerIdInput);
         }
         customerIdInput.value = customerId;
+        console.log('客戶ID設置完成:', customerId);
         
         // 移除舊的隱藏帳戶ID欄位（如果存在）
         let oldAccountIdInput = document.getElementById('settlementForm').querySelector('input[name="account_id"]');
@@ -712,6 +719,8 @@ document.addEventListener('DOMContentLoaded', function () {
         accountIdInput.name = 'account_id';
         accountIdInput.id = 'hiddenAccountId';
         document.getElementById('settlementForm').appendChild(accountIdInput);
+        
+        console.log('隱藏帳戶ID欄位創建完成');
         
         // 填充收款帳戶下拉選單 - 只顯示TWD帳戶
         const twdAccounts = [];
@@ -730,16 +739,88 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
         
+        console.log('找到的TWD帳戶:', twdAccounts);
+        
         // 填充收款帳戶下拉選單
         populateGroupedSelect('settlementAccount', twdAccounts);
         
-        // 監聽收款帳戶下拉選單的變化，自動更新隱藏的帳戶ID
+                // 立即設置預設值（同步方式）
         const settlementAccountSelect = document.getElementById('settlementAccount');
-        if (settlementAccountSelect) {
-            settlementAccountSelect.addEventListener('change', function() {
-                document.getElementById('hiddenAccountId').value = this.value;
-            });
+        console.log('收款帳戶下拉選單元素:', settlementAccountSelect);
+        
+        if (settlementAccountSelect && twdAccounts.length > 0 && twdAccounts[0].accounts.length > 0) {
+            const defaultAccount = twdAccounts[0].accounts[0];
+            console.log('選擇預設帳戶:', defaultAccount);
+            
+            // 設置下拉選單的值
+            settlementAccountSelect.value = defaultAccount.id;
+            console.log('下拉選單值設置為:', settlementAccountSelect.value);
+            
+            // 立即設置隱藏欄位的值
+            const hiddenAccountIdElement = document.getElementById('hiddenAccountId');
+            if (hiddenAccountIdElement) {
+                hiddenAccountIdElement.value = defaultAccount.id;
+                console.log('隱藏帳戶ID欄位值設置為:', hiddenAccountIdElement.value);
+            } else {
+                console.error('❌ 找不到隱藏帳戶ID欄位');
+            }
+            
+            console.log('自動選擇預設收款帳戶:', defaultAccount.name, 'ID:', defaultAccount.id);
+        } else {
+            console.warn('⚠️ 沒有找到可用的TWD帳戶或下拉選單元素');
         }
+        
+        // 等待DOM更新完成後再次檢查和設置
+        setTimeout(() => {
+            // 再次獲取收款帳戶下拉選單元素
+            const settlementAccountSelect = document.getElementById('settlementAccount');
+            console.log('延遲檢查 - 收款帳戶下拉選單元素:', settlementAccountSelect);
+            
+            if (settlementAccountSelect) {
+                console.log('✅ 延遲檢查 - 找到收款帳戶下拉選單元素');
+                
+                // 監聽收款帳戶下拉選單的變化，自動更新隱藏的帳戶ID
+                // 移除舊的事件監聽器（避免重複綁定）
+                if (settlementAccountSelect._changeHandler) {
+                    settlementAccountSelect.removeEventListener('change', settlementAccountSelect._changeHandler);
+                }
+                
+                // 創建新的事件處理函數
+                settlementAccountSelect._changeHandler = function() {
+                    const selectedValue = this.value;
+                    const hiddenElement = document.getElementById('hiddenAccountId');
+                    if (hiddenElement) {
+                        hiddenElement.value = selectedValue;
+                        console.log('收款帳戶選擇變更，隱藏欄位更新為:', selectedValue);
+                    } else {
+                        console.error('❌ 找不到隱藏帳戶ID欄位，無法更新值');
+                    }
+                };
+                
+                // 綁定事件監聽器
+                settlementAccountSelect.addEventListener('change', settlementAccountSelect._changeHandler);
+                console.log('✅ 收款帳戶變更事件監聽器綁定完成');
+                
+                // 最終檢查隱藏欄位的值
+                setTimeout(() => {
+                    const finalCheck = document.getElementById('hiddenAccountId');
+                    if (finalCheck) {
+                        console.log('🔍 最終檢查 - 隱藏帳戶ID欄位值:', finalCheck.value);
+                        
+                        // 如果值仍然為空，強制設置
+                        if (!finalCheck.value && settlementAccountSelect.value) {
+                            finalCheck.value = settlementAccountSelect.value;
+                            console.log('🔄 強制設置隱藏帳戶ID欄位值:', finalCheck.value);
+                        }
+                    } else {
+                        console.error('❌ 最終檢查 - 找不到隱藏帳戶ID欄位');
+                    }
+                }, 100);
+                
+            } else {
+                console.error('❌ 延遲檢查 - 找不到收款帳戶下拉選單元素');
+            }
+        }, 100); // 等待DOM更新完成
         
         // 顯示模態框
         const modalElement = document.getElementById('settlementModal');
@@ -747,6 +828,36 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!modalInstance) {
             modalInstance = new bootstrap.Modal(modalElement);
         }
+        
+        // 在模態框顯示後檢查隱藏欄位的值
+        modalElement.addEventListener('shown.bs.modal', function() {
+            console.log('🎭 模態框已顯示，檢查隱藏欄位值...');
+            
+            const customerIdCheck = document.querySelector('input[name="customer_id"]');
+            const accountIdCheck = document.getElementById('hiddenAccountId');
+            
+            console.log('客戶ID欄位:', customerIdCheck ? customerIdCheck.value : '未找到');
+            console.log('帳戶ID欄位:', accountIdCheck ? accountIdCheck.value : '未找到');
+            
+            // 如果帳戶ID仍然為空，嘗試重新設置
+            if (accountIdCheck && !accountIdCheck.value) {
+                // 嘗試從下拉選單獲取值
+                const settlementAccountSelect = document.getElementById('settlementAccount');
+                if (settlementAccountSelect && settlementAccountSelect.value) {
+                    accountIdCheck.value = settlementAccountSelect.value;
+                    console.log('🔄 從下拉選單重新設置隱藏帳戶ID欄位值:', accountIdCheck.value);
+                } else if (twdAccounts.length > 0 && twdAccounts[0].accounts.length > 0) {
+                    // 如果下拉選單也沒有值，使用預設帳戶
+                    const defaultAccount = twdAccounts[0].accounts[0];
+                    accountIdCheck.value = defaultAccount.id;
+                    console.log('🔄 使用預設帳戶重新設置隱藏帳戶ID欄位值:', accountIdCheck.value);
+                }
+            }
+            
+            // 最終確認隱藏欄位的值
+            console.log('🎯 最終確認 - 隱藏帳戶ID欄位值:', accountIdCheck ? accountIdCheck.value : '未找到');
+        });
+        
         modalInstance.show();
     };
     
@@ -1091,22 +1202,41 @@ document.addEventListener('DOMContentLoaded', function () {
         settlementForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
+            // 獲取表單數據
             const customerId = document.querySelector('input[name="customer_id"]').value;
             const amount = parseFloat(document.getElementById('settlementAmount').value);
             const accountId = document.querySelector('input[name="account_id"]').value;
             const note = document.getElementById('settlementNote').value;
             
+            console.log('表單數據驗證:', { customerId, amount, accountId, note });
+            
             // 驗證必填欄位
-            if (!customerId || !accountId) {
-                Swal.fire('錯誤', '請選擇客戶和收款帳戶', 'error');
+            if (!customerId) {
+                console.error('❌ 客戶ID缺失');
+                Swal.fire('錯誤', '請選擇客戶', 'error');
+                return;
+            }
+            
+            if (!accountId) {
+                console.error('❌ 收款帳戶ID缺失');
+                Swal.fire('錯誤', '請選擇收款帳戶', 'error');
                 return;
             }
             
             // 驗證銷帳金額
-            if (isNaN(amount) || amount <= 0) {
-                Swal.fire('錯誤', '請輸入有效的銷帳金額（必須大於0）', 'error');
+            if (isNaN(amount)) {
+                console.error('❌ 銷帳金額格式錯誤');
+                Swal.fire('錯誤', '請輸入有效的銷帳金額', 'error');
                 return;
             }
+            
+            if (amount <= 0) {
+                console.error('❌ 銷帳金額必須大於0');
+                Swal.fire('錯誤', '銷帳金額必須大於0', 'error');
+                return;
+            }
+            
+            console.log('✅ 表單驗證通過');
             
             console.log('銷帳表單提交:', { customerId, amount, accountId, note });
             

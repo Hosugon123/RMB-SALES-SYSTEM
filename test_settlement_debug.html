@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>銷帳功能測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        input, select { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+        .form-group { margin: 10px 0; }
+        label { display: inline-block; width: 120px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 銷帳功能測試頁面</h1>
+    
+    <div class="test-section info">
+        <h3>📋 測試說明</h3>
+        <p>此頁面用於測試銷帳功能的前端邏輯，包括：</p>
+        <ul>
+            <li>表單數據驗證</li>
+            <li>隱藏欄位設置</li>
+            <li>API 請求模擬</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h3>🔧 表單數據驗證測試</h3>
+        <div class="form-group">
+            <label>客戶ID:</label>
+            <input type="text" id="testCustomerId" value="1" placeholder="客戶ID">
+        </div>
+        <div class="form-group">
+            <label>銷帳金額:</label>
+            <input type="number" id="testAmount" value="1000" step="0.01" placeholder="銷帳金額">
+        </div>
+        <div class="form-group">
+            <label>收款帳戶ID:</label>
+            <input type="text" id="testAccountId" value="29" placeholder="收款帳戶ID">
+        </div>
+        <div class="form-group">
+            <label>備註:</label>
+            <input type="text" id="testNote" value="測試銷帳" placeholder="備註">
+        </div>
+        <button class="btn-primary" onclick="testValidation()">測試驗證邏輯</button>
+        <button class="btn-success" onclick="testFormSubmission()">測試表單提交</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>📊 測試結果</h3>
+        <div id="testResults"></div>
+    </div>
+    
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('testResults');
+            const div = document.createElement('div');
+            div.className = `test-section ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            results.appendChild(div);
+            console.log(message);
+        }
+        
+        function testValidation() {
+            log('🧪 開始測試表單驗證邏輯...', 'info');
+            
+            // 獲取測試數據
+            const customerId = document.getElementById('testCustomerId').value;
+            const amount = parseFloat(document.getElementById('testAmount').value);
+            const accountId = document.getElementById('testAccountId').value;
+            const note = document.getElementById('testNote').value;
+            
+            log(`📋 測試數據: 客戶ID=${customerId}, 金額=${amount}, 帳戶ID=${accountId}, 備註=${note}`, 'info');
+            
+            // 驗證邏輯
+            let isValid = true;
+            
+            if (!customerId) {
+                log('❌ 客戶ID缺失', 'error');
+                isValid = false;
+            }
+            
+            if (!accountId) {
+                log('❌ 收款帳戶ID缺失', 'error');
+                isValid = false;
+            }
+            
+            if (isNaN(amount)) {
+                log('❌ 銷帳金額格式錯誤', 'error');
+                isValid = false;
+            }
+            
+            if (amount <= 0) {
+                log('❌ 銷帳金額必須大於0', 'error');
+                isValid = false;
+            }
+            
+            if (isValid) {
+                log('✅ 表單驗證通過', 'success');
+            } else {
+                log('❌ 表單驗證失敗', 'error');
+            }
+        }
+        
+        function testFormSubmission() {
+            log('🚀 開始測試表單提交...', 'info');
+            
+            // 獲取測試數據
+            const customerId = document.getElementById('testCustomerId').value;
+            const amount = parseFloat(document.getElementById('testAmount').value);
+            const accountId = document.getElementById('testAccountId').value;
+            const note = document.getElementById('testNote').value;
+            
+            // 模擬API請求
+            const requestData = {
+                customer_id: customerId,
+                amount: amount,
+                account_id: accountId,
+                note: note
+            };
+            
+            log(`📤 發送API請求: ${JSON.stringify(requestData)}`, 'info');
+            
+            // 模擬成功回應
+            setTimeout(() => {
+                const mockResponse = {
+                    status: 'success',
+                    message: `銷帳成功！客戶已收款 NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}`
+                };
+                
+                log(`📥 收到回應: ${JSON.stringify(mockResponse)}`, 'success');
+                log('✅ 銷帳操作模擬成功', 'success');
+            }, 1000);
+        }
+        
+        // 頁面載入完成
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 銷帳功能測試頁面載入完成', 'success');
+        });
+    </script>
+</body>
+</html>
