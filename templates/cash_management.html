@@ -500,9 +500,74 @@ document.addEventListener('DOMContentLoaded', function () {
     function deleteAccount(accountId, accountName) {
         console.log('🗑️ 刪除帳戶:', accountId, accountName);
         
-        if (!confirm(`確定要刪除帳戶「${accountName}」嗎？\n\n⚠️ 此操作不可逆轉！`)) {
-            return;
-        }
+        // 使用 SweetAlert2 進行二次確認
+        Swal.fire({
+            title: '確認刪除帳戶',
+            html: `
+                <div class="text-start">
+                    <p><strong>帳戶名稱：</strong>${accountName}</p>
+                    <p><strong>操作類型：</strong>永久刪除</p>
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>警告：</strong>此操作不可逆轉！
+                    </div>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '確認刪除',
+            cancelButtonText: '取消',
+            reverseButtons: true,
+            focusCancel: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // 第二次確認
+                Swal.fire({
+                    title: '最終確認',
+                    html: `
+                        <div class="text-start">
+                            <p>您確定要刪除帳戶「<strong>${accountName}</strong>」嗎？</p>
+                            <div class="alert alert-danger mt-3">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>此操作將：</strong>
+                                <ul class="mt-2 mb-0">
+                                    <li>永久刪除該帳戶</li>
+                                    <li>無法恢復</li>
+                                    <li>可能影響相關記錄</li>
+                                </ul>
+                            </div>
+                        </div>
+                    `,
+                    icon: 'error',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: '是的，刪除它！',
+                    cancelButtonText: '取消',
+                    reverseButtons: true
+                }).then((finalResult) => {
+                    if (finalResult.isConfirmed) {
+                        // 執行刪除操作
+                        executeDeleteAccount(accountId, accountName);
+                    }
+                });
+            }
+        });
+    }
+    
+    // 執行刪除帳戶操作
+    function executeDeleteAccount(accountId, accountName) {
+        // 顯示載入狀態
+        Swal.fire({
+            title: '正在刪除...',
+            text: `正在刪除帳戶「${accountName}」`,
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
         
         // 發送刪除請求
         fetch('/api/delete-account', {
@@ -517,16 +582,32 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                alert('✅ 帳戶刪除成功！');
+                Swal.fire({
+                    icon: 'success',
+                    title: '刪除成功！',
+                    text: `帳戶「${accountName}」已成功刪除`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
                 // 刷新頁面數據
                 manualRefreshData();
             } else {
-                alert('❌ 刪除失敗: ' + data.message);
+                Swal.fire({
+                    icon: 'error',
+                    title: '刪除失敗',
+                    text: data.message,
+                    confirmButtonText: '確定'
+                });
             }
         })
         .catch(error => {
             console.error('❌ 刪除帳戶時發生錯誤:', error);
-            alert('❌ 刪除失敗，請檢查網路連接');
+            Swal.fire({
+                icon: 'error',
+                title: '刪除失敗',
+                text: '請檢查網路連接或聯繫管理員',
+                confirmButtonText: '確定'
+            });
         });
     }
     
@@ -650,9 +731,75 @@ document.addEventListener('DOMContentLoaded', function () {
     function deleteHolder(holderId, holderName) {
         console.log('🗑️ 刪除持有人:', holderId, holderName);
         
-        if (!confirm(`確定要刪除持有人「${holderName}」嗎？\n\n⚠️ 此操作將同時刪除該持有人下的所有帳戶！\n⚠️ 此操作不可逆轉！`)) {
-            return;
-        }
+        // 使用 SweetAlert2 進行二次確認
+        Swal.fire({
+            title: '確認刪除持有人',
+            html: `
+                <div class="text-start">
+                    <p><strong>持有人名稱：</strong>${holderName}</p>
+                    <p><strong>操作類型：</strong>永久刪除</p>
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>警告：</strong>此操作將同時刪除該持有人下的所有帳戶！
+                    </div>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '確認刪除',
+            cancelButtonText: '取消',
+            reverseButtons: true,
+            focusCancel: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // 第二次確認
+                Swal.fire({
+                    title: '最終確認',
+                    html: `
+                        <div class="text-start">
+                            <p>您確定要刪除持有人「<strong>${holderName}</strong>」嗎？</p>
+                            <div class="alert alert-danger mt-3">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>此操作將：</strong>
+                                <ul class="mt-2 mb-0">
+                                    <li>永久刪除該持有人</li>
+                                    <li>同時刪除其下所有帳戶</li>
+                                    <li>無法恢復</li>
+                                    <li>可能影響相關記錄</li>
+                                </ul>
+                            </div>
+                        </div>
+                    `,
+                    icon: 'error',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: '是的，刪除它！',
+                    cancelButtonText: '取消',
+                    reverseButtons: true
+                }).then((finalResult) => {
+                    if (finalResult.isConfirmed) {
+                        // 執行刪除操作
+                        executeDeleteHolder(holderId, holderName);
+                    }
+                });
+            }
+        });
+    }
+    
+    // 執行刪除持有人操作
+    function executeDeleteHolder(holderId, holderName) {
+        // 顯示載入狀態
+        Swal.fire({
+            title: '正在刪除...',
+            text: `正在刪除持有人「${holderName}」及其所有帳戶`,
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
         
         // 發送刪除請求
         fetch('/api/delete-holder', {
@@ -667,16 +814,32 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                alert('✅ 持有人刪除成功！');
+                Swal.fire({
+                    icon: 'success',
+                    title: '刪除成功！',
+                    text: `持有人「${holderName}」及其所有帳戶已成功刪除`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
                 // 刷新頁面數據
                 manualRefreshData();
             } else {
-                alert('❌ 刪除失敗: ' + data.message);
+                Swal.fire({
+                    icon: 'error',
+                    title: '刪除失敗',
+                    text: data.message,
+                    confirmButtonText: '確定'
+                });
             }
         })
         .catch(error => {
             console.error('❌ 刪除持有人時發生錯誤:', error);
-            alert('❌ 刪除失敗，請檢查網路連接');
+            Swal.fire({
+                icon: 'error',
+                title: '刪除失敗',
+                text: '請檢查網路連接或聯繫管理員',
+                confirmButtonText: '確定'
+            });
         });
     }
     
@@ -1006,7 +1169,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         
         // 顯示載入中
-                                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
+        movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
         
         // 發送API請求
         fetch(`/api/cash_management/transactions?page=${page}`)
@@ -1019,12 +1182,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     renderPagination(result.data.pagination);
                 } else {
                     console.error('❌ 載入流水記錄失敗:', result.message);
-                                            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+                    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
                 }
             })
             .catch(error => {
                 console.error('❌ 網路錯誤:', error);
-                                    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
             });
     }
 
@@ -1292,7 +1455,85 @@ document.addEventListener('DOMContentLoaded', function () {
             
             console.log('✅ 表單驗證通過');
             
+            // 銷帳前二次確認
+            const customerName = document.getElementById('settlementCustomerName').value;
+            const accountName = document.getElementById('settlementAccount').options[document.getElementById('settlementAccount').selectedIndex].text;
+            
+            const confirmResult = await Swal.fire({
+                title: '確認銷帳操作',
+                html: `
+                    <div class="text-start">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>客戶名稱：</strong>${customerName}</p>
+                                <p><strong>銷帳金額：</strong>NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>入庫帳戶：</strong>${accountName}</p>
+                                <p><strong>備註：</strong>${note || '無'}</p>
+                            </div>
+                        </div>
+                        <div class="alert alert-info mt-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>銷帳後：</strong>客戶應收帳款將減少 NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                        </div>
+                    </div>
+                `,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '確認銷帳',
+                cancelButtonText: '取消',
+                reverseButtons: true
+            });
+            
+            if (!confirmResult.isConfirmed) {
+                return;
+            }
+            
+            // 第二次確認
+            const finalConfirmResult = await Swal.fire({
+                title: '最終確認',
+                html: `
+                    <div class="text-start">
+                        <p>您確定要執行銷帳操作嗎？</p>
+                        <div class="alert alert-warning mt-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>此操作將：</strong>
+                            <ul class="mt-2 mb-0">
+                                <li>減少客戶應收帳款</li>
+                                <li>增加入庫帳戶餘額</li>
+                                <li>記錄銷帳歷史</li>
+                                <li>無法輕易撤銷</li>
+                            </ul>
+                        </div>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '是的，執行銷帳',
+                cancelButtonText: '取消',
+                reverseButtons: true
+            });
+            
+            if (!finalConfirmResult.isConfirmed) {
+                return;
+            }
+            
             console.log('銷帳表單提交:', { customerId, amount, accountId, note });
+            
+            // 顯示載入狀態
+            Swal.fire({
+                title: '正在執行銷帳...',
+                text: '請稍候，正在處理銷帳操作',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
             
             try {
                 const response = await fetch('/api/settlement', {
@@ -1362,5 +1603,382 @@ document.addEventListener('DOMContentLoaded', function () {
     
     console.log('✅ 現金管理頁面初始化完成');
 });
+
+// 通用二次確認函數
+async function confirmOperation(options) {
+    const {
+        title,
+        message,
+        confirmText = '確認',
+        cancelText = '取消',
+        confirmColor = '#28a745',
+        cancelColor = '#6c757d',
+        icon = 'question',
+        showSecondConfirm = true,
+        secondTitle = '最終確認',
+        secondMessage = '您確定要執行此操作嗎？',
+        secondConfirmText = '是的，執行',
+        secondCancelText = '取消'
+    } = options;
+    
+    // 第一次確認
+    const firstResult = await Swal.fire({
+        title: title,
+        html: message,
+        icon: icon,
+        showCancelButton: true,
+        confirmButtonColor: confirmColor,
+        cancelButtonColor: cancelColor,
+        confirmButtonText: confirmText,
+        cancelButtonText: cancelText,
+        reverseButtons: true,
+        focusCancel: true
+    });
+    
+    if (!firstResult.isConfirmed) {
+        return false;
+    }
+    
+    // 如果需要第二次確認
+    if (showSecondConfirm) {
+        const secondResult = await Swal.fire({
+            title: secondTitle,
+            html: secondMessage,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: confirmColor,
+            cancelButtonColor: cancelColor,
+            confirmButtonText: secondConfirmText,
+            cancelButtonText: secondCancelText,
+            reverseButtons: true
+        });
+        
+        return secondResult.isConfirmed;
+    }
+    
+    return true;
+}
+
+// 為內部轉帳增加確認
+document.addEventListener('DOMContentLoaded', function() {
+    const transferForm = document.querySelector('#transferModal form');
+    if (transferForm) {
+        transferForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const fromAccount = document.getElementById('fromAccount');
+            const toAccount = document.getElementById('toAccount');
+            const amount = document.getElementById('transferAmount');
+            
+            if (!fromAccount.value || !toAccount.value || !amount.value) {
+                Swal.fire('錯誤', '請填寫完整的轉帳資訊', 'error');
+                return;
+            }
+            
+            const fromAccountText = fromAccount.options[fromAccount.selectedIndex].text;
+            const toAccountText = toAccount.options[toAccount.selectedIndex].text;
+            const transferAmount = parseFloat(amount.value);
+            
+            // 二次確認
+            const confirmed = await confirmOperation({
+                title: '確認內部轉帳',
+                message: `
+                    <div class="text-start">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>轉出帳戶：</strong>${fromAccountText}</p>
+                                <p><strong>轉入帳戶：</strong>${toAccountText}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>轉帳金額：</strong>NT$ ${transferAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                            </div>
+                        </div>
+                        <div class="alert alert-info mt-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>轉帳後：</strong>轉出帳戶餘額將減少，轉入帳戶餘額將增加
+                        </div>
+                    </div>
+                `,
+                confirmText: '確認轉帳',
+                secondMessage: `
+                    <div class="text-start">
+                        <p>您確定要執行此內部轉帳嗎？</p>
+                        <div class="alert alert-warning mt-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>此操作將：</strong>
+                            <ul class="mt-2 mb-0">
+                                <li>從 ${fromAccountText} 轉出 NT$ ${transferAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</li>
+                                <li>轉入 ${toAccountText}</li>
+                                <li>記錄轉帳歷史</li>
+                                <li>無法輕易撤銷</li>
+                            </ul>
+                        </div>
+                    </div>
+                `,
+                secondConfirmText: '是的，執行轉帳'
+            });
+            
+            if (confirmed) {
+                // 顯示載入狀態
+                Swal.fire({
+                    title: '正在執行轉帳...',
+                    text: '請稍候，正在處理轉帳操作',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+                
+                // 提交表單
+                this.submit();
+            }
+        });
+    }
+    
+    // 為資金操作增加確認
+    const movementForm = document.querySelector('#addMovementModal form');
+    if (movementForm) {
+        movementForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const accountId = document.getElementById('movementAccountId').value;
+            const amount = document.getElementById('movementAmount').value;
+            const isDecrease = document.querySelector('input[name="is_decrease"]:checked').value === 'true';
+            const note = document.getElementById('movementNote').value;
+            
+            if (!accountId || !amount) {
+                Swal.fire('錯誤', '請填寫完整的操作資訊', 'error');
+                return;
+            }
+            
+            const operationType = isDecrease ? '提出' : '存入';
+            const operationAmount = parseFloat(amount);
+            
+            // 二次確認
+            const confirmed = await confirmOperation({
+                title: `確認資金${operationType}`,
+                message: `
+                    <div class="text-start">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>操作類型：</strong>${operationType}</p>
+                                <p><strong>操作金額：</strong>NT$ ${operationAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>備註：</strong>${note || '無'}</p>
+                            </div>
+                        </div>
+                        <div class="alert alert-info mt-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>操作後：</strong>帳戶餘額將${isDecrease ? '減少' : '增加'} NT$ ${operationAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                        </div>
+                    </div>
+                `,
+                confirmText: `確認${operationType}`,
+                secondMessage: `
+                    <div class="text-start">
+                        <p>您確定要執行此資金${operationType}操作嗎？</p>
+                        <div class="alert alert-warning mt-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>此操作將：</strong>
+                            <ul class="mt-2 mb-0">
+                                <li>${operationType} NT$ ${operationAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</li>
+                                <li>更新帳戶餘額</li>
+                                <li>記錄操作歷史</li>
+                                <li>無法輕易撤銷</li>
+                            </ul>
+                        </div>
+                    </div>
+                `,
+                secondConfirmText: `是的，執行${operationType}`
+            });
+            
+            if (confirmed) {
+                // 顯示載入狀態
+                Swal.fire({
+                    title: `正在執行${operationType}...`,
+                    text: '請稍候，正在處理資金操作',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+                
+                // 提交表單
+                this.submit();
+            }
+        });
+    }
+});
+
+// 全局函數：載入分頁流水記錄
+window.loadMovements = function(page = 1) {
+    console.log('🔍 開始載入第', page, '頁流水記錄...');
+    
+    const movementsTbody = document.getElementById('movements-tbody');
+    if (!movementsTbody) {
+        console.error('❌ 找不到 movements-tbody 元素');
+        return;
+    }
+    
+    // 顯示載入中
+    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
+    
+    // 發送API請求
+    fetch(`/api/cash_management/transactions?page=${page}`)
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                window.currentPage = page;
+                window.currentPagination = result.data.pagination;
+                window.renderMovements(result.data.transactions);
+                window.renderPagination(result.data.pagination);
+            } else {
+                console.error('❌ 載入流水記錄失敗:', result.message);
+                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+            }
+        })
+        .catch(error => {
+            console.error('❌ 網路錯誤:', error);
+            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+        });
+};
+
+// 全局函數：渲染資金流水
+window.renderMovements = function(transactions) {
+    console.log('🔍 開始渲染資金流水...');
+    
+    const movementsTbody = document.getElementById('movements-tbody');
+    if (!movementsTbody) {
+        console.error('❌ 找不到 movements-tbody 元素');
+        return;
+    }
+    
+    movementsTbody.innerHTML = '';
+    
+    if (!transactions || transactions.length === 0) {
+        console.log('⚠️ 沒有資金流水數據');
+        movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+        return;
+    }
+    
+    console.log('✅ 找到 ' + transactions.length + ' 筆資金流水，開始渲染...');
+    
+    transactions.forEach(function(m, index) {
+        const twdChange = parseFloat(m.twd_change) || 0;
+        const rmbChange = parseFloat(m.rmb_change) || 0;
+        const profit = m.profit || 0;
+        
+        // 將類型轉換為中文顯示
+        let typeDisplay = m.type;
+        let typeClass = 'badge bg-info-subtle text-info-emphasis';
+        
+        switch(m.type) {
+            case 'PURCHASE':
+            case '買入':
+                typeDisplay = '買入';
+                typeClass = 'badge bg-primary-subtle text-primary-emphasis';
+                break;
+            case 'SALES':
+            case '售出':
+                typeDisplay = '售出';
+                typeClass = 'badge bg-primary-subtle text-primary-emphasis';
+                break;
+            case 'TRANSFER':
+            case '轉帳':
+                typeDisplay = '轉帳';
+                typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+                break;
+            case 'SETTLEMENT':
+            case '銷帳':
+                typeDisplay = '銷帳';
+                typeClass = 'badge bg-danger-subtle text-danger-emphasis';
+                break;
+            case 'DEPOSIT':
+            case '存款':
+                typeDisplay = '存款';
+                typeClass = 'badge bg-secondary-subtle text-secondary-emphasis';
+                break;
+            case 'WITHDRAWAL':
+            case '提款':
+                typeDisplay = '提款';
+                typeClass = 'badge bg-danger-subtle text-danger-emphasis';
+                break;
+            case 'CARD_PURCHASE':
+                typeDisplay = '刷卡';
+                typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+                break;
+            case 'CUSTOMER_PAYMENT':
+                typeDisplay = '客戶付款';
+                typeClass = 'badge bg-success-subtle text-success-emphasis';
+                break;
+            default:
+                typeDisplay = m.type;
+                typeClass = 'badge bg-info-subtle text-info-emphasis';
+        }
+        
+        // 格式化金額顯示
+        const twdDisplay = twdChange !== 0 ? (twdChange > 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        const rmbDisplay = rmbChange !== 0 ? (rmbChange > 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        const profitDisplay = profit !== 0 ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        
+        // 根據變化類型設置顏色
+        const twdColorClass = twdChange > 0 ? 'text-success' : twdChange < 0 ? 'text-danger' : 'text-muted';
+        const rmbColorClass = rmbChange > 0 ? 'text-success' : rmbChange < 0 ? 'text-danger' : 'text-muted';
+        const profitColorClass = profit > 0 ? 'text-success' : profit < 0 ? 'text-danger' : 'text-muted';
+        
+        const row = '<tr>' +
+            '<td><small>' + (m.date ? new Date(m.date).toLocaleDateString('zh-TW') : '-') + '</small></td>' +
+            '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
+            '<td><small>' + (m.description || '-') + '</small></td>' +
+            '<td><small>' + (m.operator || '-') + '</small></td>' +
+            '<td class="text-end"><small class="' + twdColorClass + '">' + twdDisplay + '</small></td>' +
+            '<td class="text-end"><small class="' + rmbColorClass + '">' + rmbDisplay + '</small></td>' +
+            '<td class="text-end"><small class="' + profitColorClass + '">' + profitDisplay + '</small></td>' +
+            '<td><small>' + (m.note || '-') + '</small></td>' +
+            '</tr>';
+        
+        movementsTbody.innerHTML += row;
+    });
+    
+    console.log('✅ 資金流水渲染完成');
+};
+
+// 全局函數：渲染分頁
+window.renderPagination = function(pagination) {
+    if (!pagination) return;
+    
+    const paginationContainer = document.getElementById('pagination-container');
+    if (!paginationContainer) return;
+    
+    let paginationHtml = '<ul class="pagination justify-content-center">';
+    
+    // 上一頁按鈕
+    if (pagination.has_prev) {
+        const prevButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + pagination.prev_num + ')">上一頁</a></li>';
+        paginationHtml += prevButton;
+    }
+    
+    // 頁碼按鈕
+    for (let i = 1; i <= pagination.pages; i++) {
+        let pageButton;
+        if (i === pagination.page) {
+            pageButton = '<li class="page-item active"><span class="page-link">' + i + '</span></li>';
+        } else {
+            pageButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + i + ')">' + i + '</a></li>';
+        }
+        paginationHtml += pageButton;
+    }
+    
+    // 下一頁按鈕
+    if (pagination.has_next) {
+        const nextButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + pagination.next_num + ')">下一頁</a></li>';
+        paginationHtml += nextButton;
+    }
+    
+    paginationHtml += '</ul>';
+    paginationContainer.innerHTML = paginationHtml;
+};
+
 </script>
 {% endblock %}

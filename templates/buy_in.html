@@ -203,9 +203,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 其他事件監聽保持不變...
     function updateCost() {
-        const rmb = parseFloat(rmbAmountInput.value) || 0;
-        const rate = parseFloat(exchangeRateInput.value) || 0;
-        twdCostDisplay.textContent = `NT$ ${(rmb * rate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        // 使用格式化後的實際數值進行計算
+        const rmb = parseFloat(rmbAmountInput.getActualValue ? rmbAmountInput.getActualValue() : rmbAmountInput.value) || 0;
+        const rate = parseFloat(exchangeRateInput.getActualValue ? exchangeRateInput.getActualValue() : exchangeRateInput.value) || 0;
+        const twdCost = rmb * rate;
+        
+        // 無條件進位到整數，不顯示小數點
+        const roundedCost = Math.ceil(twdCost);
+        twdCostDisplay.textContent = `NT$ ${roundedCost.toLocaleString('en-US')}`;
     }
     [rmbAmountInput, exchangeRateInput].forEach(el => el.addEventListener('input', updateCost));
 
@@ -239,8 +244,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // 驗證表單數據
         const paymentAccountId = paymentAccountSelect.value;
         const depositAccountId = depositAccountSelect.value;
-        const rmbAmount = parseFloat(rmbAmountInput.value);
-        const exchangeRate = parseFloat(exchangeRateInput.value);
+        // 使用格式化後的實際數值
+        const rmbAmount = parseFloat(rmbAmountInput.getActualValue ? rmbAmountInput.getActualValue() : rmbAmountInput.value);
+        const exchangeRate = parseFloat(exchangeRateInput.getActualValue ? exchangeRateInput.getActualValue() : exchangeRateInput.value);
         const channelId = channelSelect.value;
         const channelNameManualValue = channelNameManual.value.trim();
         
@@ -599,6 +605,76 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('所有事件監聽器已設置完成');
     console.log('表單元素:', purchaseForm);
     console.log('按鈕元素:', document.querySelector('button[type="submit"]'));
+
+    // --- 數字格式化工具函數 ---
+    
+    // 為數字輸入欄位添加逗號格式化
+    function setupNumberInputFormatting(inputElement) {
+        if (!inputElement) return;
+        
+        // 保存原始值用於計算
+        let originalValue = '';
+        
+        inputElement.addEventListener('input', function(e) {
+            // 獲取輸入值，移除所有非數字字符（除了小數點）
+            let value = e.target.value.replace(/[^\d.]/g, '');
+            
+            // 確保只有一個小數點
+            const parts = value.split('.');
+            if (parts.length > 2) {
+                value = parts[0] + '.' + parts.slice(1).join('');
+            }
+            
+            // 保存原始值用於計算
+            originalValue = value;
+            
+            // 格式化顯示（添加逗號）
+            if (value && value !== '.') {
+                const numValue = parseFloat(value);
+                if (!isNaN(numValue)) {
+                    // 根據欄位類型決定小數位數
+                    if (this.id === 'exchangeRate') {
+                        // 匯率欄位顯示4位小數
+                        e.target.value = numValue.toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 4 
+                        });
+                    } else {
+                        // 其他欄位顯示2位小數
+                        e.target.value = numValue.toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 2 
+                        });
+                    }
+                }
+            }
+        });
+        
+        // 失去焦點時，如果值為空或只有小數點，清空欄位
+        inputElement.addEventListener('blur', function(e) {
+            if (!e.target.value || e.target.value === '.') {
+                e.target.value = '';
+                originalValue = '';
+            }
+        });
+        
+        // 獲取實際數值（用於計算）
+        inputElement.getActualValue = function() {
+            return originalValue || this.value.replace(/,/g, '');
+        };
+    }
+    
+    // 初始化數字輸入欄位的格式化
+    function initializeNumberFormatting() {
+        // 為買入金額和匯率欄位設置格式化
+        setupNumberInputFormatting(rmbAmountInput);
+        setupNumberInputFormatting(exchangeRateInput);
+        
+        console.log('✅ 買入頁面數字輸入欄位格式化已初始化');
+    }
+
+    // 初始化時調用數字格式化函數
+    initializeNumberFormatting();
 });
 </script>
 {% endblock %}

@@ -293,6 +293,7 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log('🌐 API端點:', FREQUENT_CUSTOMERS_API);
     loadFrequentCustomers();
     loadTotalProfit(); // 載入總利潤數據
+    initializeNumberFormatting(); // 初始化數字輸入欄位格式化
     
     // --- 事件監聽器 ---
     
@@ -437,12 +438,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
     
-    // 6. 動態計算應收台幣
+    // 6. 動態計算應收台幣（無條件進位到整數）
     function calculateReceivable() {
-        const rate = parseFloat(exchangeRateInput.value) || 0;
-        const rmb = parseFloat(rmbAmountInput.value) || 0;
+        // 使用格式化後的實際數值進行計算
+        const rate = parseFloat(exchangeRateInput.getActualValue ? exchangeRateInput.getActualValue() : exchangeRateInput.value) || 0;
+        const rmb = parseFloat(rmbAmountInput.getActualValue ? rmbAmountInput.getActualValue() : rmbAmountInput.value) || 0;
         const twd = rate * rmb;
-        twdDisplay.textContent = `NT$ ${twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        
+        // 使用無條件進位，不顯示小數點
+        twdDisplay.textContent = formatIntegerCurrency(twd);
         
         // 如果金額和匯率都有效，計算利潤預覽
         if (rate > 0 && rmb > 0) {
@@ -872,6 +876,85 @@ document.addEventListener('DOMContentLoaded', function () {
             cancelSalesRecord(saleId, customerName, rmbAmount, twdAmount);
         }
     });
+
+    // --- 數字格式化工具函數 ---
+    
+    // 無條件進位到整數，不顯示小數點
+    function roundUpToInteger(value) {
+        if (isNaN(value) || value === null || value === undefined) return 0;
+        return Math.ceil(parseFloat(value));
+    }
+    
+    // 格式化數字顯示，無條件進位到整數
+    function formatIntegerCurrency(value, currency = 'NT$') {
+        const roundedValue = roundUpToInteger(value);
+        return `${currency} ${roundedValue.toLocaleString('en-US')}`;
+    }
+    
+    // 為數字輸入欄位添加逗號格式化
+    function setupNumberInputFormatting(inputElement) {
+        if (!inputElement) return;
+        
+        // 保存原始值用於計算
+        let originalValue = '';
+        
+        inputElement.addEventListener('input', function(e) {
+            // 獲取輸入值，移除所有非數字字符（除了小數點）
+            let value = e.target.value.replace(/[^\d.]/g, '');
+            
+            // 確保只有一個小數點
+            const parts = value.split('.');
+            if (parts.length > 2) {
+                value = parts[0] + '.' + parts.slice(1).join('');
+            }
+            
+            // 保存原始值用於計算
+            originalValue = value;
+            
+            // 格式化顯示（添加逗號）
+            if (value && value !== '.') {
+                const numValue = parseFloat(value);
+                if (!isNaN(numValue)) {
+                    // 根據欄位類型決定小數位數
+                    if (this.id === 'exchange-rate') {
+                        // 匯率欄位顯示4位小數
+                        e.target.value = numValue.toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 4 
+                        });
+                    } else {
+                        // 其他欄位顯示2位小數
+                        e.target.value = numValue.toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 2 
+                        });
+                    }
+                }
+            }
+        });
+        
+        // 失去焦點時，如果值為空或只有小數點，清空欄位
+        inputElement.addEventListener('blur', function(e) {
+            if (!e.target.value || e.target.value === '.') {
+                e.target.value = '';
+                originalValue = '';
+            }
+        });
+        
+        // 獲取實際數值（用於計算）
+        inputElement.getActualValue = function() {
+            return originalValue || this.value.replace(/,/g, '');
+        };
+    }
+    
+    // 初始化數字輸入欄位的格式化
+    function initializeNumberFormatting() {
+        // 為售出金額和匯率欄位設置格式化
+        setupNumberInputFormatting(rmbAmountInput);
+        setupNumberInputFormatting(exchangeRateInput);
+        
+        console.log('✅ 數字輸入欄位格式化已初始化');
+    }
 });
 </script>
 
