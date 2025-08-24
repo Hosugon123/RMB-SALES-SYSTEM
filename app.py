@@ -3938,6 +3938,37 @@ def api_delete_account():
                 "message": f'無法刪除！帳戶 "{account.name}" 尚有 {account.balance:,.2f} 的餘額。'
             }), 400
         
+        # 檢查外鍵約束 - 檢查是否有其他表引用此帳戶
+        try:
+            # 檢查 LedgerEntry 表
+            ledger_count = db.session.execute(
+                db.select(func.count(LedgerEntry.id)).filter(LedgerEntry.account_id == account_id)
+            ).scalar()
+            
+            if ledger_count > 0:
+                return jsonify({
+                    "status": "error",
+                    "message": f'無法刪除！帳戶 "{account.name}" 仍有 {ledger_count} 筆帳本記錄，請先處理這些記錄。'
+                }), 400
+            
+            # 檢查 CashLog 表
+            cash_log_count = db.session.execute(
+                db.select(func.count(CashLog.id)).filter(CashLog.account_id == account_id)
+            ).scalar()
+            
+            if cash_log_count > 0:
+                return jsonify({
+                    "status": "error",
+                    "message": f'無法刪除！帳戶 "{account.name}" 仍有 {cash_log_count} 筆現金流水記錄，請先處理這些記錄。'
+                }), 400
+            
+            # 檢查其他可能的外鍵引用（如果有其他表的話）
+            # 這裡可以根據實際的資料庫結構添加更多檢查
+            
+        except Exception as check_error:
+            print(f"⚠️ 檢查外鍵約束時出錯: {check_error}")
+            # 如果檢查失敗，我們仍然嘗試刪除，讓資料庫來處理約束
+        
         # 刪除帳戶
         account_name = account.name
         db.session.delete(account)
@@ -3950,7 +3981,13 @@ def api_delete_account():
         
     except Exception as e:
         db.session.rollback()
-        error_msg = f"刪除帳戶失敗: {e}"
+        
+        # 提供更友好的錯誤訊息
+        if "ForeignKeyViolation" in str(e) or "foreign key constraint" in str(e).lower():
+            error_msg = f'無法刪除帳戶 "{account.name}"，該帳戶仍被其他記錄引用。請先處理相關的帳本記錄或現金流水記錄。'
+        else:
+            error_msg = f"刪除帳戶失敗: {e}"
+        
         print(f"❌ {error_msg}")
         return jsonify({"status": "error", "message": error_msg}), 500
 

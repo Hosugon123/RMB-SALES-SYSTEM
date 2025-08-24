@@ -713,6 +713,26 @@ document.addEventListener('DOMContentLoaded', function () {
         accountIdInput.id = 'hiddenAccountId';
         document.getElementById('settlementForm').appendChild(accountIdInput);
         
+        // 填充收款帳戶下拉選單 - 只顯示TWD帳戶
+        const twdAccounts = [];
+        if (accountsByHolder && Object.keys(accountsByHolder).length > 0) {
+            Object.keys(accountsByHolder).forEach(holderId => {
+                const holderData = accountsByHolder[holderId];
+                if (holderData && holderData.accounts && holderData.accounts.length > 0) {
+                    const twdAccountsInGroup = holderData.accounts.filter(acc => acc.currency === 'TWD');
+                    if (twdAccountsInGroup.length > 0) {
+                        twdAccounts.push({
+                            holder_name: holderData.holder_name,
+                            accounts: twdAccountsInGroup
+                        });
+                    }
+                }
+            });
+        }
+        
+        // 填充收款帳戶下拉選單
+        populateGroupedSelect('settlementAccount', twdAccounts);
+        
         // 監聽收款帳戶下拉選單的變化，自動更新隱藏的帳戶ID
         const settlementAccountSelect = document.getElementById('settlementAccount');
         if (settlementAccountSelect) {
