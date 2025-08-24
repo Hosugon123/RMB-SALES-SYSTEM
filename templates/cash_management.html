@@ -402,40 +402,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // 填充模態框中的下拉選單
-    function populateModalSelects() {
-        console.log('🔧 開始填充模態框下拉選單...');
-        
-        // 填充新增帳戶模態框中的持有人下拉選單
-        if (holders && holders.length > 0) {
-            console.log('✅ 填充持有人下拉選單，找到', holders.length, '個持有人');
-            populateSelect('accountHolder', holders.map(h => ({ value: h.id, text: h.name })));
-        } else {
-            console.log('⚠️ 沒有持有人數據可填充');
-        }
-        
-        // 填充內部轉帳模態框中的帳戶下拉選單
-        const groupedAccounts = [];
-        if (accountsByHolder && Object.keys(accountsByHolder).length > 0) {
-            Object.keys(accountsByHolder).forEach(holderId => {
-                const holderData = accountsByHolder[holderId];
-                if (holderData && holderData.accounts && holderData.accounts.length > 0) {
-                    const accountsInGroup = holderData.accounts.filter(acc => acc.balance > 0); // 只顯示有餘額的帳戶
-                    if (accountsInGroup.length > 0) {
-                        groupedAccounts.push({
-                            holder_name: holderData.holder_name,
-                            accounts: accountsInGroup
-                        });
-                    }
-                }
-            });
-        }
-        
-        populateGroupedSelect('fromAccount', groupedAccounts);
-        populateGroupedSelect('toAccount', groupedAccounts);
-        
-        console.log('✅ 模態框下拉選單填充完成');
-    }
+
 
     // 設置RMB匯率欄位的顯示/隱藏邏輯
     function setupRmbRateFieldLogic() {
@@ -605,14 +572,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         
         // 填充內部轉帳模態框中的帳戶下拉選單
-        const groupedAccounts = [];
+        // 轉出帳戶：只顯示有餘額的帳戶
+        const fromAccounts = [];
         if (accountsByHolder && Object.keys(accountsByHolder).length > 0) {
             Object.keys(accountsByHolder).forEach(holderId => {
                 const holderData = accountsByHolder[holderId];
                 if (holderData && holderData.accounts && holderData.accounts.length > 0) {
                     const accountsInGroup = holderData.accounts.filter(acc => acc.balance > 0); // 只顯示有餘額的帳戶
                     if (accountsInGroup.length > 0) {
-                        groupedAccounts.push({
+                        fromAccounts.push({
                             holder_name: holderData.holder_name,
                             accounts: accountsInGroup
                         });
@@ -621,8 +589,59 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
         
-        populateGroupedSelect('fromAccount', groupedAccounts);
-        populateGroupedSelect('toAccount', groupedAccounts);
+        // 轉入帳戶：顯示所有帳戶（用於動態過濾）
+        const allAccounts = [];
+        if (accountsByHolder && Object.keys(accountsByHolder).length > 0) {
+            Object.keys(accountsByHolder).forEach(holderId => {
+                const holderData = accountsByHolder[holderId];
+                if (holderData && holderData.accounts && holderData.accounts.length > 0) {
+                    allAccounts.push({
+                        holder_name: holderData.holder_name,
+                        accounts: holderData.accounts
+                    });
+                }
+            });
+        }
+        
+        populateGroupedSelect('fromAccount', fromAccounts);
+        populateGroupedSelect('toAccount', allAccounts);
+        
+        // 添加轉出帳戶變更事件監聽器，動態過濾轉入帳戶選項
+        const fromAccountSelect = document.getElementById('fromAccount');
+        if (fromAccountSelect) {
+            fromAccountSelect.addEventListener('change', function() {
+                const selectedAccountId = this.value;
+                if (selectedAccountId) {
+                    // 找到選中的轉出帳戶
+                    let selectedAccount = null;
+                    for (const holderGroup of allAccounts) {
+                        for (const account of holderGroup.accounts) {
+                            if (account.id == selectedAccountId) {
+                                selectedAccount = account;
+                                break;
+                            }
+                        }
+                        if (selectedAccount) break;
+                    }
+                    
+                    if (selectedAccount) {
+                        // 過濾出相同幣種的帳戶（排除自己）
+                        const filteredAccounts = allAccounts.map(holderGroup => ({
+                            holder_name: holderGroup.holder_name,
+                            accounts: holderGroup.accounts.filter(acc => 
+                                acc.currency === selectedAccount.currency && acc.id != selectedAccount.id
+                            )
+                        })).filter(holderGroup => holderGroup.accounts.length > 0);
+                        
+                        // 重新填充轉入帳戶選單
+                        populateGroupedSelect('toAccount', filteredAccounts);
+                    }
+                } else {
+                    // 如果沒有選擇轉出帳戶，顯示所有帳戶
+                    populateGroupedSelect('toAccount', allAccounts);
+                }
+            });
+        }
         
         console.log('✅ 模態框下拉選單填充完成');
     }

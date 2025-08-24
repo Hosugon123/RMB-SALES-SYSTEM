@@ -2413,7 +2413,7 @@ def buy_in():
                     for acc in twd_accounts
                 ]
             if rmb_accounts:
-                # 轉換為可序列化的格式，直接使用資料庫餘額
+                # 轉換為可序列化的格式，直接使用資料庫中的餘額
                 owner_rmb_accounts_grouped[holder.name] = [
                     {
                         "id": acc.id,
@@ -3908,6 +3908,54 @@ def api_clear_all_data():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": error_msg}), 500
+
+
+@app.route("/api/delete-account", methods=["POST"])
+@login_required
+def api_delete_account():
+    """刪除現金帳戶的 API 端點"""
+    if not current_user.is_admin:
+        return jsonify({"status": "error", "message": "權限不足，僅管理員可執行此操作。"}), 403
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
+        
+        account_id = data.get("account_id")
+        if not account_id:
+            return jsonify({"status": "error", "message": "帳戶ID為必填項。"}), 400
+        
+        # 查詢帳戶
+        account = db.session.get(CashAccount, account_id)
+        if not account:
+            return jsonify({"status": "error", "message": "找不到指定的帳戶。"}), 404
+        
+        # 檢查帳戶餘額
+        if account.balance != 0:
+            return jsonify({
+                "status": "error", 
+                "message": f'無法刪除！帳戶 "{account.name}" 尚有 {account.balance:,.2f} 的餘額。'
+            }), 400
+        
+        # 刪除帳戶
+        account_name = account.name
+        db.session.delete(account)
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success",
+            "message": f'帳戶 "{account_name}" 已成功刪除！'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        error_msg = f"刪除帳戶失敗: {e}"
+        print(f"❌ {error_msg}")
+        return jsonify({"status": "error", "message": error_msg}), 500
+
+
+@app.route("/api/cash_management/transactions", methods=["GET"])
 
 
 
