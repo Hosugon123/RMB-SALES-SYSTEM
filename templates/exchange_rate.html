@@ -22,11 +22,11 @@
                     <form method="POST">
                         <div class="mb-3">
                             <label for="buy_rate" class="form-label">設定人民幣買入匯率 (我們向您採購人民幣，NTD/RMB):</label>
-                            <input type="number" class="form-control" id="buy_rate" name="buy_rate" step="0.0001" value="{{ '%.4f'|format(buy_rate) }}" required>
+                            <input type="text" class="form-control" id="buy_rate" name="buy_rate" pattern="[0-9]*\.?[0-9]*" value="{{ '%.4f'|format(buy_rate) }}" required>
                         </div>
                         <div class="mb-3">
                             <label for="sell_rate" class="form-label">設定人民幣賣出匯率 (您向我們採購人民幣，NTD/RMB):</label>
-                            <input type="number" class="form-control" id="sell_rate" name="sell_rate" step="0.0001" value="{{ '%.4f'|format(sell_rate) }}" required>
+                            <input type="text" class="form-control" id="sell_rate" name="sell_rate" pattern="[0-9]*\.?[0-9]*" value="{{ '%.4f'|format(sell_rate) }}" required>
                         </div>
                         <div class="d-grid">
                             <button type="submit" class="btn btn-primary">更新匯率</button>

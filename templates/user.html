@@ -31,7 +31,7 @@
                     <form method="POST" action="{{ url_for('buy_rmb') }}">
                         <div class="mb-3">
                             <label for="rmb_order_amount" class="form-label">請輸入您要採購的人民幣數量 (RMB):</label>
-                            <input type="number" class="form-control" id="rmb_order_amount" name="rmb_order_amount" step="0.01" min="0.01" required>
+                            <input type="text" class="form-control" id="rmb_order_amount" name="rmb_order_amount" pattern="[0-9]*\.?[0-9]*" required>
                         </div>
                         <div class="mb-3">
                             <label for="customer_payment_note" class="form-label">請備註您的匯款方式 (例如：OO銀行轉帳、XX支付寶):</label>

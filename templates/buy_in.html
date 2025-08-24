@@ -73,13 +73,13 @@
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <div class="form-floating">
-                                    <input type="number" class="form-control" id="rmbAmount" name="rmb_amount" step="0.01" min="0.01" required placeholder="¥">
+                                    <input type="text" class="form-control" id="rmbAmount" name="rmb_amount" pattern="[0-9]*\.?[0-9]*" required placeholder="¥">
                                     <label for="rmbAmount">買入金額 (RMB)</label>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="form-floating">
-                                    <input type="number" class="form-control" id="exchangeRate" name="exchange_rate" step="0.0001" min="0.0001" required placeholder="NT$">
+                                    <input type="text" class="form-control" id="exchangeRate" name="exchange_rate" pattern="[0-9]*\.?[0-9]*" required placeholder="NT$">
                                     <label for="exchangeRate">買入匯率</label>
                                 </div>
                             </div>

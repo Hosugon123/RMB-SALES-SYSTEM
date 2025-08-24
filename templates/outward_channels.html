@@ -24,7 +24,7 @@
                 </div>
                 <div class="mb-3">
                     <label for="initial_balance" class="form-label">初始人民幣餘額:</label>
-                    <input type="number" class="form-control" id="initial_balance" name="initial_balance" step="0.01" value="0.00">
+                    <input type="text" class="form-control" id="initial_balance" name="initial_balance" pattern="[0-9]*\.?[0-9]*" value="0.00">
                 </div>
                 <div class="d-grid">
                     <button type="submit" class="btn btn-primary">新增管道</button>
@@ -65,7 +65,7 @@
                                         <form method="POST" action="{{ url_for('admin_outward_channels') }}" class="inline-form mb-0">
                                             <input type="hidden" name="action" value="update_balance">
                                             <input type="hidden" name="channel_id" value="{{ channel.id }}">
-                                            <input type="number" name="new_balance" value="{{ '%.2f'|format(channel.current_balance_rmb) }}" step="0.01" class="form-control form-control-sm me-1" style="width: 100px; display: inline-block;">
+                                            <input type="text" name="new_balance" value="{{ '%.2f'|format(channel.current_balance_rmb) }}" pattern="[0-9]*\.?[0-9]*" class="form-control form-control-sm me-1" style="width: 100px; display: inline-block;">
                                             <button type="submit" class="btn btn-warning btn-sm">更新餘額</button>
                                         </form>
                                     </div>

@@ -61,11 +61,11 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="rmb-amount" class="form-label fw-bold">售出金額 (RMB)</label>
-                            <input type="number" id="rmb-amount" name="rmb_amount" class="form-control" step="0.01" placeholder="¥" required>
+                            <input type="text" id="rmb-amount" name="rmb_amount" class="form-control" pattern="[0-9]*\.?[0-9]*" placeholder="¥" required>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="exchange-rate" class="form-label fw-bold">售出匯率</label>
-                            <input type="number" id="exchange-rate" name="exchange_rate" class="form-control" step="0.0001" placeholder="請輸入匯率" required>
+                            <input type="text" id="exchange-rate" name="exchange_rate" class="form-control" pattern="[0-9]*\.?[0-9]*" placeholder="請輸入匯率" required>
                         </div>
                     </div>
 

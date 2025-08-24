@@ -43,8 +43,8 @@
                             <option value="TWD">台幣 (TWD)</option>
                             <option value="RMB">人民幣 (RMB)</option>
                         </select></div>
-                    <div class="mb-3"><label for="initialBalance" class="form-label">初始餘額</label><input type="number"
-                            step="0.01" class="form-control" id="initialBalance" name="initial_balance" value="0.00"
+                    <div class="mb-3"><label for="initialBalance" class="form-label">初始餘額</label><input type="text"
+                            pattern="[0-9]*\.?[0-9]*" class="form-control" id="initialBalance" name="initial_balance" value="0.00"
                             required></div>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary"
@@ -70,8 +70,8 @@
                             class="form-select" id="fromAccount" name="from_account_id" required></select></div>
                     <div class="mb-3"><label for="toAccount" class="form-label">轉入哪個帳戶？</label><select
                             class="form-select" id="toAccount" name="to_account_id" required></select></div>
-                    <div class="mb-3"><label for="transferAmount" class="form-label">轉帳金額</label><input type="number"
-                            step="0.01" class="form-control" id="transferAmount" name="transfer_amount" required></div>
+                    <div class="mb-3"><label for="transferAmount" class="form-label">轉帳金額</label><input type="text"
+                            pattern="[0-9]*\.?[0-9]*" class="form-control" id="transferAmount" name="transfer_amount" required></div>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary"
                         data-bs-dismiss="modal">取消</button><button type="submit" class="btn btn-warning">確認轉帳</button>
@@ -100,13 +100,13 @@
                                 name="is_decrease" id="movementWithdraw" value="true"><label class="form-check-label"
                                 for="movementWithdraw">提出 (-)</label></div>
                     </div>
-                    <div class="mb-3"><label for="movementAmount" class="form-label">金額</label><input type="number"
-                            step="0.01" class="form-control" id="movementAmount" name="amount" required></div>
+                    <div class="mb-3"><label for="movementAmount" class="form-label">金額</label><input type="text"
+                            pattern="[0-9]*\.?[0-9]*" class="form-control" id="movementAmount" name="amount" required></div>
                     
                     <!-- RMB存款時的成本匯率欄位 -->
                     <div class="mb-3" id="rmbCostRateDiv" style="display: none;">
                         <label for="rmbCostRate" class="form-label">成本匯率 <span class="text-danger">*</span></label>
-                        <input type="number" step="0.0001" class="form-control" id="rmbCostRate" name="rmb_cost_rate" placeholder="例如: 4.5000">
+                        <input type="text" pattern="[0-9]*\.?[0-9]*" class="form-control" id="rmbCostRate" name="rmb_cost_rate" placeholder="例如: 4.5000">
                         <small class="text-muted">RMB存款需要輸入成本匯率以正確計算庫存成本</small>
                     </div>
                     
@@ -161,7 +161,7 @@
                     
                     <div class="mb-3">
                         <label for="settlementAmount" class="form-label">銷帳金額 (TWD) <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" class="form-control" id="settlementAmount" name="settlement_amount" required>
+                        <input type="text" pattern="[0-9]*\.?[0-9]*" class="form-control" id="settlementAmount" name="settlement_amount" required>
                         <small class="text-muted">請輸入實際收到的金額</small>
                     </div>
                     

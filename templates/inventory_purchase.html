@@ -22,7 +22,7 @@
                 </div>
                 <div class="mb-3">
                     <label for="purchase_amount" class="form-label">輸入金額:</label>
-                    <input type="number" class="form-control" id="purchase_amount" name="purchase_amount" step="0.01" min="0.01" required value="{{ input_amount if input_amount else '' }}">
+                    <input type="text" class="form-control" id="purchase_amount" name="purchase_amount" pattern="[0-9]*\.?[0-9]*" required value="{{ input_amount if input_amount else '' }}">
                 </div>
                 <div class="mb-3">
                     <label for="target_currency" class="form-label">換算目標幣種:</label>

@@ -161,16 +161,16 @@
                                 <label for="inventoryRmbAmount" class="form-label">RMB數量 <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text">¥</span>
-                                    <input type="number" class="form-control" id="inventoryRmbAmount" 
-                                           name="rmb_amount" step="0.01" min="0.01" required>
+                                    <input type="text" class="form-control" id="inventoryRmbAmount" 
+                                           name="rmb_amount" pattern="[0-9]*\.?[0-9]*" required>
                                 </div>
                             </div>
                             <div class="mb-3">
                                 <label for="inventoryExchangeRate" class="form-label">買入匯率 <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text">NT$</span>
-                                    <input type="number" class="form-control" id="inventoryExchangeRate" 
-                                           name="exchange_rate" step="0.0001" min="0.0001" required>
+                                    <input type="text" class="form-control" id="inventoryExchangeRate" 
+                                           name="exchange_rate" pattern="[0-9]*\.?[0-9]*" required>
                                 </div>
                             </div>
                         </div>
@@ -245,8 +245,8 @@
                                 <label for="adjustAmount" class="form-label">調整數量 <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text">¥</span>
-                                    <input type="number" class="form-control" id="adjustAmount" 
-                                           name="amount" step="0.01" min="0.01" required>
+                                    <input type="text" class="form-control" id="adjustAmount" 
+                                           name="amount" pattern="[0-9]*\.?[0-9]*" required>
                                 </div>
                             </div>
                         </div>
@@ -269,8 +269,8 @@
                                 <label for="adjustExchangeRate" class="form-label">調整匯率 <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text">NT$</span>
-                                    <input type="number" class="form-control" id="adjustExchangeRate" 
-                                           name="exchange_rate" step="0.0001" min="0.0001" required>
+                                    <input type="text" class="form-control" id="adjustExchangeRate" 
+                                           name="exchange_rate" pattern="[0-9]*\.?[0-9]*" required>
                                 </div>
                                 <div class="form-text">用於計算台幣價值變動</div>
                             </div>
@@ -322,16 +322,16 @@
                         <label for="oldExchangeRate" class="form-label">原匯率</label>
                         <div class="input-group">
                             <span class="input-group-text">NT$</span>
-                            <input type="number" class="form-control" id="oldExchangeRate" 
-                                   name="old_rate" step="0.0001" readonly>
+                            <input type="text" class="form-control" id="oldExchangeRate" 
+                                   name="old_rate" pattern="[0-9]*\.?[0-9]*" readonly>
                         </div>
                     </div>
                     <div class="mb-3">
                         <label for="newExchangeRate" class="form-label">新匯率</label>
                         <div class="input-group">
                             <span class="input-group-text">NT$</span>
-                            <input type="number" class="form-control" id="newExchangeRate" 
-                                   name="new_rate" step="0.0001" min="0.0001" required>
+                            <input type="text" class="form-control" id="newExchangeRate" 
+                                   name="new_rate" pattern="[0-9]*\.?[0-9]*" required>
                         </div>
                     </div>
                     <div class="mb-3">

@@ -28,14 +28,14 @@
                             <label for="rmb_amount" class="form-label">刷卡金額 (RMB)</label>
                             <div class="input-group">
                                 <span class="input-group-text">¥</span>
-                                <input type="number" class="form-control" id="rmb_amount" name="rmb_amount" step="0.01" min="0.01" required placeholder="例如: 2000">
+                                <input type="text" class="form-control" id="rmb_amount" name="rmb_amount" pattern="[0-9]*\.?[0-9]*" required placeholder="例如: 2000">
                             </div>
                         </div>
                         <div class="mb-3">
                             <label for="twd_equivalent" class="form-label">信用卡帳單 (TWD)</label>
                              <div class="input-group">
                                 <span class="input-group-text">NT$</span>
-                                <input type="number" class="form-control" id="twd_equivalent" name="twd_equivalent" step="1" min="1" required placeholder="例如: 8500">
+                                <input type="text" class="form-control" id="twd_equivalent" name="twd_equivalent" pattern="[0-9]*\.?[0-9]*" required placeholder="例如: 8500">
                             </div>
                         </div>
                     </div>
