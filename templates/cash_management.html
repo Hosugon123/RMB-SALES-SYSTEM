@@ -1097,8 +1097,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const note = document.getElementById('settlementNote').value;
             
             // 驗證必填欄位
-            if (!customerId || !amount || !accountId) {
-                Swal.fire('錯誤', '請填寫所有必填欄位', 'error');
+            if (!customerId || !accountId) {
+                Swal.fire('錯誤', '請選擇客戶和收款帳戶', 'error');
+                return;
+            }
+            
+            // 驗證銷帳金額
+            if (isNaN(amount) || amount <= 0) {
+                Swal.fire('錯誤', '請輸入有效的銷帳金額（必須大於0）', 'error');
                 return;
             }
             
