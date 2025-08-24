@@ -2241,7 +2241,7 @@ def cash_management():
         total_rmb = actual_total_rmb
         
         # 計算每筆交易後的累積餘額（用於流水顯示，從最早的交易開始正向計算）
-        # 先按日期正序排列，計算累積餘額
+        # 先按日期正序排列，計算累計餘額
         chronological_stream = sorted(unified_stream, key=lambda x: x["date"])
         
         running_twd_balance = 0
@@ -3781,134 +3781,135 @@ def api_calculate_profit():
 
 
 # 🚨 危險的資料庫清空API已被禁用！
-# @app.route("/api/clear-all-data", methods=["POST"])
-# @login_required
-# def api_clear_all_data():
-#     """手動清空所有測試數據 - 僅供公測使用"""
-#     # 安全檢查：僅管理員可使用
-#     if not current_user.is_admin:
-#         return jsonify({"status": "error", "message": "權限不足，僅管理員可執行此操作。"}), 403
-#     
-#     data = request.get_json()
-#     if not data:
-#         return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
-#     
-#     # 雙重確認機制
-#     confirmation = data.get("confirmation")
-#     if confirmation != "CONFIRM_CLEAR_ALL_DATA":
-#         return jsonify({"status": "error", "message": "確認碼錯誤，操作已取消。"}), 400
-#     
-#     try:
-#         print(f"🧹 管理員 {current_user.username} 開始執行數據清空操作...")
-#         
-#         # 關鍵修復：按照外鍵依賴關係的正確順序清空數據
-#         
-#         # 1. 首先清空 transactions 表 (引用 sales_records)
-#         transactions_count = 0
-#         try:
-#             transactions_count = db.session.execute(db.select(func.count()).select_from(db.text('transactions'))).scalar()
-#             db.session.execute(db.text('DELETE FROM transactions'))
-#             print(f"✅ 已清空 {transactions_count} 筆交易記錄")
-#         except Exception as transactions_error:
-#             print(f"⚠️ Transactions表清空失敗或不存在: {transactions_error}")
-#         
-#         # 2. 清空 FIFO 銷售分配記錄 (引用 fifo_inventory)
-#         fifo_sales_allocations_count = 0
-#         try:
-#             fifo_sales_allocations_count = db.session.execute(db.select(func.count()).select_from(db.text('fifo_sales_allocations'))).scalar()
-#             db.session.execute(db.text('DELETE FROM fifo_sales_allocations'))
-#             print(f"✅ 已清空 {fifo_sales_allocations_count} 筆FIFO銷售分配記錄")
-#         except Exception as fifo_sales_error:
-#             print(f"⚠️ FIFO銷售分配表清空失敗或不存在: {fifo_sales_error}")
-#         
-#         # 3. 清空 FIFO 庫存記錄 (引用 purchase_records)
-#         fifo_count = 0
-#         try:
-#             fifo_count = db.session.execute(db.select(func.count()).select_from(db.text('fifo_inventory'))).scalar()
-#             db.session.execute(db.text('DELETE FROM fifo_inventory'))
-#             print(f"✅ 已清空 {fifo_count} 筆FIFO庫存記錄")
-#         except Exception as fifo_error:
-#             print(f"⚠️ FIFO庫存表清空失敗或不存在: {fifo_error}")
-#         
-#         # 4. 清空售出訂單 (被 transactions 引用)
-#         sales_count = db.session.execute(db.select(func.count(SalesRecord.id))).scalar()
-#         db.session.execute(db.delete(SalesRecord))
-#         print(f"✅ 已清空 {sales_count} 筆售出訂單")
-#         
-#         # 5. 清空買入訂單 (現在沒有外鍵依賴了)
-#         purchase_count = db.session.execute(db.select(func.count(PurchaseRecord.id))).scalar()
-#         db.session.execute(db.delete(PurchaseRecord))
-#         print(f"✅ 已清空 {purchase_count} 筆買入訂單")
-#         
-#         # 6. 清空現金流水記錄 (LedgerEntry, CashLog)
-#         ledger_count = db.session.execute(db.select(func.count(LedgerEntry.id))).scalar()
-#         db.session.execute(db.delete(LedgerEntry))
-#         print(f"✅ 已清空 {ledger_count} 筆帳本記錄")
-#         
-#         cash_log_count = db.session.execute(db.select(func.count(CashLog.id))).scalar()
-#         db.session.execute(db.delete(CashLog))
-#         print(f"✅ 已清空 {cash_log_count} 筆現金日誌")
-#         
-#         # 7. 清空刷卡記錄 (如果存在)
-#         card_purchase_count = 0
-#         try:
-#             card_purchase_count = db.session.execute(db.select(func.count(CardPurchase.id))).scalar()
-#             db.session.execute(db.delete(CardPurchase))
-#             print(f"✅ 已清空 {card_purchase_count} 筆刷卡記錄")
-#         except Exception as card_error:
-#             print(f"⚠️ 刷卡記錄表清空失敗或不存在: {card_error}")
-#         
-#         # 8. 清空所有帳戶金額 (將餘額設為0，但保留帳戶結構)
-#         accounts = db.session.execute(db.select(CashAccount)).scalars().all()
-#         account_count = 0
-#         for account in accounts:
-#             if account.balance != 0:
-#                 print(f"  📊 清空帳戶: {account.name} ({account.currency}) 餘額: {account.balance} -> 0")
-#                 account.balance = 0
-#                 account_count += 1
-#         print(f"✅ 已清空 {account_count} 個帳戶的餘額")
-#         
-#         # 9. 清空應收帳款 (將客戶的應收帳款設為0，但保留客戶記錄)
-#         customers = db.session.execute(db.select(Customer)).scalars().all()
-#         customers = db.session.execute(db.select(Customer)).scalars().all()
-#         receivable_count = 0
-#         for customer in customers:
-#             if customer.total_receivables_twd > 0:
-#                 print(f"  💰 清空客戶應收: {customer.name} 應收款: {customer.total_receivables_twd} -> 0")
-#                 customer.total_receivables_twd = 0
-#                 receivable_count += 1
-#         print(f"✅ 已清空 {receivable_count} 位客戶的應收帳款")
-#         
-#         # 提交所有更改
-#         db.session.commit()
-#         
-#         total_message = f"數據清空完成！清空了 {purchase_count} 筆買入、{sales_count} 筆售出、{account_count} 個帳戶餘額、{ledger_count} 筆帳本記錄、{cash_log_count} 筆現金日誌、{receivable_count} 位客戶應收帳款、{fifo_count} 筆FIFO庫存、{fifo_sales_allocations_count} 筆FIFO分配、{transactions_count} 筆交易記錄、{card_purchase_count} 筆刷卡記錄。"
-#         print(f"🎉 {total_message}")
-#         
-#         return jsonify({
-#             "status": "success", 
-#             "message": total_message,
-#             "details": {
-#                 "purchases_cleared": purchase_count,
-#                 "sales_cleared": sales_count,
-#                 "accounts_cleared": account_count,
-#                 "ledger_entries_cleared": ledger_count,
-#                 "cash_logs_cleared": cash_log_count,
-#                 "receivables_cleared": receivable_count,
-#                 "fifo_cleared": fifo_count,
-#                 "fifo_sales_allocations_cleared": fifo_sales_allocations_count,
-#                 "transactions_cleared": transactions_count,
-#                 "card_purchases_cleared": card_purchase_count
-#             }
-#         })
-#         
-#     except Exception as e:
-#         db.session.rollback()
-#         error_msg = f"數據清空失敗: {e}"
-#         print(f"❌ {error_msg}")
-#         import traceback
-#         traceback.print_exc()
-#         return jsonify({"status": "error", "message": error_msg}), 500
+@app.route("/api/clear-all-data", methods=["POST"])
+@login_required
+def api_clear_all_data():
+    """手動清空所有測試數據 - 僅供公測使用"""
+    # 安全檢查：僅管理員可使用
+    if not current_user.is_admin:
+        return jsonify({"status": "error", "message": "權限不足，僅管理員可執行此操作。"}), 403
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
+    
+    # 雙重確認機制
+    confirmation = data.get("confirmation")
+    if confirmation != "CONFIRM_CLEAR_ALL_DATA":
+        return jsonify({"status": "error", "message": "確認碼錯誤，操作已取消。"}), 400
+    
+    try:
+        print(f"🧹 管理員 {current_user.username} 開始執行數據清空操作...")
+        
+        # 關鍵修復：按照外鍵依賴關係的正確順序清空數據
+        
+        # 1. 首先清空 transactions 表 (引用 sales_records)
+        transactions_count = 0
+        try:
+            transactions_count = db.session.execute(db.select(func.count()).select_from(db.text('transactions'))).scalar()
+            db.session.execute(db.text('DELETE FROM transactions'))
+            print(f"✅ 已清空 {transactions_count} 筆交易記錄")
+        except Exception as transactions_error:
+            print(f"⚠️ Transactions表清空失敗或不存在: {transactions_error}")
+        
+        # 2. 清空 FIFO 銷售分配記錄 (引用 fifo_inventory)
+        fifo_sales_allocations_count = 0
+        try:
+            fifo_sales_allocations_count = db.session.execute(db.select(func.count()).select_from(db.text('fifo_sales_allocations'))).scalar()
+            db.session.execute(db.text('DELETE FROM fifo_sales_allocations'))
+            print(f"✅ 已清空 {fifo_sales_allocations_count} 筆FIFO銷售分配記錄")
+        except Exception as fifo_sales_error:
+            print(f"⚠️ FIFO銷售分配表清空失敗或不存在: {fifo_sales_error}")
+        
+        # 3. 清空 FIFO 庫存記錄 (引用 purchase_records)
+        fifo_count = 0
+        try:
+            fifo_count = db.session.execute(db.select(func.count()).select_from(db.text('fifo_inventory'))).scalar()
+            db.session.execute(db.text('DELETE FROM fifo_inventory'))
+            print(f"✅ 已清空 {fifo_count} 筆FIFO庫存記錄")
+        except Exception as fifo_error:
+            print(f"⚠️ FIFO庫存表清空失敗或不存在: {fifo_error}")
+        
+        # 4. 清空售出訂單 (被 transactions 引用)
+        sales_count = db.session.execute(db.select(func.count(SalesRecord.id))).scalar()
+        db.session.execute(db.delete(SalesRecord))
+        print(f"✅ 已清空 {sales_count} 筆售出訂單")
+        
+        # 5. 清空買入訂單 (現在沒有外鍵依賴了)
+        purchase_count = db.session.execute(db.select(func.count(PurchaseRecord.id))).scalar()
+        db.session.execute(db.delete(PurchaseRecord))
+        print(f"✅ 已清空 {purchase_count} 筆買入訂單")
+        
+        # 6. 清空現金流水記錄 (LedgerEntry, CashLog)
+        ledger_count = db.session.execute(db.select(func.count(LedgerEntry.id))).scalar()
+        db.session.execute(db.delete(LedgerEntry))
+        print(f"✅ 已清空 {ledger_count} 筆帳本記錄")
+        
+        cash_log_count = db.session.execute(db.select(func.count(CashLog.id))).scalar()
+        db.session.execute(db.delete(CashLog))
+        print(f"✅ 已清空 {cash_log_count} 筆現金日誌")
+        
+        # 7. 清空刷卡記錄 (如果存在)
+        card_purchase_count = 0
+        try:
+            card_purchase_count = db.session.execute(db.select(func.count(CardPurchase.id))).scalar()
+            db.session.execute(db.delete(CardPurchase))
+            print(f"✅ 已清空 {card_purchase_count} 筆刷卡記錄")
+        except Exception as card_error:
+            print(f"⚠️ 刷卡記錄表清空失敗或不存在: {card_error}")
+        
+        # 8. 清空所有帳戶金額 (將餘額設為0，但保留帳戶結構)
+        accounts = db.session.execute(db.select(CashAccount)).scalars().all()
+        account_count = 0
+        for account in accounts:
+            if account.balance != 0:
+                print(f"  📊 清空帳戶: {account.name} ({account.currency}) 餘額: {account.balance} -> 0")
+                account.balance = 0
+                account_count += 1
+        print(f"✅ 已清空 {account_count} 個帳戶的餘額")
+        
+        # 9. 清空應收帳款 (將客戶的應收帳款設為0，但保留客戶記錄)
+        customers = db.session.execute(db.select(Customer)).scalars().all()
+        receivable_count = 0
+        for customer in customers:
+            if customer.total_receivables_twd > 0:
+                print(f"  💰 清空客戶應收: {customer.name} 應收款: {customer.total_receivables_twd} -> 0")
+                customer.total_receivables_twd = 0
+                receivable_count += 1
+        print(f"✅ 已清空 {receivable_count} 位客戶的應收帳款")
+        
+        # 提交所有更改
+        db.session.commit()
+        
+        total_message = f"數據清空完成！清空了 {purchase_count} 筆買入、{sales_count} 筆售出、{account_count} 個帳戶餘額、{ledger_count} 筆帳本記錄、{cash_log_count} 筆現金日誌、{receivable_count} 位客戶應收帳款、{fifo_count} 筆FIFO庫存、{fifo_sales_allocations_count} 筆FIFO分配、{transactions_count} 筆交易記錄、{card_purchase_count} 筆刷卡記錄。"
+        print(f"🎉 {total_message}")
+        
+        return jsonify({
+            "status": "success", 
+            "message": total_message,
+            "details": {
+                "purchases_cleared": purchase_count,
+                "sales_cleared": sales_count,
+                "accounts_cleared": account_count,
+                "ledger_entries_cleared": ledger_count,
+                "cash_logs_cleared": cash_log_count,
+                "receivables_cleared": receivable_count,
+                "fifo_cleared": fifo_count,
+                "fifo_sales_allocations_cleared": fifo_sales_allocations_count,
+                "transactions_cleared": transactions_count,
+                "card_purchases_cleared": card_purchase_count
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        error_msg = f"數據清空失敗: {e}"
+        print(f"❌ {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": error_msg}), 500
+
+
 
 
 @app.route("/api/settlement", methods=["POST"])
@@ -3938,7 +3939,10 @@ def api_settlement():
         if not account or account.currency != "TWD":
             return jsonify({"status": "error", "message": "無效的台幣收款帳戶。"}), 400
         if amount > customer.total_receivables_twd:
-            return jsonify({"status": "error", "message": f"銷帳金額超過應收帳款！客戶應收 {customer.total_receivables_twd:,.2f}，但銷帳 {amount:,.2f}。"}), 400
+            return jsonify({
+                "status": "error", 
+                "message": f"銷帳金額超過應收帳款！客戶應收 {customer.total_receivables_twd:,.2f}，但銷帳 {amount:,.2f}。"
+            }), 400
 
         # 3. 核心業務邏輯
         # 更新客戶應收帳款
