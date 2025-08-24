@@ -881,6 +881,9 @@ document.addEventListener('DOMContentLoaded', function () {
             
             // 觸發一次初始計算
             settlementAmountInput._inputHandler();
+            
+            // 添加數字格式化功能
+            setupNumberInputFormatting(settlementAmountInput);
         }
         
         console.log('模態框數據設置完成:', {
@@ -1404,7 +1407,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 
                 // 獲取表單數據
                 const customerId = document.querySelector('input[name="customer_id"]').value;
-                const amount = parseFloat(document.getElementById('settlementAmount').value);
+                const amount = parseFloat(document.getElementById('settlementAmount').getActualValue ? document.getElementById('settlementAmount').getActualValue() : document.getElementById('settlementAmount').value);
                 let accountId = document.querySelector('input[name="account_id"]').value;
                 const note = document.getElementById('settlementNote').value;
                 
@@ -1828,7 +1831,12 @@ window.loadMovements = function(page = 1) {
     fetch(`/api/cash_management/transactions?page=${page}`)
         .then(response => response.json())
         .then(result => {
+            console.log('📡 API回應結果:', result);
             if (result.status === 'success') {
+                console.log('✅ 載入成功，頁面:', page);
+                console.log('📊 分頁資訊:', result.data.pagination);
+                console.log('📋 交易記錄:', result.data.transactions);
+                
                 window.currentPage = page;
                 window.currentPagination = result.data.pagination;
                 window.renderMovements(result.data.transactions);
@@ -1927,15 +1935,18 @@ window.renderMovements = function(transactions) {
         const rmbColorClass = rmbChange > 0 ? 'text-success' : rmbChange < 0 ? 'text-danger' : 'text-muted';
         const profitColorClass = profit > 0 ? 'text-success' : profit < 0 ? 'text-danger' : 'text-muted';
         
-        const row = '<tr>' +
-            '<td><small>' + (m.date ? new Date(m.date).toLocaleDateString('zh-TW') : '-') + '</small></td>' +
+        const row = '<tr class="transaction-row">' +
+            '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleDateString('zh-TW') : '-') + '</small></td>' +
             '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
             '<td><small>' + (m.description || '-') + '</small></td>' +
             '<td><small>' + (m.operator || '-') + '</small></td>' +
+            '<td><small>' + (m.outgoing_account || '-') + '</small></td>' +
+            '<td><small>' + (m.incoming_account || '-') + '</small></td>' +
+            '<td><small>' + (m.note || '-') + '</small></td>' +
             '<td class="text-end"><small class="' + twdColorClass + '">' + twdDisplay + '</small></td>' +
             '<td class="text-end"><small class="' + rmbColorClass + '">' + rmbDisplay + '</small></td>' +
-            '<td class="text-end"><small class="' + profitColorClass + '">' + profitDisplay + '</small></td>' +
-            '<td><small>' + (m.note || '-') + '</small></td>' +
+            '<td class="text-end"><small class="running-balance">' + (m.running_balance || '-') + '</small></td>' +
+            '<td class="text-end pe-3"><small class="' + profitColorClass + '">' + profitDisplay + '</small></td>' +
             '</tr>';
         
         movementsTbody.innerHTML += row;
@@ -1948,10 +1959,19 @@ window.renderMovements = function(transactions) {
 window.renderPagination = function(pagination) {
     if (!pagination) return;
     
-    const paginationContainer = document.getElementById('pagination-container');
-    if (!paginationContainer) return;
+    // 更新分頁信息
+    const paginationInfo = document.getElementById('pagination-info');
+    if (paginationInfo) {
+        const startRecord = (pagination.page - 1) * pagination.per_page + 1;
+        const endRecord = Math.min(pagination.page * pagination.per_page, pagination.total);
+        paginationInfo.innerHTML = `顯示第${startRecord}-${endRecord}筆,共${pagination.total}筆記錄`;
+    }
     
-    let paginationHtml = '<ul class="pagination justify-content-center">';
+    // 更新分頁控制項
+    const paginationControls = document.getElementById('pagination-controls');
+    if (!paginationControls) return;
+    
+    let paginationHtml = '<ul class="pagination pagination-sm mb-0">';
     
     // 上一頁按鈕
     if (pagination.has_prev) {
@@ -1977,8 +1997,64 @@ window.renderPagination = function(pagination) {
     }
     
     paginationHtml += '</ul>';
-    paginationContainer.innerHTML = paginationHtml;
+    paginationControls.innerHTML = paginationHtml;
 };
+
+// 數字輸入欄位格式化函數
+function setupNumberInputFormatting(inputElement) {
+    if (!inputElement) return;
+    
+    // 保存原始值用於計算
+    let originalValue = '';
+    
+    inputElement.addEventListener('input', function(e) {
+        // 獲取輸入值，移除所有非數字字符（除了小數點）
+        let value = e.target.value.replace(/[^\d.]/g, '');
+        
+        // 確保只有一個小數點
+        const parts = value.split('.');
+        if (parts.length > 2) {
+            value = parts[0] + '.' + parts.slice(1).join('');
+        }
+        
+        // 保存原始值用於計算
+        originalValue = value;
+        
+        // 格式化顯示（添加逗號）
+        if (value && value !== '.') {
+            const numValue = parseFloat(value);
+            if (!isNaN(numValue)) {
+                // 根據欄位類型決定小數位數
+                if (this.id === 'settlementAmount') {
+                    // 銷帳金額欄位顯示2位小數
+                    e.target.value = numValue.toLocaleString('en-US', { 
+                        minimumFractionDigits: 0, 
+                        maximumFractionDigits: 2 
+                    });
+                } else {
+                    // 其他欄位顯示2位小數
+                    e.target.value = numValue.toLocaleString('en-US', { 
+                        minimumFractionDigits: 0, 
+                        maximumFractionDigits: 2 
+                    });
+                }
+            }
+        }
+    });
+    
+    // 失去焦點時，如果值為空或只有小數點，清空欄位
+    inputElement.addEventListener('blur', function(e) {
+        if (!e.target.value || e.target.value === '.') {
+            e.target.value = '';
+            originalValue = '';
+        }
+    });
+    
+    // 獲取實際數值（用於計算）
+    inputElement.getActualValue = function() {
+        return originalValue || this.value.replace(/,/g, '');
+    };
+}
 
 </script>
 {% endblock %}

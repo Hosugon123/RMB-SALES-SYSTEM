@@ -679,6 +679,22 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        // 添加二次確認彈窗
+        const confirmResult = await Swal.fire({
+            title: '確認創建訂單',
+            text: `確定要為客戶「${customerNameManual || (customerId ? customersData.find(c => c.id == customerId)?.name : '未知')}」創建訂單嗎？`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '是的，創建訂單',
+            cancelButtonText: '取消',
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33'
+        });
+
+        if (!confirmResult.isConfirmed) {
+            return; // 用戶取消操作
+        }
+
         try {
             const response = await fetch("{{ url_for('api_sales_entry') }}", {
                 method: 'POST',
