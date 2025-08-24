@@ -1085,6 +1085,86 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
     
+    // 設置銷帳表單提交事件監聽器
+    const settlementForm = document.getElementById('settlementForm');
+    if (settlementForm) {
+        settlementForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const customerId = document.querySelector('input[name="customer_id"]').value;
+            const amount = parseFloat(document.getElementById('settlementAmount').value);
+            const accountId = document.querySelector('input[name="account_id"]').value;
+            const note = document.getElementById('settlementNote').value;
+            
+            // 驗證必填欄位
+            if (!customerId || !amount || !accountId) {
+                Swal.fire('錯誤', '請填寫所有必填欄位', 'error');
+                return;
+            }
+            
+            console.log('銷帳表單提交:', { customerId, amount, accountId, note });
+            
+            try {
+                const response = await fetch('/api/settlement', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        customer_id: customerId,
+                        amount: amount,
+                        account_id: accountId,
+                        note: note
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('銷帳回應:', result);
+                
+                if (result.status === 'success') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '銷帳成功！',
+                        text: result.message,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    
+                    // 關閉模態框並重新載入頁面
+                    console.log('準備關閉模態框...');
+                    const modalElement = document.getElementById('settlementModal');
+                    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+                    console.log('模態框元素:', modalElement);
+                    console.log('模態框實例:', modalInstance);
+                    
+                    if (modalInstance) {
+                        console.log('關閉模態框...');
+                        modalInstance.hide();
+                    } else {
+                        console.log('無法獲取模態框實例，嘗試直接隱藏...');
+                        // 備用方案：直接隱藏模態框
+                        modalElement.style.display = 'none';
+                        modalElement.classList.remove('show');
+                        document.body.classList.remove('modal-open');
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+                    }
+                    
+                    // 延遲更新總資產顯示，確保模態框有時間關閉
+                    setTimeout(() => {
+                        updateTotalAssets();
+                        manualRefreshData(); // 重新載入所有數據
+                    }, 500);
+                } else {
+                    Swal.fire('錯誤', result.message, 'error');
+                }
+            } catch (error) {
+                console.error('銷帳錯誤:', error);
+                Swal.fire('錯誤', '銷帳時發生錯誤', 'error');
+            }
+        });
+    }
+    
     // 初始化渲染
     renderAccounts();
     loadMovements(1);

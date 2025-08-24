@@ -3967,29 +3967,46 @@ def api_delete_account():
             
         except Exception as check_error:
             print(f"⚠️ 檢查外鍵約束時出錯: {check_error}")
-            # 如果檢查失敗，我們仍然嘗試刪除，讓資料庫來處理約束
+            # 如果檢查失敗，我們不應該繼續，而是返回錯誤
+            return jsonify({
+                "status": "error",
+                "message": f'檢查帳戶約束時出錯，無法安全刪除帳戶 "{account.name}"。'
+            }), 500
         
-        # 刪除帳戶
-        account_name = account.name
-        db.session.delete(account)
-        db.session.commit()
-        
-        return jsonify({
-            "status": "success",
-            "message": f'帳戶 "{account_name}" 已成功刪除！'
-        })
+        # 所有檢查通過，開始刪除帳戶
+        try:
+            account_name = account.name
+            db.session.delete(account)
+            db.session.commit()
+            
+            return jsonify({
+                "status": "success",
+                "message": f'帳戶 "{account_name}" 已成功刪除！'
+            })
+            
+        except Exception as delete_error:
+            db.session.rollback()
+            print(f"❌ 刪除帳戶時出錯: {delete_error}")
+            
+            # 檢查是否是外鍵約束錯誤
+            if "ForeignKeyViolation" in str(delete_error) or "foreign key constraint" in str(delete_error).lower():
+                error_msg = f'無法刪除帳戶 "{account.name}"，該帳戶仍被其他記錄引用。請先處理相關的帳本記錄或現金流水記錄。'
+            elif "InFailedSqlTransaction" in str(delete_error):
+                error_msg = f'資料庫事務錯誤，請重新嘗試刪除帳戶 "{account.name}"。'
+            else:
+                error_msg = f"刪除帳戶失敗: {delete_error}"
+            
+            return jsonify({"status": "error", "message": error_msg}), 500
         
     except Exception as e:
-        db.session.rollback()
+        # 確保事務被回滾
+        try:
+            db.session.rollback()
+        except:
+            pass  # 如果回滾也失敗，我們無能為力
         
-        # 提供更友好的錯誤訊息
-        if "ForeignKeyViolation" in str(e) or "foreign key constraint" in str(e).lower():
-            error_msg = f'無法刪除帳戶 "{account.name}"，該帳戶仍被其他記錄引用。請先處理相關的帳本記錄或現金流水記錄。'
-        else:
-            error_msg = f"刪除帳戶失敗: {e}"
-        
-        print(f"❌ {error_msg}")
-        return jsonify({"status": "error", "message": error_msg}), 500
+        print(f"❌ 刪除帳戶時發生嚴重錯誤: {e}")
+        return jsonify({"status": "error", "message": "刪除帳戶時發生嚴重錯誤，請稍後重試。"}), 500
 
 
 @app.route("/api/settlement", methods=["POST"])
