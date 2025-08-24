@@ -5417,57 +5417,38 @@ def get_cash_management_totals():
                     "rmb_change": rmb_change,
                 })
         
+        # 計算總資產
+        total_twd = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+        )
+        total_rmb = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+        )
 
-
-# API 2: 根據持有人 ID，查詢其名下的帳戶
-@login_required
-def get_accounts_by_holder_api(holder_id):
-    # --- 偵錯印記 1：看看我們收到了什麼請求 ---
-    print("\n" + "=" * 20 + " 開始執行 get_accounts_by_holder_api " + "=" * 20)
-    print(f">>> 請求的持有人 ID (holder_id): {holder_id}")
-
-    try:
-        # --- 偵錯印記 2：執行資料庫查詢 ---
-        print(f">>> 準備查詢 holder_id 為 {holder_id} 的所有 active CashAccount...")
-        accounts = (
-            CashAccount.query.filter_by(holder_id=holder_id, is_active=True)
-            .order_by(CashAccount.account_name)
+        # 查詢應收帳款數據
+        customers_with_receivables = (
+            db.session.execute(
+                db.select(Customer)
+                .filter_by(is_active=True)
+                .filter(Customer.total_receivables_twd > 0)
+                .order_by(Customer.total_receivables_twd.desc())
+            )
+            .scalars()
             .all()
         )
+        
+        total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
 
-        # --- 偵錯印記 3：看看查詢到了多少筆資料 ---
-        print(f">>> 查詢完畢，共找到 {len(accounts)} 個帳戶。")
-
-        # --- 偵錯印記 4：準備要回傳給前端的資料 ---
-        print(">>> 準備開始打包 JSON 資料...")
-        accounts_data = [
-            {
-                "id": acc.id,
-                "name": acc.account_name,
-                "currency": acc.currency,
-                "balance": acc.balance,
-            }
-            for acc in accounts
-        ]
-        print(f">>> 已成功打包 JSON 資料: {accounts_data}")
-
-        print(
-            "=" * 20 + " 結束執行 get_accounts_by_holder_api (成功) " + "=" * 20 + "\n"
-        )
-        # (關鍵修正) 我們需要確保回傳的是一個合法的 JSON Response
-        return jsonify(accounts_data)
-
+        return jsonify({
+            'total_twd': float(total_twd),
+            'total_rmb': float(total_rmb),
+            'total_receivables_twd': float(total_receivables),
+            'timestamp': datetime.now().isoformat()
+        })
+        
     except Exception as e:
-        # --- 偵錯印記 5 (如果發生了連我們都沒想到的錯誤) ---
-        print(f"\n!!! 在 get_accounts_by_holder_api 中發生了嚴重錯誤 !!!")
-        print(f"!!! 錯誤類型: {type(e).__name__}")
-        print(f"!!! 錯誤訊息: {e}")
-        import traceback
-
-        traceback.print_exc()  # 印出完整的錯誤堆疊
-
-        # (關鍵修正) 即使出錯，也要回傳一個合法的 JSON 錯誤訊息
-        return jsonify({"status": "error", "message": f"伺服器內部查詢錯誤: {e}"}), 500
+        app.logger.error(f"獲取現金管理總資產數據時發生錯誤: {e}")
+        return jsonify({'error': '獲取數據失敗'}), 500
 
 
 @app.route("/user-management")
