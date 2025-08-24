@@ -31,44 +31,69 @@ class EnhancedNumberInput {
     
     handleInput(e) {
         let value = e.target.value;
-        
+
         // 移除所有非數字字符（除了小數點和負號）
         if (this.options.allowNegative) {
             value = value.replace(/[^\d.-]/g, '');
         } else {
             value = value.replace(/[^\d.]/g, '');
         }
-        
+
         // 處理負號
         if (this.options.allowNegative && value.startsWith('-')) {
             value = '-' + value.substring(1).replace(/-/g, '');
         }
-        
+
         // 確保只有一個小數點
         const parts = value.split('.');
         if (parts.length > 2) {
             value = parts[0] + '.' + parts.slice(1).join('');
         }
-        
+
         // 保存原始值
         this.originalValue = value;
-        
-        // 格式化顯示
-        if (value && value !== '.' && value !== '-') {
+
+        // 修復小數點輸入問題 - 簡化邏輯
+        if (value === '' || value === '.' || value === '-') {
+            // 空值、單獨小數點或負號，直接顯示
+            e.target.value = value;
+        } else if (value.endsWith('.')) {
+            // 以小數點結尾，不進行格式化，保持用戶輸入狀態
+            e.target.value = value;
+        } else if (value === '-.') {
+            // 負號加小數點，不進行格式化
+            e.target.value = value;
+        } else {
+            // 完整的數字，進行格式化
             const numValue = parseFloat(value);
             if (!isNaN(numValue)) {
+                const maxDecimals = this.options.maxDecimals || 2;
                 e.target.value = numValue.toLocaleString('en-US', {
-                    minimumFractionDigits: this.options.minDecimals,
-                    maximumFractionDigits: this.options.maxDecimals
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: maxDecimals
                 });
+            } else {
+                // 如果解析失敗，保持原始值（可能是正在輸入的狀態）
+                e.target.value = value;
             }
         }
     }
     
     handleBlur(e) {
+        // 改進失去焦點時的處理
         if (!e.target.value || e.target.value === '.' || e.target.value === '-') {
             e.target.value = '';
             this.originalValue = '';
+        } else if (e.target.value.endsWith('.')) {
+            // 如果以小數點結尾，移除小數點
+            const cleanValue = e.target.value.slice(0, -1);
+            if (cleanValue) {
+                this.originalValue = cleanValue;
+                e.target.value = cleanValue;
+            } else {
+                e.target.value = '';
+                this.originalValue = '';
+            }
         }
     }
     

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>匯率欄位小數點輸入測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .test-section {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #f8f9fa;
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">🔧 匯率欄位小數點輸入修復測試</h1>
+        
+        <div class="alert alert-info">
+            <strong>測試目的：</strong> 驗證匯率欄位現在可以正常輸入小數點，解決之前的輸入問題。
+        </div>
+
+        <!-- 匯率輸入測試 -->
+        <div class="test-section">
+            <h3>📊 匯率輸入測試</h3>
+            <p>測試匯率欄位的小數點輸入功能：</p>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="buyRate" class="form-label">買入匯率</label>
+                        <input type="text" class="form-control" id="buyRate" 
+                               pattern="[0-9]*\.?[0-9]*" placeholder="例如: 4.5000">
+                        <small class="text-muted">嘗試輸入: 4.5, 4.50, 4.500, 4.5000</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="sellRate" class="form-label">賣出匯率</label>
+                        <input type="text" class="form-control" id="sellRate" 
+                               pattern="[0-9]*\.?[0-9]*" placeholder="例如: 4.6000">
+                        <small class="text-muted">嘗試輸入: 4.6, 4.60, 4.600, 4.6000</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="exchangeRate" class="form-label">一般匯率</label>
+                <input type="text" class="form-control" id="exchangeRate" 
+                       pattern="[0-9]*\.?[0-9]*" placeholder="例如: 4.5500">
+                <small class="text-muted">嘗試輸入: 4.55, 4.550, 4.5500</small>
+            </div>
+
+            <button class="btn btn-primary" onclick="testRateInputs()">🧪 測試匯率輸入</button>
+            <div id="rateTestResult" class="test-result d-none"></div>
+        </div>
+
+        <!-- 小數點輸入測試 -->
+        <div class="test-section">
+            <h3>🔢 小數點輸入測試</h3>
+            <p>測試各種小數點輸入情況：</p>
+            
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="decimalTest1" class="form-label">測試 1: 單獨小數點</label>
+                        <input type="text" class="form-control" id="decimalTest1" 
+                               pattern="[0-9]*\.?[0-9]*" placeholder="輸入 .">
+                        <small class="text-muted">輸入 . 然後輸入數字</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="decimalTest2" class="form-label">測試 2: 數字後小數點</label>
+                        <input type="text" class="form-control" id="decimalTest2" 
+                               pattern="[0-9]*\.?[0-9]*" placeholder="輸入 4.">
+                        <small class="text-muted">輸入 4. 然後輸入數字</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="decimalTest3" class="form-label">測試 3: 完整小數</label>
+                        <input type="text" class="form-control" id="decimalTest3" 
+                               pattern="[0-9]*\.?[0-9]*" placeholder="輸入 4.55">
+                        <small class="text-muted">直接輸入 4.55</small>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-success" onclick="testDecimalInputs()">🧪 測試小數點輸入</button>
+            <div id="decimalTestResult" class="test-result d-none"></div>
+        </div>
+
+        <!-- 功能驗證 -->
+        <div class="test-section">
+            <h3>✅ 功能驗證</h3>
+            <p>驗證修復後的功能：</p>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>應該能正常工作的情況：</h5>
+                    <ul class="text-success">
+                        <li>✅ 輸入單獨的小數點 (.)</li>
+                        <li>✅ 輸入數字後的小數點 (4.)</li>
+                        <li>✅ 輸入完整小數 (4.55)</li>
+                        <li>✅ 輸入多位小數 (4.5500)</li>
+                        <li>✅ 刪除和修改小數點</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h5>應該被阻止的情況：</h5>
+                    <ul class="text-danger">
+                        <li>❌ 輸入多個小數點 (4.5.5)</li>
+                        <li>❌ 輸入非數字字符 (4.5a)</li>
+                        <li>❌ 輸入特殊符號 (4.5@)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button class="btn btn-info" onclick="runAllTests()">🚀 執行完整測試</button>
+            <div id="fullTestResult" class="test-result d-none"></div>
+        </div>
+
+        <!-- 測試結果顯示 -->
+        <div class="test-section">
+            <h3>📊 測試結果</h3>
+            <div id="testResults"></div>
+        </div>
+    </div>
+
+    <!-- 引入修復後的腳本 -->
+    <script src="static/js/enhanced_number_input.js"></script>
+    
+    <script>
+        // 頁面載入完成後初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 頁面載入完成，開始初始化...');
+            
+            // 初始化所有測試欄位
+            const testInputs = [
+                'buyRate', 'sellRate', 'exchangeRate',
+                'decimalTest1', 'decimalTest2', 'decimalTest3'
+            ];
+            
+            testInputs.forEach(inputId => {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    // 為匯率欄位設置特殊選項
+                    let options = { minDecimals: 0, maxDecimals: 2 };
+                    
+                    if (inputId.includes('Rate') || inputId.includes('exchange')) {
+                        options.maxDecimals = 4; // 匯率欄位支持4位小數
+                    }
+                    
+                    setupNumberInputFormatting(input, options);
+                    console.log(`✅ 已初始化 ${inputId} 欄位`);
+                }
+            });
+            
+            console.log('🎉 所有測試欄位初始化完成！');
+        });
+
+        // 測試匯率輸入功能
+        function testRateInputs() {
+            const resultDiv = document.getElementById('rateTestResult');
+            let results = [];
+            
+            // 測試買入匯率
+            const buyRate = document.getElementById('buyRate');
+            if (buyRate.value) {
+                const actualValue = buyRate.getActualValue ? buyRate.getActualValue() : buyRate.value;
+                results.push(`買入匯率: ${buyRate.value} → 實際值: ${actualValue}`);
+            }
+            
+            // 測試賣出匯率
+            const sellRate = document.getElementById('sellRate');
+            if (sellRate.value) {
+                const actualValue = sellRate.getActualValue ? sellRate.getActualValue() : sellRate.value;
+                results.push(`賣出匯率: ${sellRate.value} → 實際值: ${actualValue}`);
+            }
+            
+            // 測試一般匯率
+            const exchangeRate = document.getElementById('exchangeRate');
+            if (exchangeRate.value) {
+                const actualValue = exchangeRate.getActualValue ? exchangeRate.getActualValue() : exchangeRate.value;
+                results.push(`一般匯率: ${exchangeRate.value} → 實際值: ${actualValue}`);
+            }
+            
+            if (results.length > 0) {
+                resultDiv.innerHTML = results.join('<br>');
+                resultDiv.className = 'test-result success';
+                resultDiv.classList.remove('d-none');
+            } else {
+                resultDiv.innerHTML = '請先在匯率欄位輸入一些數值進行測試';
+                resultDiv.className = 'test-result info';
+                resultDiv.classList.remove('d-none');
+            }
+        }
+
+        // 測試小數點輸入功能
+        function testDecimalInputs() {
+            const resultDiv = document.getElementById('decimalTestResult');
+            let results = [];
+            
+            // 測試各種小數點輸入情況
+            const testCases = [
+                { id: 'decimalTest1', name: '單獨小數點' },
+                { id: 'decimalTest2', name: '數字後小數點' },
+                { id: 'decimalTest3', name: '完整小數' }
+            ];
+            
+            testCases.forEach(testCase => {
+                const input = document.getElementById(testCase.id);
+                if (input.value) {
+                    const actualValue = input.getActualValue ? input.getActualValue() : input.value;
+                    results.push(`${testCase.name}: ${input.value} → 實際值: ${actualValue}`);
+                }
+            });
+            
+            if (results.length > 0) {
+                resultDiv.innerHTML = results.join('<br>');
+                resultDiv.className = 'test-result success';
+                resultDiv.classList.remove('d-none');
+            } else {
+                resultDiv.innerHTML = '請先在小數點測試欄位輸入一些數值進行測試';
+                resultDiv.className = 'test-result info';
+                resultDiv.classList.remove('d-none');
+            }
+        }
+
+        // 執行完整測試
+        function runAllTests() {
+            const resultDiv = document.getElementById('fullTestResult');
+            let allResults = [];
+            
+            // 收集所有測試結果
+            const allInputs = document.querySelectorAll('input[type="text"]');
+            allInputs.forEach(input => {
+                if (input.value) {
+                    const actualValue = input.getActualValue ? input.getActualValue() : input.value;
+                    const displayValue = input.value;
+                    allResults.push(`${input.placeholder || input.id}: ${displayValue} → 實際值: ${actualValue}`);
+                }
+            });
+            
+            if (allResults.length > 0) {
+                resultDiv.innerHTML = '<strong>完整測試結果：</strong><br>' + allResults.join('<br>');
+                resultDiv.className = 'test-result success';
+                resultDiv.classList.remove('d-none');
+                
+                // 更新測試結果區域
+                document.getElementById('testResults').innerHTML = `
+                    <div class="alert alert-success">
+                        <h5>🎉 測試完成！</h5>
+                        <p>共測試了 ${allResults.length} 個欄位，所有欄位都能正常處理小數點輸入。</p>
+                        <hr>
+                        <h6>詳細結果：</h6>
+                        ${allResults.join('<br>')}
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = '請先在各種欄位輸入數值進行測試';
+                resultDiv.className = 'test-result info';
+                resultDiv.classList.remove('d-none');
+            }
+        }
+
+        // 添加實時測試結果顯示
+        function updateTestResults() {
+            const allInputs = document.querySelectorAll('input[type="text"]');
+            let results = [];
+            
+            allInputs.forEach(input => {
+                if (input.value) {
+                    const actualValue = input.getActualValue ? input.getActualValue() : input.value;
+                    results.push(`${input.placeholder || input.id}: ${input.value} → ${actualValue}`);
+                }
+            });
+            
+            if (results.length > 0) {
+                document.getElementById('testResults').innerHTML = `
+                    <div class="alert alert-info">
+                        <h6>實時測試結果：</h6>
+                        ${results.join('<br>')}
+                    </div>
+                `;
+            }
+        }
+
+        // 為所有輸入欄位添加實時更新
+        document.addEventListener('input', function(e) {
+            if (e.target.type === 'text' && e.target.pattern) {
+                setTimeout(updateTestResults, 100);
+            }
+        });
+    </script>
+</body>
+</html>
