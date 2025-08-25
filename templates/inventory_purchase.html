@@ -48,3 +48,24 @@
         </div>
     </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 進貨管理頁面已載入');
+    
+    // 初始化數字輸入欄位的格式化
+    function initializeNumberFormatting() {
+        const purchaseAmountInput = document.getElementById('purchase_amount');
+        
+        if (purchaseAmountInput) {
+            setupNumberInputFormatting(purchaseAmountInput, { maxDecimals: 2 });
+            console.log('✅ 進貨金額欄位格式化已初始化');
+        }
+    }
+    
+    // 初始化數字格式化
+    initializeNumberFormatting();
+});
+</script>
+{% endblock %}

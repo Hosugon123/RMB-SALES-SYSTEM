@@ -850,67 +850,11 @@ document.addEventListener('DOMContentLoaded', function () {
         return `${currency} ${roundedValue.toLocaleString('en-US')}`;
     }
     
-    // 為數字輸入欄位添加逗號格式化
-    function setupNumberInputFormatting(inputElement) {
-        if (!inputElement) return;
-        
-        // 保存原始值用於計算
-        let originalValue = '';
-        
-        inputElement.addEventListener('input', function(e) {
-            // 獲取輸入值，移除所有非數字字符（除了小數點）
-            let value = e.target.value.replace(/[^\d.]/g, '');
-            
-            // 確保只有一個小數點
-            const parts = value.split('.');
-            if (parts.length > 2) {
-                value = parts[0] + '.' + parts.slice(1).join('');
-            }
-            
-            // 保存原始值用於計算
-            originalValue = value;
-            
-            // 格式化顯示（添加逗號）
-            if (value && value !== '.') {
-                const numValue = parseFloat(value);
-                if (!isNaN(numValue)) {
-                    // 根據欄位類型決定小數位數
-                    if (this.id === 'exchange-rate') {
-                        // 匯率欄位顯示4位小數
-                        e.target.value = numValue.toLocaleString('en-US', { 
-                            minimumFractionDigits: 0, 
-                            maximumFractionDigits: 4 
-                        });
-                    } else {
-                        // 其他欄位顯示2位小數
-                        e.target.value = numValue.toLocaleString('en-US', { 
-                            minimumFractionDigits: 0, 
-                            maximumFractionDigits: 2 
-                        });
-                    }
-                }
-            }
-        });
-        
-        // 失去焦點時，如果值為空或只有小數點，清空欄位
-        inputElement.addEventListener('blur', function(e) {
-            if (!e.target.value || e.target.value === '.') {
-                e.target.value = '';
-                originalValue = '';
-            }
-        });
-        
-        // 獲取實際數值（用於計算）
-        inputElement.getActualValue = function() {
-            return originalValue || this.value.replace(/,/g, '');
-        };
-    }
-    
     // 初始化數字輸入欄位的格式化
     function initializeNumberFormatting() {
         // 為售出金額和匯率欄位設置格式化
-        setupNumberInputFormatting(rmbAmountInput);
-        setupNumberInputFormatting(exchangeRateInput);
+        setupNumberInputFormatting(rmbAmountInput, { maxDecimals: 2 });
+        setupNumberInputFormatting(exchangeRateInput, { maxDecimals: 4 });
         
         console.log('✅ 數字輸入欄位格式化已初始化');
     }

@@ -37,3 +37,30 @@
         </div>
     </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 匯率設定頁面已載入');
+    
+    // 初始化數字輸入欄位的格式化
+    function initializeNumberFormatting() {
+        const buyRateInput = document.getElementById('buy_rate');
+        const sellRateInput = document.getElementById('sell_rate');
+        
+        if (buyRateInput) {
+            setupNumberInputFormatting(buyRateInput, { maxDecimals: 4 });
+            console.log('✅ 買入匯率欄位格式化已初始化');
+        }
+        
+        if (sellRateInput) {
+            setupNumberInputFormatting(sellRateInput, { maxDecimals: 4 });
+            console.log('✅ 賣出匯率欄位格式化已初始化');
+        }
+    }
+    
+    // 初始化數字格式化
+    initializeNumberFormatting();
+});
+</script>
+{% endblock %}

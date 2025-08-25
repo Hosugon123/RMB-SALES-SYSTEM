@@ -1,5 +1,5 @@
 // 增強的數字輸入處理腳本
-// 解決 type="text" 與逗號格式化的兼容性問題
+// 解決 type="text" 與逗號格式化的兼容性問題，支援小數點輸入
 
 class EnhancedNumberInput {
     constructor(inputElement, options = {}) {
@@ -30,70 +30,65 @@ class EnhancedNumberInput {
     }
     
     handleInput(e) {
-        let value = e.target.value;
-
-        // 移除所有非數字字符（除了小數點和負號）
+        let rawValue = e.target.value;
+        
+        // 移除除了數字、小數點和負號以外的所有字元
         if (this.options.allowNegative) {
-            value = value.replace(/[^\d.-]/g, '');
+            rawValue = rawValue.replace(/[^0-9.-]/g, '');
         } else {
-            value = value.replace(/[^\d.]/g, '');
+            rawValue = rawValue.replace(/[^0-9.]/g, '');
         }
 
         // 處理負號
-        if (this.options.allowNegative && value.startsWith('-')) {
-            value = '-' + value.substring(1).replace(/-/g, '');
+        if (this.options.allowNegative && rawValue.startsWith('-')) {
+            rawValue = '-' + rawValue.substring(1).replace(/-/g, '');
         }
 
         // 確保只有一個小數點
-        const parts = value.split('.');
+        const parts = rawValue.split('.');
         if (parts.length > 2) {
-            value = parts[0] + '.' + parts.slice(1).join('');
+            rawValue = parts[0] + '.' + parts.slice(1).join('');
         }
 
         // 保存原始值
-        this.originalValue = value;
+        this.originalValue = rawValue;
 
-        // 修復小數點輸入問題 - 簡化邏輯
-        if (value === '' || value === '.' || value === '-') {
-            // 空值、單獨小數點或負號，直接顯示
-            e.target.value = value;
-        } else if (value.endsWith('.')) {
-            // 以小數點結尾，不進行格式化，保持用戶輸入狀態
-            e.target.value = value;
-        } else if (value === '-.') {
-            // 負號加小數點，不進行格式化
-            e.target.value = value;
-        } else {
-            // 完整的數字，進行格式化
-            const numValue = parseFloat(value);
-            if (!isNaN(numValue)) {
-                const maxDecimals = this.options.maxDecimals || 2;
-                e.target.value = numValue.toLocaleString('en-US', {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: maxDecimals
-                });
-            } else {
-                // 如果解析失敗，保持原始值（可能是正在輸入的狀態）
-                e.target.value = value;
-            }
+        // 如果原始值是空字串、負號或單獨小數點，直接顯示
+        if (rawValue === '' || rawValue === '-' || rawValue === '.') {
+            e.target.value = rawValue;
+            return;
         }
+
+        // 檢查是否正在輸入小數點（用戶剛輸入小數點）
+        // 只有在用戶剛輸入小數點且沒有小數部分時才跳過格式化
+        const isAddingDecimal = rawValue.endsWith('.') && parts.length === 2 && parts[1] === '';
+        
+        // 如果正在輸入小數點，保持原樣不進行格式化
+        if (isAddingDecimal) {
+            e.target.value = rawValue;
+            return;
+        }
+
+        // 分割整數部分與小數部分
+        let integerPart = parts[0];
+        let decimalPart = parts.length > 1 ? '.' + parts[1] : '';
+
+        // 格式化整數部分，加上千分位逗號
+        let formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+        // 將格式化後的整數和小數部分組合起來，並更新回輸入框
+        e.target.value = formattedInteger + decimalPart;
     }
     
     handleBlur(e) {
-        // 改進失去焦點時的處理
-        if (!e.target.value || e.target.value === '.' || e.target.value === '-') {
+        // 失去焦點時的處理
+        if (!e.target.value || e.target.value === '-' || e.target.value === '.') {
             e.target.value = '';
             this.originalValue = '';
         } else if (e.target.value.endsWith('.')) {
-            // 如果以小數點結尾，移除小數點
-            const cleanValue = e.target.value.slice(0, -1);
-            if (cleanValue) {
-                this.originalValue = cleanValue;
-                e.target.value = cleanValue;
-            } else {
-                e.target.value = '';
-                this.originalValue = '';
-            }
+            // 如果以小數點結尾，保持原樣，不自動移除
+            // 這樣用戶可以輸入如 "4." 然後繼續輸入小數部分
+            this.originalValue = e.target.value;
         }
     }
     
@@ -118,7 +113,7 @@ class EnhancedNumberInput {
         e.preventDefault();
     }
     
-    // 獲取實際數值
+    // 獲取實際數值（移除逗號）
     getValue() {
         return this.originalValue || this.input.value.replace(/,/g, '');
     }
@@ -140,10 +135,22 @@ class EnhancedNumberInput {
     // 設置值
     setValue(value) {
         this.originalValue = value.toString();
-        this.input.value = value.toLocaleString('en-US', {
-            minimumFractionDigits: this.options.minDecimals,
-            maximumFractionDigits: this.options.maxDecimals
-        });
+        
+        // 格式化顯示值
+        if (value === 0 || value === '0') {
+            this.input.value = '0';
+        } else {
+            // 分割整數部分與小數部分
+            const parts = value.toString().split('.');
+            let integerPart = parts[0];
+            let decimalPart = parts.length > 1 ? '.' + parts[1] : '';
+
+            // 格式化整數部分，加上千分位逗號
+            let formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+            // 組合格式化後的值
+            this.input.value = formattedInteger + decimalPart;
+        }
     }
 }
 
