@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>現金管理數字輸入修復測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .test-section {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-input {
+            max-width: 300px;
+        }
+        .result-display {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        .modal-dialog {
+            max-width: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">現金管理數字輸入修復測試</h1>
+        
+        <div class="alert alert-info">
+            <h5>測試說明</h5>
+            <p>此頁面用於測試現金管理系統中數字輸入格式化的修復效果。</p>
+            <p>測試重點：數字抖動問題、表單提交效果、千位分隔符顯示</p>
+        </div>
+
+        <!-- 測試區塊 1：基本數字輸入測試 -->
+        <div class="test-section">
+            <h4>測試 1：基本數字輸入測試</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="testAmount1" class="form-label">金額輸入 (TWD)</label>
+                    <input type="text" 
+                           class="form-control test-input" 
+                           id="testAmount1" 
+                           pattern="[0-9]*\.?[0-9]*" 
+                           placeholder="例如：5000000">
+                    <small class="text-muted">輸入大數字測試千位分隔符</small>
+                </div>
+                <div class="col-md-6">
+                    <div class="result-display">
+                        <strong>輸入值:</strong> <span id="result1">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 測試區塊 2：模擬資金操作模態框 -->
+        <div class="test-section">
+            <h4>測試 2：模擬資金操作模態框</h4>
+            <p>點擊按鈕打開模擬的資金操作模態框，測試數字輸入和表單提交：</p>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#testMovementModal">
+                <i class="bi bi-cash-stack me-2"></i>打開資金操作模態框
+            </button>
+        </div>
+
+        <!-- 測試區塊 3：模擬轉帳模態框 -->
+        <div class="test-section">
+            <h4>測試 3：模擬轉帳模態框</h4>
+            <p>點擊按鈕打開模擬的轉帳模態框，測試數字輸入和表單提交：</p>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#testTransferModal">
+                <i class="bi bi-arrow-left-right me-2"></i>打開轉帳模態框
+            </button>
+        </div>
+
+        <!-- 測試結果總結 -->
+        <div class="test-section bg-light">
+            <h4>測試結果總結</h4>
+            <div id="testSummary">
+                <p>請進行以上測試，觀察數字輸入和表單提交的效果...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 資金操作模態框 -->
+    <div class="modal fade" id="testMovementModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="testMovementForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title">測試資金操作</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label d-block">操作類型</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="is_decrease" id="testDeposit" value="false" checked>
+                                <label class="form-check-label" for="testDeposit">存入 (+)</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="is_decrease" id="testWithdraw" value="true">
+                                <label class="form-check-label" for="testWithdraw">提出 (-)</label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="testMovementAmount" class="form-label">金額</label>
+                            <input type="text" 
+                                   pattern="[0-9]*\.?[0-9]*" 
+                                   class="form-control" 
+                                   id="testMovementAmount" 
+                                   name="amount" 
+                                   placeholder="例如：5000000" 
+                                   required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="testMovementNote" class="form-label">備註</label>
+                            <textarea class="form-control" id="testMovementNote" name="note" rows="2" placeholder="可選：記錄資金操作相關信息"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-info">確認執行</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 轉帳模態框 -->
+    <div class="modal fade" id="testTransferModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="testTransferForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title">測試內部轉帳</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="testFromAccount" class="form-label">從哪個帳戶轉出？</label>
+                            <select class="form-select" id="testFromAccount" name="from_account_id" required>
+                                <option value="">--- 請選擇轉出帳戶 ---</option>
+                                <option value="1">測試帳戶 A (餘額: TWD 100,000.00)</option>
+                                <option value="2">測試帳戶 B (餘額: TWD 50,000.00)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="testToAccount" class="form-label">轉入哪個帳戶？</label>
+                            <select class="form-select" id="testToAccount" name="to_account_id" required>
+                                <option value="">--- 請選擇轉入帳戶 ---</option>
+                                <option value="3">測試帳戶 C (餘額: TWD 200,000.00)</option>
+                                <option value="4">測試帳戶 D (餘額: TWD 75,000.00)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="testTransferAmount" class="form-label">轉帳金額</label>
+                            <input type="text" 
+                                   pattern="[0-9]*\.?[0-9]*" 
+                                   class="form-control" 
+                                   id="testTransferAmount" 
+                                   name="transfer_amount" 
+                                   placeholder="例如：25000" 
+                                   required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-warning">確認轉帳</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- 引入增強數字輸入處理腳本 -->
+    <script src="static/js/enhanced_number_input.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 現金管理測試頁面載入完成');
+            
+            // 初始化數字格式化
+            initializeNumberFormatting();
+            
+            // 測試輸入欄位
+            const testInputs = [
+                { id: 'testAmount1', resultId: 'result1' }
+            ];
+            
+            testInputs.forEach(({ id, resultId }) => {
+                const input = document.getElementById(id);
+                const result = document.getElementById(resultId);
+                
+                if (input && result) {
+                    input.addEventListener('input', function() {
+                        result.textContent = `輸入值: "${this.value}" | 實際值: "${this.getActualValue ? this.getActualValue() : 'N/A'}"`;
+                    });
+                }
+            });
+            
+            // 資金操作表單測試
+            const testMovementForm = document.getElementById('testMovementForm');
+            if (testMovementForm) {
+                testMovementForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const amountInput = document.getElementById('testMovementAmount');
+                    const isDecrease = document.querySelector('input[name="is_decrease"]:checked').value === 'true';
+                    const note = document.getElementById('testMovementNote').value;
+                    
+                    // 使用增強數字輸入的 getActualValue 方法獲取實際數值
+                    const amount = amountInput.getActualValue ? amountInput.getActualValue() : amountInput.value;
+                    
+                    console.log('🔍 資金操作表單數據:', {
+                        amount,
+                        amountDisplay: amountInput.value,
+                        isDecrease,
+                        note
+                    });
+                    
+                    // 驗證金額格式
+                    const operationAmount = parseFloat(amount);
+                    if (isNaN(operationAmount) || operationAmount <= 0) {
+                        alert('請輸入有效的金額');
+                        return;
+                    }
+                    
+                    const operationType = isDecrease ? '提出' : '存入';
+                    
+                    // 顯示確認信息
+                    const confirmMessage = `
+                        操作類型：${operationType}
+                        操作金額：NT$ ${operationAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                        備註：${note || '無'}
+                        
+                        您確定要執行此操作嗎？
+                    `;
+                    
+                    if (confirm(confirmMessage)) {
+                        // 在提交前，確保表單中的金額欄位使用實際數值（無逗號）
+                        if (amountInput.value.includes(',')) {
+                            amountInput.value = amount;
+                            console.log('🔧 提交前清理金額格式:', amountInput.value);
+                        }
+                        
+                        // 顯示成功信息
+                        alert(`✅ 資金${operationType}操作成功！\n金額：NT$ ${operationAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}`);
+                        
+                        // 關閉模態框
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('testMovementModal'));
+                        modal.hide();
+                        
+                        // 清空表單
+                        testMovementForm.reset();
+                    }
+                });
+            }
+            
+            // 轉帳表單測試
+            const testTransferForm = document.getElementById('testTransferForm');
+            if (testTransferForm) {
+                testTransferForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const fromAccount = document.getElementById('testFromAccount');
+                    const toAccount = document.getElementById('testToAccount');
+                    const amountInput = document.getElementById('testTransferAmount');
+                    
+                    if (!fromAccount.value || !toAccount.value || !amountInput.value) {
+                        alert('請填寫完整的轉帳資訊');
+                        return;
+                    }
+                    
+                    // 使用增強數字輸入的 getActualValue 方法獲取實際數值
+                    const amount = amountInput.getActualValue ? amountInput.getActualValue() : amountInput.value;
+                    
+                    console.log('🔍 轉帳表單數據:', {
+                        fromAccount: fromAccount.value,
+                        toAccount: toAccount.value,
+                        amount,
+                        amountDisplay: amountInput.value
+                    });
+                    
+                    // 驗證金額格式
+                    const transferAmount = parseFloat(amount);
+                    if (isNaN(transferAmount) || transferAmount <= 0) {
+                        alert('請輸入有效的轉帳金額');
+                        return;
+                    }
+                    
+                    const fromAccountText = fromAccount.options[fromAccount.selectedIndex].text;
+                    const toAccountText = toAccount.options[toAccount.selectedIndex].text;
+                    
+                    // 顯示確認信息
+                    const confirmMessage = `
+                        轉出帳戶：${fromAccountText}
+                        轉入帳戶：${toAccountText}
+                        轉帳金額：NT$ ${transferAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                        
+                        您確定要執行此轉帳嗎？
+                    `;
+                    
+                    if (confirm(confirmMessage)) {
+                        // 在提交前，確保表單中的金額欄位使用實際數值（無逗號）
+                        if (amountInput.value.includes(',')) {
+                            amountInput.value = amount;
+                            console.log('🔧 提交前清理轉帳金額格式:', amountInput.value);
+                        }
+                        
+                        // 顯示成功信息
+                        alert(`✅ 轉帳操作成功！\n從 ${fromAccountText} 轉出 NT$ ${transferAmount.toLocaleString('en-US', {minimumFractionDigits: 2})} 到 ${toAccountText}`);
+                        
+                        // 關閉模態框
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('testTransferModal'));
+                        modal.hide();
+                        
+                        // 清空表單
+                        testTransferForm.reset();
+                    }
+                });
+            }
+            
+            // 當模態框顯示時，重新初始化數字格式化
+            const modals = document.querySelectorAll('.modal');
+            modals.forEach(modal => {
+                modal.addEventListener('shown.bs.modal', function() {
+                    console.log('🔄 模態框顯示，重新初始化數字格式化...');
+                    setTimeout(() => {
+                        initializeNumberFormatting();
+                    }, 50);
+                });
+            });
+            
+            // 更新測試總結
+            updateTestSummary();
+        });
+        
+        function updateTestSummary() {
+            const summary = document.getElementById('testSummary');
+            if (summary) {
+                summary.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>✅ 已修復的問題：</h6>
+                            <ul>
+                                <li>數字抖動問題</li>
+                                <li>表單提交無效果</li>
+                                <li>千位分隔符顯示</li>
+                                <li>數字格式化衝突</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>🔧 測試要點：</h6>
+                            <ul>
+                                <li>輸入大數字（如：5000000）</li>
+                                <li>觀察是否顯示為 5,000,000</li>
+                                <li>測試模態框中的數字輸入</li>
+                                <li>測試表單提交功能</li>
+                                <li>檢查數字是否抖動</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

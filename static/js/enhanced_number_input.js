@@ -1,5 +1,5 @@
-// 增強的數字輸入處理腳本
-// 解決 type="text" 與逗號格式化的兼容性問題，支援小數點輸入
+// 簡化的數字輸入處理腳本
+// 移除千位分隔符功能，只保留基本的數字驗證
 
 class EnhancedNumberInput {
     constructor(inputElement, options = {}) {
@@ -11,7 +11,6 @@ class EnhancedNumberInput {
             ...options
         };
         
-        this.originalValue = '';
         this.setupEventListeners();
     }
     
@@ -22,22 +21,12 @@ class EnhancedNumberInput {
         // 失去焦點事件
         this.input.addEventListener('blur', (e) => this.handleBlur(e));
         
-        // 獲得焦點事件
-        this.input.addEventListener('focus', (e) => this.handleFocus(e));
-        
         // 鍵盤事件
         this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
     }
     
     handleInput(e) {
         let rawValue = e.target.value;
-        
-        // 調試資訊
-        console.log('🔍 handleInput 被調用:', {
-            originalValue: rawValue,
-            targetId: e.target.id,
-            targetName: e.target.name
-        });
         
         // 移除除了數字、小數點和負號以外的所有字元
         if (this.options.allowNegative) {
@@ -57,74 +46,14 @@ class EnhancedNumberInput {
             rawValue = parts[0] + '.' + parts.slice(1).join('');
         }
 
-        // 保存原始值
-        this.originalValue = rawValue;
-
-        // 如果原始值是空字串、負號或單獨小數點，直接顯示
-        if (rawValue === '' || rawValue === '-' || rawValue === '.') {
-            e.target.value = rawValue;
-            return;
-        }
-
-        // 檢查是否正在輸入小數點（用戶剛輸入小數點）
-        // 只有在用戶剛輸入小數點且沒有小數部分時才跳過格式化
-        const isAddingDecimal = rawValue.endsWith('.') && parts.length === 2 && parts[1] === '';
-        
-        // 如果正在輸入小數點，保持原樣不進行格式化
-        if (isAddingDecimal) {
-            e.target.value = rawValue;
-            return;
-        }
-
-        // 分割整數部分與小數部分
-        let integerPart = parts[0];
-        let decimalPart = parts.length > 1 ? '.' + parts[1] : '';
-
-        // 強力修復：使用最安全的千分位格式化方法
-        let formattedInteger = '';
-        if (integerPart.length > 3) {
-            // 從右到左每三位插入逗號
-            for (let i = integerPart.length - 1, count = 0; i >= 0; i--, count++) {
-                if (count > 0 && count % 3 === 0) {
-                    formattedInteger = ',' + formattedInteger;
-                }
-                formattedInteger = integerPart[i] + formattedInteger;
-            }
-        } else {
-            formattedInteger = integerPart;
-        }
-
-        // 調試資訊
-        console.log('🔧 格式化結果:', {
-            original: integerPart,
-            formatted: formattedInteger,
-            decimal: decimalPart,
-            final: formattedInteger + decimalPart
-        });
-
-        // 將格式化後的整數和小數部分組合起來，並更新回輸入框
-        e.target.value = formattedInteger + decimalPart;
-        
-        // 強制更新原始值，防止其他程式碼干擾
-        this.originalValue = rawValue;
+        // 直接顯示清理後的值，不添加千位分隔符
+        e.target.value = rawValue;
     }
     
     handleBlur(e) {
         // 失去焦點時的處理
         if (!e.target.value || e.target.value === '-' || e.target.value === '.') {
             e.target.value = '';
-            this.originalValue = '';
-        } else if (e.target.value.endsWith('.')) {
-            // 如果以小數點結尾，保持原樣，不自動移除
-            // 這樣用戶可以輸入如 "4." 然後繼續輸入小數部分
-            this.originalValue = e.target.value;
-        }
-    }
-    
-    handleFocus(e) {
-        // 聚焦時顯示原始值（無逗號）
-        if (this.originalValue) {
-            e.target.value = this.originalValue;
         }
     }
     
@@ -142,9 +71,9 @@ class EnhancedNumberInput {
         e.preventDefault();
     }
     
-    // 獲取實際數值（移除逗號）
+    // 獲取實際數值（直接返回輸入值）
     getValue() {
-        return this.originalValue || this.input.value.replace(/,/g, '');
+        return this.input.value;
     }
     
     // 獲取數字值
@@ -161,36 +90,9 @@ class EnhancedNumberInput {
         return !isNaN(num) && num >= 0;
     }
     
-    // 設置值
+    // 設置值（直接設置，不格式化）
     setValue(value) {
-        this.originalValue = value.toString();
-        
-        // 格式化顯示值
-        if (value === 0 || value === '0') {
-            this.input.value = '0';
-        } else {
-            // 分割整數部分與小數部分
-            const parts = value.toString().split('.');
-            let integerPart = parts[0];
-            let decimalPart = parts.length > 1 ? '.' + parts[1] : '';
-
-            // 修復：使用更安全的千分位格式化方法
-            let formattedInteger = '';
-            if (integerPart.length > 3) {
-                // 從右到左每三位插入逗號
-                for (let i = integerPart.length - 1, count = 0; i >= 0; i--, count++) {
-                    if (count > 0 && count % 3 === 0) {
-                        formattedInteger = ',' + formattedInteger;
-                    }
-                    formattedInteger = integerPart[i] + formattedInteger;
-                }
-            } else {
-                formattedInteger = integerPart;
-            }
-
-            // 組合格式化後的值
-            this.input.value = formattedInteger + decimalPart;
-        }
+        this.input.value = value.toString();
     }
 }
 
@@ -198,7 +100,7 @@ class EnhancedNumberInput {
 function setupNumberInputFormatting(inputElement, options = {}) {
     if (!inputElement) return;
     
-    // 創建增強的數字輸入實例
+    // 創建簡化的數字輸入實例
     const enhancedInput = new EnhancedNumberInput(inputElement, options);
     
     // 向後兼容的方法
@@ -228,30 +130,8 @@ document.addEventListener('DOMContentLoaded', function() {
         setupNumberInputFormatting(input, options);
     });
     
-    console.log('✅ 增強的數字輸入處理已初始化');
+    console.log('✅ 簡化的數字輸入處理已初始化（無千位分隔符）');
 });
 
-// 表單提交前的數字驗證和清理
-document.addEventListener('submit', function(e) {
-    const form = e.target;
-    if (!form.tagName || form.tagName !== 'FORM') return;
-    
-    // 查找所有數字輸入欄位
-    const numberInputs = form.querySelectorAll('input[type="text"][pattern*="[0-9]"], input[type="text"][id*="amount"], input[type="text"][id*="rate"], input[type="text"][id*="balance"], input[type="text"][id*="rmb"]');
-    
-    numberInputs.forEach(input => {
-        // 移除逗號，確保提交的是純數字
-        if (input.value.includes(',')) {
-            input.value = input.value.replace(/,/g, '');
-        }
-        
-        // 驗證數字格式
-        const value = input.value;
-        if (value && !/^\d*\.?\d*$/.test(value)) {
-            e.preventDefault();
-            alert(`請輸入有效的數字格式: ${input.name || input.id}`);
-            input.focus();
-            return false;
-        }
-    });
-});
+// 移除表單提交事件監聽器，避免衝突
+// 表單提交時的數字處理由各頁面自行處理

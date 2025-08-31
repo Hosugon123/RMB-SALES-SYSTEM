@@ -2006,7 +2006,7 @@ window.renderPagination = function(pagination) {
 
 // 初始化數字輸入欄位格式化
 function initializeNumberFormatting() {
-    console.log('🔧 開始初始化數字輸入欄位格式化...');
+    console.log('🔧 開始初始化簡化的數字輸入欄位格式化...');
     
     // 查找所有數字輸入欄位
     const numberInputs = document.querySelectorAll('input[type="text"][pattern*="[0-9]"], input[type="text"][id*="amount"], input[type="text"][id*="rate"], input[type="text"][id*="balance"], input[type="text"][id*="rmb"]');
@@ -2027,16 +2027,16 @@ function initializeNumberFormatting() {
             options.maxDecimals = 2;
         }
         
-        // 設置數字格式化
+        // 設置簡化的數字格式化（無千位分隔符）
         if (typeof setupNumberInputFormatting === 'function') {
             setupNumberInputFormatting(input, options);
-            console.log(`✅ 欄位 ${input.id} 格式化完成，選項:`, options);
+            console.log(`✅ 欄位 ${input.id} 簡化格式化完成，選項:`, options);
         } else {
             console.warn(`⚠️ setupNumberInputFormatting 函數未定義，跳過欄位 ${input.id}`);
         }
     });
     
-    console.log('✅ 數字輸入欄位格式化初始化完成');
+    console.log('✅ 簡化的數字輸入欄位格式化初始化完成（無千位分隔符）');
 }
 
 // 頁面載入完成後初始化數字格式化
@@ -2065,6 +2065,5 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- 引入增強數字輸入處理腳本 -->
 <script src="{{ url_for('static', filename='js/enhanced_number_input.js') }}"></script>
 
-<!-- 引入 movementAmount 修復腳本 -->
-<script src="{{ url_for('static', filename='js/movement_amount_fix.js') }}"></script>
+    <!-- 移除 movementAmount 修復腳本，使用簡化的數字輸入處理 -->
 {% endblock %}
