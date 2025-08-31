@@ -32,6 +32,13 @@ class EnhancedNumberInput {
     handleInput(e) {
         let rawValue = e.target.value;
         
+        // 調試資訊
+        console.log('🔍 handleInput 被調用:', {
+            originalValue: rawValue,
+            targetId: e.target.id,
+            targetName: e.target.name
+        });
+        
         // 移除除了數字、小數點和負號以外的所有字元
         if (this.options.allowNegative) {
             rawValue = rawValue.replace(/[^0-9.-]/g, '');
@@ -73,7 +80,7 @@ class EnhancedNumberInput {
         let integerPart = parts[0];
         let decimalPart = parts.length > 1 ? '.' + parts[1] : '';
 
-        // 修復：使用更安全的千分位格式化方法
+        // 強力修復：使用最安全的千分位格式化方法
         let formattedInteger = '';
         if (integerPart.length > 3) {
             // 從右到左每三位插入逗號
@@ -87,8 +94,19 @@ class EnhancedNumberInput {
             formattedInteger = integerPart;
         }
 
+        // 調試資訊
+        console.log('🔧 格式化結果:', {
+            original: integerPart,
+            formatted: formattedInteger,
+            decimal: decimalPart,
+            final: formattedInteger + decimalPart
+        });
+
         // 將格式化後的整數和小數部分組合起來，並更新回輸入框
         e.target.value = formattedInteger + decimalPart;
+        
+        // 強制更新原始值，防止其他程式碼干擾
+        this.originalValue = rawValue;
     }
     
     handleBlur(e) {

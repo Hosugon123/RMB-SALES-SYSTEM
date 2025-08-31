@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MovementAmount 修復測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        input { padding: 10px; margin: 10px; font-size: 16px; width: 200px; }
+        .result { margin: 10px; padding: 10px; background: #f0f0f0; border-radius: 3px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 15% auto; padding: 20px; width: 80%; max-width: 500px; border-radius: 5px; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>MovementAmount 修復測試頁面</h1>
+    
+    <div class="test-section">
+        <h3>測試 1: 基本數字輸入</h3>
+        <p>輸入: 123456789</p>
+        <input type="text" id="test1" pattern="[0-9]*\.?[0-9]*" placeholder="輸入數字">
+        <div class="result" id="result1">結果將顯示在這裡</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>測試 2: 模擬資金操作模態框</h3>
+        <button onclick="openModal()">打開資金操作模態框</button>
+        <div class="result" id="result2">模態框測試結果將顯示在這裡</div>
+    </div>
+
+    <!-- 模擬資金操作模態框 -->
+    <div id="movementModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h3>為「0107支付寶」進行資金操作</h3>
+            
+            <div class="mb-3">
+                <label class="form-label d-block">操作類型</label>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="is_decrease" id="movementDeposit" value="false" checked>
+                    <label class="form-check-label" for="movementDeposit">存入 (+)</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="is_decrease" id="movementWithdraw" value="true">
+                    <label class="form-check-label" for="movementWithdraw">提出 (-)</label>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label for="movementAmount" class="form-label">金額</label>
+                <input type="text" pattern="[0-9]*\.?[0-9]*" class="form-control" id="movementAmount" name="amount" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="movementNote" class="form-label">備註</label>
+                <textarea class="form-control" id="movementNote" name="note" rows="2" placeholder="可選：記錄資金操作相關信息"></textarea>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                <button type="button" class="btn btn-info" onclick="testSubmit()">確認執行</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/movement_amount_fix.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('測試頁面已載入');
+            
+            // 測試基本功能
+            const test1 = document.getElementById('test1');
+            
+            // 設置事件監聽器來顯示結果
+            test1.addEventListener('input', function() {
+                const result = document.getElementById('result1');
+                result.textContent = `輸入值: "${this.value}" | 實際值: "${this.getActualValue ? this.getActualValue() : 'N/A'}"`;
+            });
+        });
+        
+        function openModal() {
+            document.getElementById('movementModal').style.display = 'block';
+            const result = document.getElementById('result2');
+            result.textContent = '模態框已打開，請測試 movementAmount 欄位';
+        }
+        
+        function closeModal() {
+            document.getElementById('movementModal').style.display = 'none';
+            const result = document.getElementById('result2');
+            result.textContent = '模態框已關閉';
+        }
+        
+        function testSubmit() {
+            const amount = document.getElementById('movementAmount');
+            const result = document.getElementById('result2');
+            result.textContent = `提交測試 - 顯示值: "${amount.value}" | 實際值: "${amount.getActualValue ? amount.getActualValue() : 'N/A'}"`;
+        }
+    </script>
+</body>
+</html>
