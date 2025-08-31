@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數字格式化測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        input { padding: 10px; margin: 10px; font-size: 16px; width: 200px; }
+        .result { margin: 10px; padding: 10px; background: #f0f0f0; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>數字格式化測試頁面</h1>
+    
+    <div class="test-section">
+        <h3>測試 1: 基本數字輸入</h3>
+        <p>輸入: 123456789</p>
+        <input type="text" id="test1" pattern="[0-9]*\.?[0-9]*" placeholder="輸入數字">
+        <div class="result" id="result1">結果將顯示在這裡</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>測試 2: 小數輸入</h3>
+        <p>輸入: 123456.78</p>
+        <input type="text" id="test2" pattern="[0-9]*\.?[0-9]*" placeholder="輸入小數">
+        <div class="result" id="result2">結果將顯示在這裡</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>測試 3: 大數字輸入</h3>
+        <p>輸入: 999999999999</p>
+        <input type="text" id="test3" pattern="[0-9]*\.?[0-9]*" placeholder="輸入大數字">
+        <div class="result" id="result3">結果將顯示在這裡</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>測試 4: 模擬資金操作</h3>
+        <p>輸入: 123456789 (模擬 movementAmount)</p>
+        <input type="text" id="movementAmount" pattern="[0-9]*\.?[0-9]*" placeholder="輸入金額">
+        <div class="result" id="result4">結果將顯示在這裡</div>
+    </div>
+
+    <script src="static/js/enhanced_number_input.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('測試頁面已載入');
+            
+            // 測試基本功能
+            const test1 = document.getElementById('test1');
+            const test2 = document.getElementById('test2');
+            const test3 = document.getElementById('test3');
+            const movementAmount = document.getElementById('movementAmount');
+            
+            // 設置事件監聽器來顯示結果
+            function showResult(input, resultId) {
+                input.addEventListener('input', function() {
+                    const result = document.getElementById(resultId);
+                    result.textContent = `輸入值: "${this.value}" | 實際值: "${this.getActualValue ? this.getActualValue() : 'N/A'}"`;
+                });
+            }
+            
+            showResult(test1, 'result1');
+            showResult(test2, 'result2');
+            showResult(test3, 'result3');
+            showResult(movementAmount, 'result4');
+            
+            // 測試 setValue 方法
+            setTimeout(() => {
+                console.log('測試 setValue 方法...');
+                if (movementAmount.enhancedInput) {
+                    movementAmount.enhancedInput.setValue(123456789);
+                    console.log('setValue 測試完成');
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

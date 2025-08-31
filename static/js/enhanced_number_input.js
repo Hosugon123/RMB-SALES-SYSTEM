@@ -73,8 +73,19 @@ class EnhancedNumberInput {
         let integerPart = parts[0];
         let decimalPart = parts.length > 1 ? '.' + parts[1] : '';
 
-        // 格式化整數部分，加上千分位逗號
-        let formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        // 修復：使用更安全的千分位格式化方法
+        let formattedInteger = '';
+        if (integerPart.length > 3) {
+            // 從右到左每三位插入逗號
+            for (let i = integerPart.length - 1, count = 0; i >= 0; i--, count++) {
+                if (count > 0 && count % 3 === 0) {
+                    formattedInteger = ',' + formattedInteger;
+                }
+                formattedInteger = integerPart[i] + formattedInteger;
+            }
+        } else {
+            formattedInteger = integerPart;
+        }
 
         // 將格式化後的整數和小數部分組合起來，並更新回輸入框
         e.target.value = formattedInteger + decimalPart;
@@ -145,8 +156,19 @@ class EnhancedNumberInput {
             let integerPart = parts[0];
             let decimalPart = parts.length > 1 ? '.' + parts[1] : '';
 
-            // 格式化整數部分，加上千分位逗號
-            let formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            // 修復：使用更安全的千分位格式化方法
+            let formattedInteger = '';
+            if (integerPart.length > 3) {
+                // 從右到左每三位插入逗號
+                for (let i = integerPart.length - 1, count = 0; i >= 0; i--, count++) {
+                    if (count > 0 && count % 3 === 0) {
+                        formattedInteger = ',' + formattedInteger;
+                    }
+                    formattedInteger = integerPart[i] + formattedInteger;
+                }
+            } else {
+                formattedInteger = integerPart;
+            }
 
             // 組合格式化後的值
             this.input.value = formattedInteger + decimalPart;
