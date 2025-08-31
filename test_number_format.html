@@ -3,78 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>數字格式化測試</title>
+    <title>數字輸入格式化測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-        input { padding: 10px; margin: 10px; font-size: 16px; width: 200px; }
-        .result { margin: 10px; padding: 10px; background: #f0f0f0; border-radius: 3px; }
+        .test-section {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-input {
+            max-width: 300px;
+        }
+        .result-display {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
-    <h1>數字格式化測試頁面</h1>
-    
-    <div class="test-section">
-        <h3>測試 1: 基本數字輸入</h3>
-        <p>輸入: 123456789</p>
-        <input type="text" id="test1" pattern="[0-9]*\.?[0-9]*" placeholder="輸入數字">
-        <div class="result" id="result1">結果將顯示在這裡</div>
-    </div>
-    
-    <div class="test-section">
-        <h3>測試 2: 小數輸入</h3>
-        <p>輸入: 123456.78</p>
-        <input type="text" id="test2" pattern="[0-9]*\.?[0-9]*" placeholder="輸入小數">
-        <div class="result" id="result2">結果將顯示在這裡</div>
-    </div>
-    
-    <div class="test-section">
-        <h3>測試 3: 大數字輸入</h3>
-        <p>輸入: 999999999999</p>
-        <input type="text" id="test3" pattern="[0-9]*\.?[0-9]*" placeholder="輸入大數字">
-        <div class="result" id="result3">結果將顯示在這裡</div>
-    </div>
-    
-    <div class="test-section">
-        <h3>測試 4: 模擬資金操作</h3>
-        <p>輸入: 123456789 (模擬 movementAmount)</p>
-        <input type="text" id="movementAmount" pattern="[0-9]*\.?[0-9]*" placeholder="輸入金額">
-        <div class="result" id="result4">結果將顯示在這裡</div>
+    <div class="container mt-5">
+        <h1 class="mb-4">數字輸入格式化功能測試</h1>
+        
+        <div class="alert alert-info">
+            <h5>測試說明</h5>
+            <p>此頁面用於測試數字輸入格式化功能，特別是千位數的逗號分隔顯示。</p>
+            <p>請在以下輸入欄位中輸入大數字（如：5000000），觀察是否正確顯示為 5,000,000</p>
+        </div>
+
+        <!-- 測試區塊 1：基本金額輸入 -->
+        <div class="test-section">
+            <h4>測試 1：基本金額輸入</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="testAmount1" class="form-label">金額輸入 (TWD)</label>
+                    <input type="text" 
+                           class="form-control test-input" 
+                           id="testAmount1" 
+                           pattern="[0-9]*\.?[0-9]*" 
+                           placeholder="例如：5000000">
+                    <small class="text-muted">輸入大數字測試千位分隔符</small>
+                </div>
+                <div class="col-md-6">
+                    <div class="result-display">
+                        <strong>輸入值:</strong> <span id="result1">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 測試區塊 2：匯率輸入 -->
+        <div class="test-section">
+            <h4>測試 2：匯率輸入</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="testRate1" class="form-label">匯率輸入</label>
+                    <input type="text" 
+                           class="form-control test-input" 
+                           id="testRate1" 
+                           pattern="[0-9]*\.?[0-9]*" 
+                           placeholder="例如：4.5000">
+                    <small class="text-muted">匯率欄位支援 4 位小數</small>
+                </div>
+                <div class="col-md-6">
+                    <div class="result-display">
+                        <strong>輸入值:</strong> <span id="result2">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 測試區塊 3：RMB 金額輸入 -->
+        <div class="test-section">
+            <h4>測試 3：RMB 金額輸入</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="testRmb1" class="form-label">RMB 金額</label>
+                    <input type="text" 
+                           class="form-control test-input" 
+                           id="testRmb1" 
+                           pattern="[0-9]*\.?[0-9]*" 
+                           placeholder="例如：10000">
+                    <small class="text-muted">RMB 金額欄位</small>
+                </div>
+                <div class="col-md-6">
+                    <div class="result-display">
+                        <strong>輸入值:</strong> <span id="result3">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 測試區塊 4：表單提交測試 -->
+        <div class="test-section">
+            <h4>測試 4：表單提交測試</h4>
+            <form id="testForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="testAmount2" class="form-label">測試金額</label>
+                        <input type="text" 
+                               class="form-control test-input" 
+                               id="testAmount2" 
+                               name="test_amount"
+                               pattern="[0-9]*\.?[0-9]*" 
+                               placeholder="例如：1234567" 
+                               required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="testRate2" class="form-label">測試匯率</label>
+                        <input type="text" 
+                               class="form-control test-input" 
+                               id="testRate2" 
+                               name="test_rate"
+                               pattern="[0-9]*\.?[0-9]*" 
+                               placeholder="例如：4.5000" 
+                               required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">提交測試</button>
+            </form>
+            <div class="result-display mt-3">
+                <strong>提交結果:</strong> <span id="result4">-</span>
+            </div>
+        </div>
+
+        <!-- 測試結果總結 -->
+        <div class="test-section bg-light">
+            <h4>測試結果總結</h4>
+            <div id="testSummary">
+                <p>請在以上輸入欄位中輸入數字進行測試...</p>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- 引入增強數字輸入處理腳本 -->
     <script src="static/js/enhanced_number_input.js"></script>
+    
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('測試頁面已載入');
+            console.log('🚀 測試頁面載入完成');
             
-            // 測試基本功能
-            const test1 = document.getElementById('test1');
-            const test2 = document.getElementById('test2');
-            const test3 = document.getElementById('test3');
-            const movementAmount = document.getElementById('movementAmount');
+            // 初始化數字格式化
+            initializeNumberFormatting();
             
-            // 設置事件監聽器來顯示結果
-            function showResult(input, resultId) {
-                input.addEventListener('input', function() {
-                    const result = document.getElementById(resultId);
-                    result.textContent = `輸入值: "${this.value}" | 實際值: "${this.getActualValue ? this.getActualValue() : 'N/A'}"`;
+            // 測試輸入欄位
+            const testInputs = [
+                { id: 'testAmount1', resultId: 'result1' },
+                { id: 'testRate1', resultId: 'result2' },
+                { id: 'testRmb1', resultId: 'result3' }
+            ];
+            
+            testInputs.forEach(({ id, resultId }) => {
+                const input = document.getElementById(id);
+                const result = document.getElementById(resultId);
+                
+                if (input && result) {
+                    input.addEventListener('input', function() {
+                        result.textContent = `輸入值: "${this.value}" | 實際值: "${this.getActualValue ? this.getActualValue() : 'N/A'}"`;
+                    });
+                }
+            });
+            
+            // 表單提交測試
+            const testForm = document.getElementById('testForm');
+            const result4 = document.getElementById('result4');
+            
+            if (testForm && result4) {
+                testForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const amount = document.getElementById('testAmount2');
+                    const rate = document.getElementById('testRate2');
+                    
+                    if (amount && rate) {
+                        const amountValue = amount.getActualValue ? amount.getActualValue() : amount.value;
+                        const rateValue = rate.getActualValue ? rate.getActualValue() : rate.value;
+                        
+                        result4.textContent = `提交測試 - 顯示值: "${amount.value}" | 實際值: "${amountValue}" | 匯率: "${rateValue}"`;
+                        
+                        // 計算測試
+                        const calculated = parseFloat(amountValue) * parseFloat(rateValue);
+                        result4.textContent += ` | 計算結果: ${calculated.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                    }
                 });
             }
             
-            showResult(test1, 'result1');
-            showResult(test2, 'result2');
-            showResult(test3, 'result3');
-            showResult(movementAmount, 'result4');
-            
-            // 測試 setValue 方法
-            setTimeout(() => {
-                console.log('測試 setValue 方法...');
-                if (movementAmount.enhancedInput) {
-                    movementAmount.enhancedInput.setValue(123456789);
-                    console.log('setValue 測試完成');
-                }
-            }, 1000);
+            // 更新測試總結
+            updateTestSummary();
         });
+        
+        function updateTestSummary() {
+            const summary = document.getElementById('testSummary');
+            if (summary) {
+                summary.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>✅ 已實現功能：</h6>
+                            <ul>
+                                <li>千位數逗號分隔顯示</li>
+                                <li>小數點支援</li>
+                                <li>數字驗證</li>
+                                <li>表單提交前自動清理</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>🔧 測試要點：</h6>
+                            <ul>
+                                <li>輸入大數字（如：5000000）</li>
+                                <li>觀察是否顯示為 5,000,000</li>
+                                <li>檢查小數點輸入</li>
+                                <li>測試表單提交</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+        }
     </script>
 </body>
 </html>

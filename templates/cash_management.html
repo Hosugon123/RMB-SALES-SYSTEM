@@ -2004,9 +2004,67 @@ window.renderPagination = function(pagination) {
 
 // 數字輸入欄位格式化函數 - 使用全局增強版本
 
+// 初始化數字輸入欄位格式化
+function initializeNumberFormatting() {
+    console.log('🔧 開始初始化數字輸入欄位格式化...');
+    
+    // 查找所有數字輸入欄位
+    const numberInputs = document.querySelectorAll('input[type="text"][pattern*="[0-9]"], input[type="text"][id*="amount"], input[type="text"][id*="rate"], input[type="text"][id*="balance"], input[type="text"][id*="rmb"]');
+    
+    console.log('🔍 找到數字輸入欄位:', numberInputs.length);
+    
+    numberInputs.forEach((input, index) => {
+        console.log(`📝 初始化欄位 ${index + 1}:`, input.id, input.name);
+        
+        // 根據欄位ID決定選項
+        let options = { minDecimals: 0, maxDecimals: 2 };
+        
+        if (input.id.includes('rate') || input.id.includes('exchange') || input.id.includes('CostRate')) {
+            options.maxDecimals = 4;
+        }
+        
+        if (input.id.includes('balance') || input.id.includes('amount')) {
+            options.maxDecimals = 2;
+        }
+        
+        // 設置數字格式化
+        if (typeof setupNumberInputFormatting === 'function') {
+            setupNumberInputFormatting(input, options);
+            console.log(`✅ 欄位 ${input.id} 格式化完成，選項:`, options);
+        } else {
+            console.warn(`⚠️ setupNumberInputFormatting 函數未定義，跳過欄位 ${input.id}`);
+        }
+    });
+    
+    console.log('✅ 數字輸入欄位格式化初始化完成');
+}
+
+// 頁面載入完成後初始化數字格式化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 現金管理頁面載入完成，開始初始化...');
+    
+    // 延遲初始化，確保所有模態框都已載入
+    setTimeout(() => {
+        initializeNumberFormatting();
+    }, 100);
+    
+    // 當模態框顯示時，重新初始化數字格式化
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        modal.addEventListener('shown.bs.modal', function() {
+            console.log('🔄 模態框顯示，重新初始化數字格式化...');
+            setTimeout(() => {
+                initializeNumberFormatting();
+            }, 50);
+        });
+    });
+});
+
 </script>
+
+<!-- 引入增強數字輸入處理腳本 -->
+<script src="{{ url_for('static', filename='js/enhanced_number_input.js') }}"></script>
 
 <!-- 引入 movementAmount 修復腳本 -->
 <script src="{{ url_for('static', filename='js/movement_amount_fix.js') }}"></script>
-
 {% endblock %}
