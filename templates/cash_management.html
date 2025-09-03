@@ -4,6 +4,31 @@
 
 {% block content %}
 <div class="container-fluid">
+    <style>
+        /* 小螢幕刪除按鈕與排版優化 */
+        .delete-account-btn {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .delete-account-btn i {
+            font-size: 16px;
+            line-height: 1;
+        }
+        .btn-movement {
+            line-height: 1;
+        }
+        /* 調整餘額在較小螢幕下的最小寬度，避免因擠壓導致溢出 */
+        @media (max-width: 400px) {
+            .account-balance {
+                min-width: 90px !important;
+            }
+        }
+    </style>
     <!-- 標題行 -->
     <div class="row align-items-center mb-4">
         <div class="col">
@@ -92,8 +117,8 @@
                         {% for customer in customers_with_receivables %}
                         <tr>
                             <td class="ps-3">
-                                <a href="#" class="text-decoration-none customer-transactions" 
-                                   data-customer-id="{{ customer.id }}" data-customer-name="{{ customer.name }}">
+                                <a href="javascript:void(0)" class="text-decoration-none customer-transactions" 
+                                   data-customer-id="{{ customer.id }}" data-customer-name="{{ customer.name }}" data-customer-receivable="{{ customer.total_receivables_twd }}">
                                     {{ customer.name }}
                                 </a>
                             </td>
@@ -172,13 +197,7 @@
 {% include '_cash_management_modals.html' %}
 
 <!-- 將後端數據傳遞給JavaScript -->
-<script type="application/json" id="cash-management-data">
-{
-    "accountsByHolder": {{ accounts_by_holder|tojson|safe if accounts_by_holder is defined else '{}' }},
-    "holders": {{ holders|tojson|safe if holders is defined else '[]' }},
-    "movements": {{ movements|tojson|safe if movements is defined else '[]' }}
-}
-</script>
+<script type="application/json" id="cash-management-data"></script>
 {% endblock %}
 
 {% block scripts %}
@@ -206,14 +225,40 @@
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 現金管理頁面載入完成，開始初始化...');
     
-    // 從後端獲取數據
-    var dataElement = document.getElementById('cash-management-data');
-    var data = JSON.parse(dataElement.textContent);
-    var accountsByHolder = data.accountsByHolder;
-    var holders = data.holders;
-    var movements = data.movements;
+    // 兼容鍵名與空值工具
+    function pick() {
+        for (var i = 0; i < arguments.length; i++) {
+            var v = arguments[i];
+            if (v !== undefined && v !== null) return v;
+        }
+        return undefined;
+    }
+
+    // 從後端模板變數直接取得初始資料（避免 tojson 失敗）
+    var accountsByHolder = {{ accounts_by_holder|tojson|safe if accounts_by_holder is defined else '{}' }};
+    var holders = {{ holders|tojson|safe if holders is defined else '[]' }};
+    var movements = {{ movements|tojson|safe if movements is defined else '[]' }};
+    var customersList = [];
     
     console.log('📊 數據檢查:', { holders: holders, accountsByHolder: accountsByHolder, movements: movements });
+
+    // 從 DOM 蒐集應收帳款列表，避免後端序列化模型物件失敗
+    function refreshCustomersList() {
+        try {
+            customersList = Array.from(document.querySelectorAll('.customer-transactions')).map(function(a) {
+                return {
+                    id: parseInt(a.dataset.customerId),
+                    name: a.dataset.customerName,
+                    total_receivables_twd: parseFloat(a.dataset.customerReceivable || 0)
+                };
+            });
+            console.log('🧾 已建立 customersList:', customersList);
+        } catch (e) {
+            console.warn('無法建立 customersList:', e);
+            customersList = [];
+        }
+    }
+    refreshCustomersList();
     
     // 將帳戶數據轉換為平面數組供模態框使用
     window.ownerAccountsData = [];
@@ -292,7 +337,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     accountsHtml += '<i class="bi bi-arrow-down-up"></i>';
                     accountsHtml += '</button>';
                     accountsHtml += '<button class="btn btn-outline-danger btn-sm delete-account-btn" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" title="刪除帳戶">';
-                    accountsHtml += '&times;';
+                    accountsHtml += '<i class="bi bi-x-lg"></i>';
                     accountsHtml += '</button>';
                     accountsHtml += '</div>';
                     accountsHtml += '</div>';
@@ -1137,22 +1182,61 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         
         emptyMessage.style.display = 'none';
+
+        // 取得應收帳款（多鍵相容）
+        const receivableNode = document.getElementById('customerTransactionsReceivable');
+        if (receivableNode) {
+            function pick() {
+                for (var i = 0; i < arguments.length; i++) {
+                    var v = arguments[i];
+                    if (v !== undefined && v !== null) return v;
+                }
+                return undefined;
+            }
+            // 先嘗試從這次回應找，找不到就從頁面初始提供的 customers 集合比對
+            let receivable = pick(
+                data.current_receivable,
+                data.receivable_twd,
+                data.receivable,
+                data.customer_receivable,
+                data.customer && (data.customer.receivable_twd || data.customer.receivable),
+                data.summary && (data.summary.receivable_twd || data.summary.receivable)
+            );
+
+            if (receivable === undefined) {
+                try {
+                    var customers = customersList || [];
+                    // 在表格上方我們已經把客戶名稱寫進 #customerTransactionsName
+                    var nameNode = document.getElementById('customerTransactionsName');
+                    var customerName = nameNode ? nameNode.textContent.trim() : '';
+                    var matched = customers.find(function(c){ return (c.name || c.customer_name) === customerName; });
+                    if (matched) {
+                        receivable = pick(matched.total_receivables_twd, matched.receivable_twd, matched.receivable);
+                    }
+                } catch(e) { /* 忽略解析錯誤 */ }
+            }
+            if (receivable === undefined) receivable = 0;
+            receivableNode.textContent = 'NT$ ' + Number(receivable).toLocaleString('en-US', {minimumFractionDigits: 2});
+        }
         
         let tableHtml = '';
-        data.transactions.forEach(transaction => {
-            const date = new Date(transaction.date).toLocaleString('zh-TW');
-            const amount = transaction.amount ? `NT$ ${parseFloat(transaction.amount).toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
-            const rmbAmount = transaction.rmb_amount ? `¥ ${parseFloat(transaction.rmb_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}` : '-';
-            
+        data.transactions.forEach(tx => {
+            const date = tx.date ? new Date(tx.date).toLocaleString('zh-TW') : '-';
+            const type = tx.type || 'N/A';
+            const desc = tx.description || '-';
+            const rmbDelta = (tx.rmb_amount !== undefined ? tx.rmb_amount : (tx.rmbChange !== undefined ? tx.rmbChange : tx.rmb_change));
+            const twdDelta = (tx.amount !== undefined ? tx.amount : (tx.twd_amount !== undefined ? tx.twd_amount : (tx.twdChange !== undefined ? tx.twdChange : tx.twd_change)));
+            const rmbStr = (rmbDelta === undefined || rmbDelta === null) ? '-' : `¥ ${parseFloat(rmbDelta).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            const twdStr = (twdDelta === undefined || twdDelta === null) ? '-' : `NT$ ${parseFloat(twdDelta).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+
+            // 依照表頭順序：日期時間、類型、描述、RMB、TWD（不包含利潤與操作人員）
             tableHtml += `
                 <tr>
                     <td><small>${date}</small></td>
-                    <td><span class="badge bg-primary">${transaction.type || 'N/A'}</span></td>
-                    <td><small>${transaction.description || '-'}</small></td>
-                    <td><small>${transaction.operator || '-'}</small></td>
-                    <td class="text-end"><small>${amount}</small></td>
-                    <td class="text-end"><small>${rmbAmount}</small></td>
-                    <td><small>${transaction.note || '-'}</small></td>
+                    <td><span class="badge bg-primary">${type}</span></td>
+                    <td><small>${desc}</small></td>
+                    <td class="text-end"><small>${rmbStr}</small></td>
+                    <td class="text-end"><small>${twdStr}</small></td>
                 </tr>
             `;
         });
@@ -1196,7 +1280,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // 渲染資金流水
+    // 渲染資金流水（本地作用域版本）
     function renderMovements(transactions) {
         console.log('🔍 開始渲染資金流水...');
         
@@ -1216,9 +1300,9 @@ document.addEventListener('DOMContentLoaded', function () {
         console.log('✅ 找到 ' + transactions.length + ' 筆資金流水，開始渲染...');
         
         transactions.forEach(function(m, index) {
-            const twdChange = parseFloat(m.twd_change) || 0;
-            const rmbChange = parseFloat(m.rmb_change) || 0;
-            const profit = m.profit || 0;
+            const twdChange = parseFloat(m.twd_change ?? m.twdChange) || 0;
+            const rmbChange = parseFloat(m.rmb_change ?? m.rmbChange) || 0;
+            const profit = parseFloat(m.profit ?? 0) || 0;
             
             // 將類型轉換為中文顯示
             let typeDisplay = m.type;
@@ -1278,21 +1362,24 @@ document.addEventListener('DOMContentLoaded', function () {
             const rmbClass = rmbChange > 0 ? 'text-success' : (rmbChange < 0 ? 'text-danger' : 'text-muted');
             const profitClass = profit > 0 ? 'text-success' : (profit < 0 ? 'text-danger' : 'text-muted');
             
-            // 添加累積餘額顯示
-            const runningTwd = m.running_twd_balance || 0;
-            const runningRmb = m.running_rmb_balance || 0;
+            // 累積餘額顯示
+            const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
+            const runningRmb = m.running_rmb_balance ?? m.runningRmbBalance ?? 0;
             const runningBalanceHtml = '<div class="small running-balance">' +
-                '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + runningTwd.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
-                '<div class="text-success">¥ ' + runningRmb.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + (runningTwd || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-success">¥ ' + (runningRmb || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
                 '</div>';
             
+            const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
+            const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
+
             const row = '<tr>' +
-                '<td class="ps-3"><small>' + new Date(m.date).toLocaleString('zh-TW') + '</small></td>' +
+                '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : '-') + '</small></td>' +
                 '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
                 '<td><small>' + (m.description || '-') + '</small></td>' +
                 '<td><small>' + (m.operator || '-') + '</small></td>' +
-                '<td><small>' + (m.payment_account || '-') + '</small></td>' +
-                '<td><small>' + (m.deposit_account || '-') + '</small></td>' +
+                '<td><small>' + paymentAccount + '</small></td>' +
+                '<td><small>' + depositAccount + '</small></td>' +
                 '<td><small>' + (m.note || '-') + '</small></td>' +
                 '<td class="text-end"><span class="' + twdClass + '">' + twdDisplay + '</span></td>' +
                 '<td class="text-end"><span class="' + rmbClass + '">' + rmbDisplay + '</span></td>' +
@@ -1310,39 +1397,43 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderPagination(pagination) {
         const paginationInfo = document.getElementById('pagination-info');
         const paginationControls = document.getElementById('pagination-controls');
-        
         if (!paginationInfo || !paginationControls) return;
         
-        // 更新分頁信息
-        const startItem = (pagination.current_page - 1) * pagination.per_page + 1;
-        const endItem = Math.min(pagination.current_page * pagination.per_page, pagination.total_records);
+        // 正規化不同回應鍵名（避免部分瀏覽器不支援 ??）
+        const currentPage = pick(pagination.current_page, pagination.page, 1);
+        const perPage = pick(pagination.per_page, pagination.perPage, 10);
+        const totalRecords = pick(pagination.total_records, pagination.total, 0);
+        const totalPages = pick(pagination.total_pages, pagination.pages, Math.ceil(totalRecords / perPage) || 1);
+        const hasPrev = (pick(pagination.has_prev, (currentPage > 1)) ? true : false);
+        const hasNext = (pick(pagination.has_next, (currentPage < totalPages)) ? true : false);
+        const prevNum = pick(pagination.prev_num, (hasPrev ? currentPage - 1 : 1));
+        const nextNum = pick(pagination.next_num, (hasNext ? currentPage + 1 : totalPages));
         
-        paginationInfo.innerHTML = `顯示第 ${startItem}-${endItem} 筆，共 ${pagination.total_records} 筆記錄`;
+        // 更新分頁信息
+        const startItem = (currentPage - 1) * perPage + 1;
+        const endItem = Math.min(currentPage * perPage, totalRecords);
+        paginationInfo.innerHTML = `顯示第 ${startItem}-${endItem} 筆，共 ${totalRecords} 筆記錄`;
         
         // 清空分頁按鈕
         paginationControls.innerHTML = '';
         
-        // 上一頁按鈕
-        if (pagination.has_prev) {
-            const prevButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + pagination.prev_num + ')">上一頁</a></li>';
-            paginationControls.innerHTML += prevButton;
+        // 上一頁
+        if (hasPrev) {
+            paginationControls.innerHTML += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="loadMovements(' + prevNum + '); return false;">上一頁</a></li>';
         }
         
-        // 頁碼按鈕
-        for (let i = 1; i <= pagination.total_pages; i++) {
-            let pageButton = '';
-            if (i === pagination.current_page) {
-                pageButton = '<li class="page-item active"><span class="page-link">' + i + '</span></li>';
+        // 頁碼
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === currentPage) {
+                paginationControls.innerHTML += '<li class="page-item active"><span class="page-link">' + i + '</span></li>';
             } else {
-                pageButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + i + ')">' + i + '</a></li>';
+                paginationControls.innerHTML += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="loadMovements(' + i + '); return false;">' + i + '</a></li>';
             }
-            paginationControls.innerHTML += pageButton;
         }
         
-        // 下一頁按鈕
-        if (pagination.has_next) {
-            const nextButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + pagination.next_num + ')">下一頁</a></li>';
-            paginationControls.innerHTML += nextButton;
+        // 下一頁
+        if (hasNext) {
+            paginationControls.innerHTML += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="loadMovements(' + nextNum + '); return false;">下一頁</a></li>';
         }
     }
     
@@ -1875,9 +1966,9 @@ window.renderMovements = function(transactions) {
     console.log('✅ 找到 ' + transactions.length + ' 筆資金流水，開始渲染...');
     
     transactions.forEach(function(m, index) {
-        const twdChange = parseFloat(m.twd_change) || 0;
-        const rmbChange = parseFloat(m.rmb_change) || 0;
-        const profit = m.profit || 0;
+        const twdChange = parseFloat(m.twd_change ?? m.twdChange) || 0;
+        const rmbChange = parseFloat(m.rmb_change ?? m.rmbChange) || 0;
+        const profit = parseFloat(m.profit ?? 0) || 0;
         
         // 將類型轉換為中文顯示
         let typeDisplay = m.type;
@@ -1937,17 +2028,28 @@ window.renderMovements = function(transactions) {
         const rmbColorClass = rmbChange > 0 ? 'text-success' : rmbChange < 0 ? 'text-danger' : 'text-muted';
         const profitColorClass = profit > 0 ? 'text-success' : profit < 0 ? 'text-danger' : 'text-muted';
         
+        // 累積餘額（同上方渲染保持一致）
+        const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
+        const runningRmb = m.running_rmb_balance ?? m.runningRmbBalance ?? 0;
+        const runningBalanceHtml = '<div class="small running-balance">' +
+            '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + (runningTwd || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+            '<div class="text-success">¥ ' + (runningRmb || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+            '</div>';
+
+        const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
+        const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
+
         const row = '<tr class="transaction-row">' +
-            '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleDateString('zh-TW') : '-') + '</small></td>' +
+            '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : '-') + '</small></td>' +
             '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
             '<td><small>' + (m.description || '-') + '</small></td>' +
             '<td><small>' + (m.operator || '-') + '</small></td>' +
-            '<td><small>' + (m.outgoing_account || '-') + '</small></td>' +
-            '<td><small>' + (m.incoming_account || '-') + '</small></td>' +
+            '<td><small>' + paymentAccount + '</small></td>' +
+            '<td><small>' + depositAccount + '</small></td>' +
             '<td><small>' + (m.note || '-') + '</small></td>' +
             '<td class="text-end"><small class="' + twdColorClass + '">' + twdDisplay + '</small></td>' +
             '<td class="text-end"><small class="' + rmbColorClass + '">' + rmbDisplay + '</small></td>' +
-            '<td class="text-end"><small class="running-balance">' + (m.running_balance || '-') + '</small></td>' +
+            '<td class="text-end">' + runningBalanceHtml + '</td>' +
             '<td class="text-end pe-3"><small class="' + profitColorClass + '">' + profitDisplay + '</small></td>' +
             '</tr>';
         
@@ -1961,12 +2063,31 @@ window.renderMovements = function(transactions) {
 window.renderPagination = function(pagination) {
     if (!pagination) return;
     
+    // 本地pick以避免 ?? 相容性問題
+    function pick() {
+        for (var i = 0; i < arguments.length; i++) {
+            var v = arguments[i];
+            if (v !== undefined && v !== null) return v;
+        }
+        return undefined;
+    }
+    
+    // 正規化不同回應鍵名
+    const currentPage = pick(pagination.current_page, pagination.page, 1);
+    const perPage = pick(pagination.per_page, pagination.perPage, 10);
+    const totalRecords = pick(pagination.total, pagination.total_records, 0);
+    const totalPages = pick(pagination.total_pages, pagination.pages, Math.ceil(totalRecords / perPage) || 1);
+    const hasPrev = pick(pagination.has_prev, (currentPage > 1)) ? true : false;
+    const hasNext = pick(pagination.has_next, (currentPage < totalPages)) ? true : false;
+    const prevNum = pick(pagination.prev_num, hasPrev ? currentPage - 1 : 1);
+    const nextNum = pick(pagination.next_num, hasNext ? currentPage + 1 : totalPages);
+    
     // 更新分頁信息
     const paginationInfo = document.getElementById('pagination-info');
     if (paginationInfo) {
-        const startRecord = (pagination.page - 1) * pagination.per_page + 1;
-        const endRecord = Math.min(pagination.page * pagination.per_page, pagination.total);
-        paginationInfo.innerHTML = `顯示第${startRecord}-${endRecord}筆,共${pagination.total}筆記錄`;
+        const startRecord = (currentPage - 1) * perPage + 1;
+        const endRecord = Math.min(currentPage * perPage, totalRecords);
+        paginationInfo.innerHTML = `顯示第${startRecord}-${endRecord}筆,共${totalRecords}筆記錄`;
     }
     
     // 更新分頁控制項
@@ -1975,27 +2096,23 @@ window.renderPagination = function(pagination) {
     
     let paginationHtml = '<ul class="pagination pagination-sm mb-0">';
     
-    // 上一頁按鈕
-    if (pagination.has_prev) {
-        const prevButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + pagination.prev_num + ')">上一頁</a></li>';
-        paginationHtml += prevButton;
+    // 上一頁
+    if (hasPrev) {
+        paginationHtml += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="loadMovements(' + prevNum + '); return false;">上一頁</a></li>';
     }
     
-    // 頁碼按鈕
-    for (let i = 1; i <= pagination.pages; i++) {
-        let pageButton;
-        if (i === pagination.page) {
-            pageButton = '<li class="page-item active"><span class="page-link">' + i + '</span></li>';
+    // 頁碼
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === currentPage) {
+            paginationHtml += '<li class="page-item active"><span class="page-link">' + i + '</span></li>';
         } else {
-            pageButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + i + ')">' + i + '</a></li>';
+            paginationHtml += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="loadMovements(' + i + '); return false;">' + i + '</a></li>';
         }
-        paginationHtml += pageButton;
     }
     
-    // 下一頁按鈕
-    if (pagination.has_next) {
-        const nextButton = '<li class="page-item"><a class="page-link" href="#" onclick="loadMovements(' + pagination.next_num + ')">下一頁</a></li>';
-        paginationHtml += nextButton;
+    // 下一頁
+    if (hasNext) {
+        paginationHtml += '<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="loadMovements(' + nextNum + '); return false;">下一頁</a></li>';
     }
     
     paginationHtml += '</ul>';
@@ -2062,8 +2179,5 @@ document.addEventListener('DOMContentLoaded', function() {
 
 </script>
 
-<!-- 引入增強數字輸入處理腳本 -->
-<script src="{{ url_for('static', filename='js/enhanced_number_input.js') }}"></script>
-
-    <!-- 移除 movementAmount 修復腳本，使用簡化的數字輸入處理 -->
+    <!-- 增強數字輸入腳本已在 base.html 全域引入，這裡不重複載入 -->
 {% endblock %}
