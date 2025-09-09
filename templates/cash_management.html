@@ -1401,7 +1401,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         // 正規化不同回應鍵名（避免部分瀏覽器不支援 ??）
         const currentPage = pick(pagination.current_page, pagination.page, 1);
-        const perPage = pick(pagination.per_page, pagination.perPage, 10);
+        const perPage = pick(pagination.per_page, pagination.perPage, 50);
         const totalRecords = pick(pagination.total_records, pagination.total, 0);
         const totalPages = pick(pagination.total_pages, pagination.pages, Math.ceil(totalRecords / perPage) || 1);
         const hasPrev = (pick(pagination.has_prev, (currentPage > 1)) ? true : false);
@@ -2074,7 +2074,7 @@ window.renderPagination = function(pagination) {
     
     // 正規化不同回應鍵名
     const currentPage = pick(pagination.current_page, pagination.page, 1);
-    const perPage = pick(pagination.per_page, pagination.perPage, 10);
+    const perPage = pick(pagination.per_page, pagination.perPage, 50);
     const totalRecords = pick(pagination.total, pagination.total_records, 0);
     const totalPages = pick(pagination.total_pages, pagination.pages, Math.ceil(totalRecords / perPage) || 1);
     const hasPrev = pick(pagination.has_prev, (currentPage > 1)) ? true : false;

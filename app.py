@@ -2298,7 +2298,7 @@ def cash_management():
                 elif acc.currency == "RMB":
                     accounts_by_holder[acc.holder_id]["total_rmb"] += acc.balance
 
-        per_page = 10
+        per_page = 50
         total_items = len(unified_stream)
         start = (page - 1) * per_page
         end = start + per_page
@@ -5167,7 +5167,7 @@ def get_cash_management_transactions():
     """獲取現金管理的分頁流水記錄"""
     try:
         page = request.args.get("page", 1, type=int)
-        per_page = 10  # 每頁10筆資料
+        per_page = 50  # 每頁50筆資料
         
         # 獲取流水記錄數據（與cash_management路由相同的邏輯）
         purchases = db.session.execute(
