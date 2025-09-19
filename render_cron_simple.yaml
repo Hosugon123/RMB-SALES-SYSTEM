@@ -1,0 +1,16 @@
+# 簡化的 Render Cron Job 配置
+services:
+  - type: cron
+    name: dealsys-cron
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python render_cron_job.py
+    schedule: "0 2 * * *"  # 每天 UTC 凌晨 2 點執行
+    envVars:
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false
+      - key: GCS_BUCKET_NAME
+        sync: false
+      - key: TARGET_URL
+        value: "https://www.google.com"
+        sync: false
