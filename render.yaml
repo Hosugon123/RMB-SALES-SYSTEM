@@ -1,0 +1,16 @@
+# Render 服務配置檔案
+services:
+  - type: cron
+    name: excel-screenshot-cron
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python render_cron_job.py
+    schedule: "0 */6 * * *"  # 每 6 小時執行一次
+    envVars:
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false  # 需要手動設定
+      - key: GCS_BUCKET_NAME
+        sync: false  # 需要手動設定
+      - key: TARGET_URL
+        value: "https://www.google.com"
+        sync: false
