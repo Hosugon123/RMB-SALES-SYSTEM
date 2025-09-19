@@ -1,12 +1,14 @@
 # Complete Dependencies for RMB Sales System
 # Web Service Dependencies
 Flask>=2.3.0
+Flask-SQLAlchemy>=3.0.0
+Flask-Migrate>=4.0.0
+Flask-Login>=0.6.0
 gunicorn>=21.0.0
 Werkzeug>=2.3.0
 
 # Database Dependencies
 SQLAlchemy>=2.0.0
-Flask-SQLAlchemy>=3.0.0
 
 # Cron Job Dependencies
 pandas>=2.2.0
