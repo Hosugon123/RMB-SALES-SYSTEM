@@ -3,7 +3,7 @@ services:
   - type: cron
     name: dealsys-cron
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements_cron.txt
     startCommand: python render_cron_job.py
     schedule: "0 2 * * *"  # 每天 UTC 凌晨 2 點執行
     envVars:
@@ -12,5 +12,5 @@ services:
       - key: GCS_BUCKET_NAME
         sync: false
       - key: TARGET_URL
-        value: "https://www.google.com"
+        value: "https://rmb-sales-system-test1.onrender.com"
         sync: false
