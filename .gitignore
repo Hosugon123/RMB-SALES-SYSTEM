@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Google Cloud Key
+*.json
+/path/to/your/gcp-key-file.json # 替換成你實際的 JSON 密鑰檔案名
