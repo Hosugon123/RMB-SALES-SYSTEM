@@ -180,13 +180,50 @@ class DatabaseBackup:
 
     def cleanup_local_files(self, files):
         """清理本地檔案"""
+        total_size = 0
         try:
             for file in files:
                 if os.path.exists(file):
+                    # 記錄檔案大小
+                    file_size = os.path.getsize(file)
+                    total_size += file_size
+                    
                     os.remove(file)
-                    logger.info(f"🧹 已清理: {file}")
+                    logger.info(f"🧹 已清理: {file} ({file_size/1024:.1f} KB)")
+            
+            logger.info(f"💾 總共節省空間: {total_size/1024:.1f} KB")
+            
         except Exception as e:
             logger.error(f"❌ 清理檔案失敗: {str(e)}")
+            
+    def cleanup_temp_directories(self):
+        """清理臨時目錄"""
+        try:
+            import tempfile
+            import shutil
+            
+            temp_dirs = ['/tmp', tempfile.gettempdir()]
+            cleaned_size = 0
+            
+            for temp_dir in temp_dirs:
+                if os.path.exists(temp_dir):
+                    # 清理以我們的時間戳命名的臨時檔案
+                    for file in os.listdir(temp_dir):
+                        if self.timestamp in file and file.endswith(('.xlsx', '.tmp')):
+                            file_path = os.path.join(temp_dir, file)
+                            try:
+                                file_size = os.path.getsize(file_path)
+                                os.remove(file_path)
+                                cleaned_size += file_size
+                                logger.info(f"🧹 清理臨時檔案: {file}")
+                            except:
+                                pass
+            
+            if cleaned_size > 0:
+                logger.info(f"🗂️ 清理臨時目錄，節省: {cleaned_size/1024:.1f} KB")
+                
+        except Exception as e:
+            logger.error(f"❌ 清理臨時目錄失敗: {str(e)}")
 
     def run_backup(self):
         """執行完整備份流程"""
@@ -250,6 +287,9 @@ class DatabaseBackup:
             # 清理本地檔案
             if local_files:
                 self.cleanup_local_files(local_files)
+            
+            # 額外清理臨時目錄
+            self.cleanup_temp_directories()
 
 def main():
     try:
