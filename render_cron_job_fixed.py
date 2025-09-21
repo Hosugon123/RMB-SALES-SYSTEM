@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
-Render Cron Job Script
-生成 Excel 檔案、網頁截圖並上傳到 Google Cloud Storage
+修復版 Render Cron Job - 移除 Selenium，只保留核心備份功能
 """
 
 import os
 import sys
 import pandas as pd
-import time
 from datetime import datetime
-# Selenium imports removed - using simplified version
 from google.cloud import storage
 import logging
 
@@ -27,41 +24,22 @@ logger = logging.getLogger(__name__)
 class RenderCronJob:
     def __init__(self):
         """初始化 Cron Job"""
-        self.driver = None
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # 從環境變數獲取配置
         self.gcs_credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        self.gcs_credentials_json = os.getenv('GCS_CREDENTIALS_JSON')
         self.gcs_bucket_name = os.getenv('GCS_BUCKET_NAME')
         self.target_url = os.getenv('TARGET_URL', 'https://www.google.com')
         
-        logger.info(f"=== 環境變數檢查 ===")
-        logger.info(f"GOOGLE_APPLICATION_CREDENTIALS: {self.gcs_credentials_path}")
-        logger.info(f"GCS_BUCKET_NAME: {self.gcs_bucket_name}")
-        logger.info(f"TARGET_URL: {self.target_url}")
-        
-        # 檢查認證檔案是否存在
-        if self.gcs_credentials_path:
-            if os.path.exists(self.gcs_credentials_path):
-                logger.info(f"✅ 認證檔案存在: {self.gcs_credentials_path}")
-            else:
-                logger.error(f"❌ 認證檔案不存在: {self.gcs_credentials_path}")
-        
         # 驗證必要的環境變數
-        if not self.gcs_credentials_path and not self.gcs_credentials_json:
-            raise ValueError("需要設置 GOOGLE_APPLICATION_CREDENTIALS 或 GCS_CREDENTIALS_JSON 環境變數")
+        if not self.gcs_credentials_path:
+            raise ValueError("GOOGLE_APPLICATION_CREDENTIALS 環境變數未設置")
         if not self.gcs_bucket_name:
             raise ValueError("GCS_BUCKET_NAME 環境變數未設置")
         
         logger.info(f"初始化完成 - 時間戳: {self.timestamp}")
         logger.info(f"目標網址: {self.target_url}")
         logger.info(f"GCS 儲存桶: {self.gcs_bucket_name}")
-
-    def setup_chrome_driver(self):
-        """設置 Chrome 驅動程式 - 已停用"""
-        logger.info("跳過 Chrome 驅動程式設置（簡化版本）")
-        return True
 
     def generate_excel_file(self):
         """生成範例 Excel 檔案"""
@@ -72,18 +50,18 @@ class RenderCronJob:
             data = {
                 '日期': [datetime.now().strftime('%Y-%m-%d')] * 10,
                 '時間': [datetime.now().strftime('%H:%M:%S')] * 10,
-                '產品名稱': [f'產品_{i+1}' for i in range(10)],
+                '備份類型': ['自動備份'] * 10,
+                '狀態': ['成功'] * 10,
                 '數量': [i+1 for i in range(10)],
-                '單價': [100.50 + i*10 for i in range(10)],
-                '總價': [(100.50 + i*10) * (i+1) for i in range(10)],
-                '備註': [f'備註_{i+1}' for i in range(10)]
+                '大小(KB)': [100.50 + i*10 for i in range(10)],
+                '備註': [f'備份項目_{i+1}' for i in range(10)]
             }
             
             # 創建 DataFrame
             df = pd.DataFrame(data)
             
             # 生成檔案名
-            excel_filename = f"sample_data_{self.timestamp}.xlsx"
+            excel_filename = f"backup_data_{self.timestamp}.xlsx"
             
             # 保存為 Excel 檔案
             df.to_excel(excel_filename, index=False, engine='openpyxl')
@@ -95,11 +73,6 @@ class RenderCronJob:
             logger.error(f"生成 Excel 檔案失敗: {str(e)}")
             return None
 
-    def take_screenshot(self):
-        """截取網頁截圖 - 已停用"""
-        logger.info("跳過網頁截圖功能（簡化版本）")
-        return None
-
     def upload_to_gcs(self, local_file_path, gcs_file_name):
         """上傳檔案到 Google Cloud Storage"""
         try:
@@ -108,16 +81,6 @@ class RenderCronJob:
             # 初始化 GCS 客戶端
             if self.gcs_credentials_path and os.path.exists(self.gcs_credentials_path):
                 client = storage.Client.from_service_account_json(self.gcs_credentials_path)
-            elif self.gcs_credentials_json:
-                import json
-                import tempfile
-                # 創建臨時檔案存放認證資訊
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
-                    json.dump(json.loads(self.gcs_credentials_json), temp_file)
-                    temp_credentials_path = temp_file.name
-                client = storage.Client.from_service_account_json(temp_credentials_path)
-                # 清理臨時檔案
-                os.unlink(temp_credentials_path)
             else:
                 raise ValueError("無法找到有效的 GCS 認證資訊")
             
@@ -161,23 +124,14 @@ class RenderCronJob:
         try:
             logger.info("=== 開始執行 Render Cron Job ===")
             
-            # 1. 設置 Chrome 驅動程式
-            if not self.setup_chrome_driver():
-                raise Exception("無法設置 Chrome 驅動程式")
-            
-            # 2. 生成 Excel 檔案
+            # 1. 生成 Excel 檔案
             excel_file = self.generate_excel_file()
             if excel_file:
                 local_files.append(excel_file)
             else:
                 raise Exception("Excel 檔案生成失敗")
             
-            # 3. 截取網頁截圖（已停用）
-            screenshot_file = self.take_screenshot()
-            if screenshot_file:
-                local_files.append(screenshot_file)
-            
-            # 4. 上傳檔案到 GCS
+            # 2. 上傳檔案到 GCS
             upload_success = True
             
             # 上傳 Excel 檔案
@@ -185,14 +139,8 @@ class RenderCronJob:
             if not self.upload_to_gcs(excel_file, excel_gcs_name):
                 upload_success = False
             
-            # 上傳截圖檔案（已停用）
-            if screenshot_file:
-                screenshot_gcs_name = f"screenshots/{screenshot_file}"
-                if not self.upload_to_gcs(screenshot_file, screenshot_gcs_name):
-                    upload_success = False
-            
             if not upload_success:
-                raise Exception("部分檔案上傳失敗")
+                raise Exception("檔案上傳失敗")
             
             logger.info("=== Cron Job 執行完成 ===")
             return True
@@ -202,9 +150,6 @@ class RenderCronJob:
             return False
             
         finally:
-            # 5. 清理資源
-            logger.info("清理資源...")
-            
             # 清理本地檔案
             if local_files:
                 self.cleanup_local_files(local_files)

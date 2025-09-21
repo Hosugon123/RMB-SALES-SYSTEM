@@ -1,16 +1,15 @@
-# 簡化的 Render Cron Job 配置
+# 簡化的 Render Cron Job 配置 - 測試版本
 services:
   - type: cron
-    name: dealsys-cron
+    name: dealsys-cron-test
     env: python
-    buildCommand: pip install -r requirements_cron.txt
-    startCommand: python render_cron_job.py
-    schedule: "0 2 * * *"  # 每天 UTC 凌晨 2 點執行
+    buildCommand: pip install pandas openpyxl google-cloud-storage
+    startCommand: python render_cron_simple.py
+    schedule: "*/10 * * * *"  # 每 10 分鐘執行一次（測試用）
     envVars:
       - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: "/tmp/gcs_key.json"
         sync: false
       - key: GCS_BUCKET_NAME
-        sync: false
-      - key: TARGET_URL
-        value: "https://rmb-sales-system-test1.onrender.com"
+        value: "dealsys"
         sync: false

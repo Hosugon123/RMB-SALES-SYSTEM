@@ -1,7 +1,4 @@
-# Cron Job 專用依賴
-pandas>=2.2.0
-openpyxl>=3.1.2
-selenium>=4.15.0
-webdriver-manager>=4.0.0
+# Cron Job 專用依賴 - 簡化版本
+pandas>=1.5.0
+openpyxl>=3.1.0
 google-cloud-storage>=2.10.0
-requests>=2.31.0
