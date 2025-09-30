@@ -6445,6 +6445,14 @@ def admin_data_recovery():
     return render_template("admin_data_recovery.html")
 
 # ===================================================================
+# 臨時獨立頁面：儲值與餘額計算（前端本地儲存，與系統資料完全獨立）
+# ===================================================================
+@app.route("/independent-balance")
+@login_required
+def independent_balance():
+    return render_template("independent_balance.html")
+
+# ===================================================================
 # 9. 啟動器
 # ===================================================================
 if __name__ == "__main__":

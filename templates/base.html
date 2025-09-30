@@ -252,7 +252,12 @@
                     <a href="{{ url_for('fifo_inventory') }}"><i class="bi bi-boxes me-3"></i>FIFO庫存管理</a>
                 </li>
                 
-                <!-- 6. 使用者管理 (僅管理員可見) -->
+                <!-- 6. 儲值客戶頁面 -->
+                <li class="{% if request.endpoint == 'independent_balance' %}active{% endif %}">
+                    <a href="{{ url_for('independent_balance') }}"><i class="bi bi-currency-exchange me-3"></i>儲值客戶</a>
+                </li>
+                
+                <!-- 7. 使用者管理 (僅管理員可見) -->
                 {% if current_user.is_admin %}
                 <hr class="mx-3">
                 <li class="{% if request.endpoint == 'user_management' %}active{% endif %}">

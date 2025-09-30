@@ -1,0 +1,441 @@
+{% extends 'base.html' %}
+{% block title %}儲值客戶與餘額{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12 col-xl-10 mx-auto">
+            <!-- 頁面標題區 -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="mb-1 text-primary"><i class="bi bi-wallet2 me-2"></i>儲值客戶與餘額</h2>
+                            <p class="text-muted mb-0">獨立儲值管理系統</p>
+                        </div>
+                        <button class="btn btn-outline-danger" id="btnReset">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>重置資料
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主要功能區 -->
+            <div class="row g-4">
+                <!-- 左側：輸入與預覽區 -->
+                <div class="col-12 col-lg-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-gradient bg-primary text-white">
+                            <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>儲值換算</h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- 輸入區域 -->
+                            <div class="row g-3 mb-4">
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-semibold">
+                                        <i class="bi bi-currency-dollar me-1"></i>美金金額 (USD)
+                                    </label>
+                                    <input type="text" inputmode="decimal" class="form-control form-control-lg" id="usdAmount" placeholder="例如 1000">
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-semibold">
+                                        <i class="bi bi-arrow-left-right me-1"></i>匯率 (USD → RMB)
+                                    </label>
+                                    <input type="text" inputmode="decimal" class="form-control form-control-lg" id="usdToRmbRate" placeholder="例如 7.25">
+                                </div>
+                            </div>
+
+                            <!-- 換算按鈕 -->
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <button class="btn btn-success btn-lg w-100" id="btnConvert">
+                                        <i class="bi bi-calculator me-2"></i>換算並入帳
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 預覽區域 -->
+                            <div class="row g-3 mb-4">
+                                <div class="col-12 col-md-6">
+                                    <div id="convertedCard" class="card border-0 bg-light">
+                                        <div class="card-body text-center">
+                                            <div class="text-muted small mb-2">換算人民幣</div>
+                                            <div class="fs-2 fw-bold text-primary" id="rmbConverted">0.00</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <div class="card border-0 bg-light">
+                                        <div class="card-body text-center">
+                                            <div class="text-muted small mb-2">手續費 1% 扣除</div>
+                                            <div class="fs-2 fw-bold text-warning" id="feeDeducted">0.00</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 支出區域 -->
+                            <div class="border-top pt-4">
+                                <h6 class="text-muted mb-3">
+                                    <i class="bi bi-dash-circle me-1"></i>支出管理
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-12 col-md-8">
+                                        <label class="form-label fw-semibold">支出金額 (RMB)</label>
+                                        <input type="text" inputmode="decimal" class="form-control form-control-lg" id="expenseAmount" placeholder="例如 100">
+                                    </div>
+                                    <div class="col-12 col-md-4 d-flex align-items-end">
+                                        <button class="btn btn-outline-danger btn-lg w-100" id="btnSpend">
+                                            <i class="bi bi-dash-circle me-1"></i>扣除支出
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右側：統計資訊區 -->
+                <div class="col-12 col-lg-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-gradient bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>帳戶統計</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex flex-column gap-4 stat-col h-100">
+                                <!-- 帳戶餘額 -->
+                                <div class="card border-0 bg-success text-white stat-card flex-fill">
+                                    <div class="card-body text-center d-flex flex-column justify-content-center">
+                                        <div class="text-white-50 small mb-2">
+                                            <i class="bi bi-wallet2 me-1"></i>帳戶人民幣餘額
+                                        </div>
+                                        <div class="fs-1 fw-bold" id="rmbBalance">0.00</div>
+                                    </div>
+                                </div>
+
+                                <!-- 手續費利潤 -->
+                                <div class="card border-0 bg-warning text-dark stat-card flex-fill">
+                                    <div class="card-body text-center d-flex flex-column justify-content-center">
+                                        <div class="text-dark-50 small mb-2">
+                                            <i class="bi bi-currency-exchange me-1"></i>手續費利潤總計
+                                        </div>
+                                        <div class="fs-1 fw-bold" id="totalFees">0.00</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 歷史紀錄區 -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-gradient bg-info text-white">
+                            <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>交易歷史</h5>
+                        </div>
+                        <div class="card-body p-0">
+
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0" id="historyTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="white-space: nowrap;" class="px-3">
+                                                <i class="bi bi-clock me-1"></i>時間
+                                            </th>
+                                            <th class="px-3">
+                                                <i class="bi bi-tag me-1"></i>類型
+                                            </th>
+                                            <th class="px-3 text-end">
+                                                <i class="bi bi-currency-dollar me-1"></i>USD
+                                            </th>
+                                            <th class="px-3 text-end">
+                                                <i class="bi bi-arrow-left-right me-1"></i>匯率
+                                            </th>
+                                            <th class="px-3 text-end">
+                                                <i class="bi bi-currency-yen me-1"></i>RMB
+                                            </th>
+                                            <th class="px-3 text-end">
+                                                <i class="bi bi-percent me-1"></i>手續費
+                                            </th>
+                                            <th class="px-3 text-end">
+                                                <i class="bi bi-wallet2 me-1"></i>變動後餘額
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 頁面底部說明 -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="alert alert-info border-0 shadow-sm">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-info-circle fs-4 me-3 text-info"></i>
+                            <div>
+                                <strong>資料說明</strong><br>
+                                <small class="text-muted">本頁面資料僅存於您的瀏覽器 localStorage，與系統資料庫完全獨立、不互相影響。</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const KEY = 'independent_balance_v1';
+    const state = {
+        rmbBalance: 0,
+        totalFees: 0,
+        history: []
+    };
+
+    function load() {
+        try {
+            const raw = localStorage.getItem(KEY);
+            if (!raw) return;
+            const saved = JSON.parse(raw);
+            if (typeof saved.rmbBalance === 'number') state.rmbBalance = saved.rmbBalance;
+            if (typeof saved.totalFees === 'number') state.totalFees = saved.totalFees;
+            if (Array.isArray(saved.history)) state.history = saved.history;
+        } catch (e) { console.warn('load failed', e); }
+    }
+
+    function save() {
+        try {
+            localStorage.setItem(KEY, JSON.stringify(state));
+        } catch (e) { console.warn('save failed', e); }
+    }
+
+    function parseNumber(str) {
+        if (str == null) return NaN;
+        const cleaned = String(str).replace(/[,\s]/g, '');
+        const val = Number(cleaned);
+        return isFinite(val) ? val : NaN;
+    }
+
+    function format(n) {
+        return (Number(n) || 0).toLocaleString('zh-Hant', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function render() {
+        document.getElementById('rmbBalance').textContent = format(state.rmbBalance);
+        document.getElementById('totalFees').textContent = format(state.totalFees);
+        const tbody = document.querySelector('#historyTable tbody');
+        tbody.innerHTML = '';
+        for (const item of state.history.slice().reverse()) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="white-space: nowrap;">${item.time}</td>
+                <td>${item.type}</td>
+                <td>${item.usd ?? '-'}</td>
+                <td>${item.rate ?? '-'}</td>
+                <td>${item.rmb}</td>
+                <td>${item.fee ?? '-'}</td>
+                <td>${item.after}</td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        // 讓右側兩張卡片平均分配高度，確保內容可見
+        try {
+            const col = document.querySelector('.stat-col');
+            const cards = Array.from(col.querySelectorAll('.stat-card'));
+            if (col && cards.length > 0) {
+                const MIN_CARD_HEIGHT = 120; // 確保內容可見的最小高度
+                const containerHeight = col.offsetHeight;
+                const gap = 16; // Bootstrap gap-4 = 1rem = 16px
+                const totalGaps = gap * (cards.length - 1);
+                const available = Math.max(containerHeight - totalGaps, 0);
+                let each = Math.floor(available / cards.length);
+
+                // 若平均高度過小，則設定最小高度
+                if (each < MIN_CARD_HEIGHT) {
+                    each = MIN_CARD_HEIGHT;
+                }
+
+                cards.forEach(card => {
+                    card.style.minHeight = each + 'px';
+                });
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function now() {
+        const d = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function updatePreview() {
+        const usd = parseNumber(document.getElementById('usdAmount').value);
+        const rate = parseNumber(document.getElementById('usdToRmbRate').value);
+        
+        if (isFinite(usd) && isFinite(rate) && usd > 0 && rate > 0) {
+            const rmbConverted = usd * rate;
+            const fee = rmbConverted * 0.01;
+            const credited = rmbConverted - fee;
+            
+            document.getElementById('rmbConverted').textContent = format(rmbConverted);
+            document.getElementById('feeDeducted').textContent = format(credited);
+        } else {
+            document.getElementById('rmbConverted').textContent = '0.00';
+            document.getElementById('feeDeducted').textContent = '0.00';
+        }
+    }
+
+    function convertAndDeposit() {
+        const usd = parseNumber(document.getElementById('usdAmount').value);
+        const rate = parseNumber(document.getElementById('usdToRmbRate').value);
+        if (!isFinite(usd) || usd <= 0) { Swal.fire('提示', '請輸入正確的美金金額', 'warning'); return; }
+        if (!isFinite(rate) || rate <= 0) { Swal.fire('提示', '請輸入正確的匯率', 'warning'); return; }
+        
+        const rmbConverted = usd * rate;
+        const fee = rmbConverted * 0.01;
+        const credited = rmbConverted - fee;
+        
+        // 顯示確認彈窗
+        Swal.fire({
+            title: '確認儲值入帳？',
+            html: `
+                <div class="text-start">
+                    <p><strong>美金金額：</strong> ${format(usd)} USD</p>
+                    <p><strong>匯率：</strong> ${format(rate)}</p>
+                    <p><strong>換算人民幣：</strong> ${format(rmbConverted)} RMB</p>
+                    <p><strong>手續費 (1%)：</strong> ${format(fee)} RMB</p>
+                    <p><strong>實際入帳：</strong> ${format(credited)} RMB</p>
+                    <hr>
+                    <p><strong>入帳後餘額：</strong> ${format(state.rmbBalance + credited)} RMB</p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '確認入帳',
+            cancelButtonText: '取消',
+            confirmButtonColor: '#198754',
+            cancelButtonColor: '#6c757d'
+        }).then(result => {
+            if (result.isConfirmed) {
+                state.rmbBalance += credited;
+                state.totalFees += fee;
+                state.history.push({
+                    time: now(),
+                    type: '儲值入帳',
+                    usd: format(usd),
+                    rate: format(rate),
+                    rmb: format(rmbConverted),
+                    fee: format(fee),
+                    after: format(state.rmbBalance)
+                });
+                save();
+                render();
+                
+                // 清空輸入框
+                document.getElementById('usdAmount').value = '';
+                document.getElementById('usdToRmbRate').value = '';
+                updatePreview();
+                
+                Swal.fire('成功', '儲值已入帳', 'success');
+            }
+        });
+    }
+
+    function spend() {
+        const expense = parseNumber(document.getElementById('expenseAmount').value);
+        if (!isFinite(expense) || expense <= 0) { Swal.fire('提示', '請輸入正確的支出金額', 'warning'); return; }
+        if (expense > state.rmbBalance) {
+            Swal.fire('餘額不足', '支出金額大於目前餘額', 'error');
+            return;
+        }
+        
+        // 顯示確認彈窗
+        Swal.fire({
+            title: '確認扣除支出？',
+            html: `
+                <div class="text-start">
+                    <p><strong>支出金額：</strong> ${format(expense)} RMB</p>
+                    <p><strong>目前餘額：</strong> ${format(state.rmbBalance)} RMB</p>
+                    <hr>
+                    <p><strong>扣除後餘額：</strong> ${format(state.rmbBalance - expense)} RMB</p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '確認扣除',
+            cancelButtonText: '取消',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d'
+        }).then(result => {
+            if (result.isConfirmed) {
+                state.rmbBalance -= expense;
+                state.history.push({
+                    time: now(),
+                    type: '支出',
+                    usd: '-',
+                    rate: '-',
+                    rmb: `-${format(expense)}`,
+                    fee: '-',
+                    after: format(state.rmbBalance)
+                });
+                save();
+                render();
+                document.getElementById('expenseAmount').value = '';
+                
+                Swal.fire('成功', '支出已扣除', 'success');
+            }
+        });
+    }
+
+    function resetAll() {
+        Swal.fire({
+            title: '確認重置？',
+            text: '將清除本頁所有本地資料（僅影響瀏覽器 localStorage）',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '是，重置',
+            cancelButtonText: '取消'
+        }).then(res => {
+            if (res.isConfirmed) {
+                state.rmbBalance = 0;
+                state.totalFees = 0;
+                state.history = [];
+                save();
+                render();
+                document.getElementById('rmbConverted').textContent = '0.00';
+                document.getElementById('feeDeducted').textContent = '0.00';
+                document.getElementById('usdAmount').value = '';
+                document.getElementById('usdToRmbRate').value = '';
+                document.getElementById('expenseAmount').value = '';
+                Swal.fire('完成', '已清空本地資料', 'success');
+            }
+        });
+    }
+
+    document.getElementById('btnConvert').addEventListener('click', convertAndDeposit);
+    document.getElementById('btnSpend').addEventListener('click', spend);
+    document.getElementById('btnReset').addEventListener('click', resetAll);
+    
+    // 即時換算功能
+    document.getElementById('usdAmount').addEventListener('input', updatePreview);
+    document.getElementById('usdToRmbRate').addEventListener('input', updatePreview);
+
+    load();
+    render();
+    // 在窗口尺寸變更時也同步高度
+    window.addEventListener('resize', () => {
+        render();
+    });
+})();
+</script>
+{% endblock %}

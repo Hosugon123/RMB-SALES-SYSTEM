@@ -8,8 +8,10 @@ import os
 import sys
 import pandas as pd
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.cloud import storage
+from zoneinfo import ZoneInfo
+import json
 import logging
 
 # 設置日誌
@@ -178,6 +180,42 @@ class DatabaseBackup:
             logger.error(f"❌ 檔案上傳失敗: {str(e)}")
             return False
 
+    def write_and_upload_status(self, backup_results, upload_success, total_files):
+        """生成並上傳健康狀態檔 status.json 到 GCS"""
+        try:
+            now_utc = datetime.now(timezone.utc)
+            taipei_tz = ZoneInfo("Asia/Taipei")
+            now_taipei = now_utc.astimezone(taipei_tz)
+
+            success_tables = len([t for t, r in backup_results.items() if r.get('success')])
+            total_tables = len(backup_results)
+
+            status = {
+                "last_run_utc": now_utc.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "last_run_taipei": now_taipei.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "timestamp": self.timestamp,
+                "bucket": self.gcs_bucket_name,
+                "files_uploaded": upload_success,
+                "expected_files": total_files,
+                "tables_backed_up": success_tables,
+                "tables_total": total_tables,
+                "exit_code": 0 if upload_success == total_files and success_tables == total_tables else 1,
+            }
+
+            status_filename = "status.json"
+            with open(status_filename, "w", encoding="utf-8") as f:
+                json.dump(status, f, ensure_ascii=False, indent=2)
+
+            # 上傳最新狀態與歷史狀態
+            self.upload_to_gcs(status_filename, "health/status.json")
+            self.upload_to_gcs(status_filename, f"health/{self.timestamp[:8]}/status_{self.timestamp}.json")
+
+            if os.path.exists(status_filename):
+                os.remove(status_filename)
+            logger.info("🩺 健康狀態 status.json 已上傳")
+        except Exception as e:
+            logger.error(f"❌ 上傳健康狀態失敗: {str(e)}")
+
     def cleanup_local_files(self, files):
         """清理本地檔案"""
         total_size = 0
@@ -269,8 +307,11 @@ class DatabaseBackup:
                 gcs_path = f"database_backups/{self.timestamp[:8]}/{file}"
                 if self.upload_to_gcs(file, gcs_path):
                     upload_success += 1
-            
+
             logger.info(f"📤 成功上傳 {upload_success}/{len(local_files)} 個檔案")
+
+            # 6. 上傳健康狀態檔
+            self.write_and_upload_status(backup_results, upload_success, len(local_files))
             
             # 關閉資料庫連接
             self.conn.close()
