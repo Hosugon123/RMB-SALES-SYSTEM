@@ -23,22 +23,16 @@
                 <div class="col-12 col-lg-6">
                     <div class="card shadow-sm h-100">
                         <div class="card-header bg-gradient bg-primary text-white">
-                            <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>儲值換算</h5>
+                            <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>人民幣儲值</h5>
                         </div>
                         <div class="card-body">
                             <!-- 輸入區域 -->
                             <div class="row g-3 mb-4">
-                                <div class="col-12 col-md-6">
+                                <div class="col-12">
                                     <label class="form-label fw-semibold">
-                                        <i class="bi bi-currency-dollar me-1"></i>美金金額 (USD)
+                                        <i class="bi bi-currency-yen me-1"></i>人民幣金額 (RMB)
                                     </label>
-                                    <input type="text" inputmode="decimal" class="form-control form-control-lg" id="usdAmount" placeholder="例如 1000">
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <label class="form-label fw-semibold">
-                                        <i class="bi bi-arrow-left-right me-1"></i>匯率 (USD → RMB)
-                                    </label>
-                                    <input type="text" inputmode="decimal" class="form-control form-control-lg" id="usdToRmbRate" placeholder="例如 7.25">
+                                    <input type="text" inputmode="decimal" class="form-control form-control-lg" id="rmbAmount" placeholder="例如 7250">
                                 </div>
                             </div>
 
@@ -54,15 +48,15 @@
                                         <option value="{{ acc.id }}">{{ acc.holder.name }} - {{ acc.name }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text">手續費將以「純利潤庫存」形式入庫，售出時額外計算利潤絕對值，不影響原有庫存利潤率。<strong class="text-danger">必須先選擇入庫帳戶才能進行換算。</strong></div>
+                                    <div class="form-text">手續費將以「純利潤庫存」形式入庫，售出時額外計算利潤絕對值，不影響原有庫存利潤率。<strong class="text-danger">必須先選擇入庫帳戶才能進行儲值。</strong></div>
                                 </div>
                             </div>
 
-                            <!-- 換算按鈕 -->
+                            <!-- 儲值按鈕 -->
                             <div class="row mb-4">
                                 <div class="col-12">
                                     <button class="btn btn-success btn-lg w-100" id="btnConvert">
-                                        <i class="bi bi-calculator me-2"></i>換算並入帳
+                                        <i class="bi bi-cash-stack me-2"></i>儲值並入帳
                                     </button>
                                 </div>
                             </div>
@@ -72,7 +66,7 @@
                                 <div class="col-12 col-md-6">
                                     <div id="convertedCard" class="card border-0 bg-light">
                                         <div class="card-body text-center">
-                                            <div class="text-muted small mb-2">換算人民幣</div>
+                                            <div class="text-muted small mb-2">儲值金額</div>
                                             <div class="fs-2 fw-bold text-primary" id="rmbConverted">0.00</div>
                                         </div>
                                     </div>
@@ -159,12 +153,6 @@
                                             </th>
                                             <th class="px-3">
                                                 <i class="bi bi-tag me-1"></i>類型
-                                            </th>
-                                            <th class="px-3 text-end">
-                                                <i class="bi bi-currency-dollar me-1"></i>USD
-                                            </th>
-                                            <th class="px-3 text-end">
-                                                <i class="bi bi-arrow-left-right me-1"></i>匯率
                                             </th>
                                             <th class="px-3 text-end">
                                                 <i class="bi bi-currency-yen me-1"></i>RMB
@@ -282,7 +270,17 @@
     }
 
     function render() {
-        document.getElementById('rmbBalance').textContent = format(state.rmbBalance);
+        const balanceElement = document.getElementById('rmbBalance');
+        balanceElement.textContent = format(state.rmbBalance);
+        
+        // 根據餘額正負值調整樣式
+        const balanceCard = balanceElement.closest('.card');
+        if (state.rmbBalance < 0) {
+            balanceCard.className = 'card border-0 bg-danger text-white stat-card flex-fill';
+        } else {
+            balanceCard.className = 'card border-0 bg-success text-white stat-card flex-fill';
+        }
+        
         document.getElementById('totalFees').textContent = format(state.totalFees);
         const tbody = document.querySelector('#historyTable tbody');
         tbody.innerHTML = '';
@@ -297,8 +295,6 @@
             tr.innerHTML = `
                 <td style="white-space: nowrap;">${item.time}</td>
                 <td>${item.type}</td>
-                <td class="text-end">${item.usd ?? '-'}</td>
-                <td class="text-end">${item.rate ?? '-'}</td>
                 <td class="text-end">${item.rmb}</td>
                 <td class="text-end">${item.fee ?? '-'}</td>
                 <td class="text-end">${item.after}</td>
@@ -338,16 +334,14 @@
     }
 
     function updatePreview() {
-        const usd = parseNumber(document.getElementById('usdAmount').value);
-        const rate = parseNumber(document.getElementById('usdToRmbRate').value);
+        const rmb = parseNumber(document.getElementById('rmbAmount').value);
         const profitAccountId = document.getElementById('profitAccount')?.value;
         
-        if (isFinite(usd) && isFinite(rate) && usd > 0 && rate > 0 && profitAccountId) {
-            const rmbConverted = usd * rate;
-            const fee = rmbConverted * 0.01;
-            const credited = rmbConverted - fee;
+        if (isFinite(rmb) && rmb > 0 && profitAccountId) {
+            const fee = rmb * 0.01;
+            const credited = rmb - fee;
             
-            document.getElementById('rmbConverted').textContent = format(rmbConverted);
+            document.getElementById('rmbConverted').textContent = format(rmb);
             document.getElementById('feeDeducted').textContent = format(credited);
         } else {
             document.getElementById('rmbConverted').textContent = '0.00';
@@ -356,26 +350,21 @@
     }
 
     function convertAndDeposit() {
-        const usd = parseNumber(document.getElementById('usdAmount').value);
-        const rate = parseNumber(document.getElementById('usdToRmbRate').value);
+        const rmb = parseNumber(document.getElementById('rmbAmount').value);
         const profitAccountId = document.getElementById('profitAccount')?.value;
         
-        if (!isFinite(usd) || usd <= 0) { Swal.fire('提示', '請輸入正確的美金金額', 'warning'); return; }
-        if (!isFinite(rate) || rate <= 0) { Swal.fire('提示', '請輸入正確的匯率', 'warning'); return; }
+        if (!isFinite(rmb) || rmb <= 0) { Swal.fire('提示', '請輸入正確的人民幣金額', 'warning'); return; }
         if (!profitAccountId) { Swal.fire('提示', '請先選擇入庫帳戶', 'warning'); return; }
         
-        const rmbConverted = usd * rate;
-        const fee = rmbConverted * 0.01;
-        const credited = rmbConverted - fee;
+        const fee = rmb * 0.01;
+        const credited = rmb - fee;
         
         // 顯示確認彈窗
         Swal.fire({
             title: '確認儲值入帳？',
             html: `
                 <div class="text-start">
-                    <p><strong>美金金額：</strong> ${format(usd)} USD</p>
-                    <p><strong>匯率：</strong> ${format(rate)}</p>
-                    <p><strong>換算人民幣：</strong> ${format(rmbConverted)} RMB</p>
+                    <p><strong>儲值金額：</strong> ${format(rmb)} RMB</p>
                     <p><strong>手續費 (1%)：</strong> ${format(fee)} RMB</p>
                     <p><strong>實際入帳：</strong> ${format(credited)} RMB</p>
                     <hr>
@@ -398,13 +387,11 @@
                     id: recordId,
                     time: now(),
                     type: '儲值入帳',
-                    usd: format(usd),
-                    rate: format(rate),
-                    rmb: format(rmbConverted),
+                    rmb: format(rmb),
                     fee: format(fee),
                     after: format(state.rmbBalance),
                     // 供刪除回退使用的原始資料
-                    rmbRaw: rmbConverted,
+                    rmbRaw: rmb,
                     feeRaw: fee,
                     creditedRaw: credited,
                     profitAccountId: profitAccountIdSelected,
@@ -444,8 +431,7 @@
                 }
                 
                 // 清空輸入框
-                document.getElementById('usdAmount').value = '';
-                document.getElementById('usdToRmbRate').value = '';
+                document.getElementById('rmbAmount').value = '';
                 updatePreview();
                 
                 Swal.fire('成功', '儲值已入帳', 'success');
@@ -456,10 +442,6 @@
     function spend() {
         const expense = parseNumber(document.getElementById('expenseAmount').value);
         if (!isFinite(expense) || expense <= 0) { Swal.fire('提示', '請輸入正確的支出金額', 'warning'); return; }
-        if (expense > state.rmbBalance) {
-            Swal.fire('餘額不足', '支出金額大於目前餘額', 'error');
-            return;
-        }
         
         // 顯示確認彈窗
         Swal.fire({
@@ -486,8 +468,6 @@
                     id: recordId,
                     time: now(),
                     type: '支出',
-                    usd: '-',
-                    rate: '-',
                     rmb: `-${format(expense)}`,
                     fee: '-',
                     after: format(state.rmbBalance),
@@ -631,9 +611,8 @@
         Swal.fire('已刪除', '紀錄已刪除並回退相關數據。', 'success');
     });
     
-    // 即時換算功能
-    document.getElementById('usdAmount').addEventListener('input', updatePreview);
-    document.getElementById('usdToRmbRate').addEventListener('input', updatePreview);
+    // 即時預覽功能
+    document.getElementById('rmbAmount').addEventListener('input', updatePreview);
     document.getElementById('profitAccount').addEventListener('change', updatePreview);
 
     load();
