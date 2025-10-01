@@ -45,6 +45,22 @@
                                 </div>
                             </div>
 
+                            <!-- 利潤入庫帳戶選擇 -->
+                            <div class="row g-3 mb-3">
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold">
+                                        <i class="bi bi-cash-stack me-1"></i>利潤入庫帳戶（RMB）<span class="text-danger">*</span>
+                                    </label>
+                                    <select id="profitAccount" class="form-select form-select-lg" required>
+                                        <option value="" selected>請選擇儲值利潤入庫帳戶</option>
+                                        {% for acc in rmb_accounts %}
+                                        <option value="{{ acc.id }}">{{ acc.holder.name }} - {{ acc.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text">手續費將以「純利潤庫存」形式入庫，售出時額外計算利潤絕對值，不影響原有庫存利潤率。<strong class="text-danger">必須先選擇入庫帳戶才能進行換算。</strong></div>
+                                </div>
+                            </div>
+
                             <!-- 換算按鈕 -->
                             <div class="row mb-4">
                                 <div class="col-12">
@@ -162,6 +178,9 @@
                                             <th class="px-3 text-end">
                                                 <i class="bi bi-wallet2 me-1"></i>變動後餘額
                                             </th>
+                                            <th class="px-3 text-center">
+                                                <i class="bi bi-gear me-1"></i>操作
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody></tbody>
@@ -173,19 +192,6 @@
             </div>
 
             <!-- 頁面底部說明 -->
-            <div class="row mt-4">
-                <div class="col-12">
-                    <div class="alert alert-info border-0 shadow-sm">
-                        <div class="d-flex align-items-center">
-                            <i class="bi bi-info-circle fs-4 me-3 text-info"></i>
-                            <div>
-                                <strong>資料說明</strong><br>
-                                <small class="text-muted">本頁面資料僅存於您的瀏覽器 localStorage，與系統資料庫完全獨立、不互相影響。</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -235,15 +241,22 @@
         const tbody = document.querySelector('#historyTable tbody');
         tbody.innerHTML = '';
         for (const item of state.history.slice().reverse()) {
+            // 為舊記錄生成 ID（如果沒有）
+            if (!item.id) {
+                item.id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+            }
+            
             const tr = document.createElement('tr');
+            const deleteBtn = `<button class="btn btn-sm btn-outline-danger" data-action="delete-record" data-id="${item.id}"><i class="bi bi-trash"></i></button>`;
             tr.innerHTML = `
                 <td style="white-space: nowrap;">${item.time}</td>
                 <td>${item.type}</td>
-                <td>${item.usd ?? '-'}</td>
-                <td>${item.rate ?? '-'}</td>
-                <td>${item.rmb}</td>
-                <td>${item.fee ?? '-'}</td>
-                <td>${item.after}</td>
+                <td class="text-end">${item.usd ?? '-'}</td>
+                <td class="text-end">${item.rate ?? '-'}</td>
+                <td class="text-end">${item.rmb}</td>
+                <td class="text-end">${item.fee ?? '-'}</td>
+                <td class="text-end">${item.after}</td>
+                <td class="text-center">${deleteBtn}</td>
             `;
             tbody.appendChild(tr);
         }
@@ -281,8 +294,9 @@
     function updatePreview() {
         const usd = parseNumber(document.getElementById('usdAmount').value);
         const rate = parseNumber(document.getElementById('usdToRmbRate').value);
+        const profitAccountId = document.getElementById('profitAccount')?.value;
         
-        if (isFinite(usd) && isFinite(rate) && usd > 0 && rate > 0) {
+        if (isFinite(usd) && isFinite(rate) && usd > 0 && rate > 0 && profitAccountId) {
             const rmbConverted = usd * rate;
             const fee = rmbConverted * 0.01;
             const credited = rmbConverted - fee;
@@ -298,8 +312,11 @@
     function convertAndDeposit() {
         const usd = parseNumber(document.getElementById('usdAmount').value);
         const rate = parseNumber(document.getElementById('usdToRmbRate').value);
+        const profitAccountId = document.getElementById('profitAccount')?.value;
+        
         if (!isFinite(usd) || usd <= 0) { Swal.fire('提示', '請輸入正確的美金金額', 'warning'); return; }
         if (!isFinite(rate) || rate <= 0) { Swal.fire('提示', '請輸入正確的匯率', 'warning'); return; }
+        if (!profitAccountId) { Swal.fire('提示', '請先選擇入庫帳戶', 'warning'); return; }
         
         const rmbConverted = usd * rate;
         const fee = rmbConverted * 0.01;
@@ -329,17 +346,48 @@
             if (result.isConfirmed) {
                 state.rmbBalance += credited;
                 state.totalFees += fee;
+                const recordId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+                const profitAccountIdSelected = document.getElementById('profitAccount')?.value || '';
                 state.history.push({
+                    id: recordId,
                     time: now(),
                     type: '儲值入帳',
                     usd: format(usd),
                     rate: format(rate),
                     rmb: format(rmbConverted),
                     fee: format(fee),
-                    after: format(state.rmbBalance)
+                    after: format(state.rmbBalance),
+                    // 供刪除回退使用的原始資料
+                    rmbRaw: rmbConverted,
+                    feeRaw: fee,
+                    creditedRaw: credited,
+                    profitAccountId: profitAccountIdSelected
                 });
                 save();
                 render();
+
+                // 將手續費以「純利潤庫存」形式入庫到選定的RMB帳戶
+                const profitAccountId2 = document.getElementById('profitAccount')?.value;
+                if (profitAccountId2 && isFinite(fee) && fee > 0) {
+                    const formData = new FormData();
+                    formData.append('action', 'add_movement');
+                    formData.append('account_id', profitAccountId2);
+                    formData.append('amount', fee.toString());
+                    formData.append('is_decrease', 'false');
+                    formData.append('note', '獨立儲值頁面：手續費利潤入庫（純利潤庫存）');
+                    formData.append('rmb_cost_rate', '0');
+                    formData.append('is_pure_profit', 'true'); // 標記為純利潤庫存
+
+                    fetch('/admin/update_cash_account', {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin'
+                    }).then(() => {
+                        // 後端會處理庫存與流水紀錄
+                    }).catch(() => {
+                        // 靜默失敗即可，避免打擾使用者操作
+                    });
+                }
                 
                 // 清空輸入框
                 document.getElementById('usdAmount').value = '';
@@ -379,14 +427,18 @@
         }).then(result => {
             if (result.isConfirmed) {
                 state.rmbBalance -= expense;
+                const recordId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
                 state.history.push({
+                    id: recordId,
                     time: now(),
                     type: '支出',
                     usd: '-',
                     rate: '-',
                     rmb: `-${format(expense)}`,
                     fee: '-',
-                    after: format(state.rmbBalance)
+                    after: format(state.rmbBalance),
+                    // 供刪除回退使用的原始資料
+                    expenseRaw: expense
                 });
                 save();
                 render();
@@ -426,9 +478,82 @@
     document.getElementById('btnSpend').addEventListener('click', spend);
     document.getElementById('btnReset').addEventListener('click', resetAll);
     
+    // 列表刪除（事件委派）
+    document.getElementById('historyTable').addEventListener('click', async (e) => {
+        const target = e.target.closest('[data-action="delete-record"]');
+        if (!target) return;
+        const id = target.getAttribute('data-id');
+        const record = state.history.find(r => r.id === id);
+        if (!record) return;
+        
+        let confirmTitle = '';
+        let confirmHtml = '';
+        
+        if (record.type === '儲值入帳') {
+            confirmTitle = '確認刪除此筆儲值入帳？';
+            confirmHtml = `<div class="text-start"><p><strong>入帳人民幣：</strong> ${record.rmb}</p><p><strong>手續費：</strong> ${record.fee}</p></div>`;
+        } else if (record.type === '支出') {
+            confirmTitle = '確認刪除此筆支出？';
+            confirmHtml = `<div class="text-start"><p><strong>支出金額：</strong> ${record.rmb}</p></div>`;
+        } else {
+            return; // 不支援的類型
+        }
+        
+        const confirm = await Swal.fire({
+            title: confirmTitle,
+            html: confirmHtml,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '是，刪除並回退',
+            cancelButtonText: '取消'
+        });
+        if (!confirm.isConfirmed) return;
+        
+        // 若為儲值入帳且涉及後端帳戶，先請求後端回退；若後端拒絕（例如已售出），則阻止刪除
+        if (record.type === '儲值入帳' && record.profitAccountId && record.feeRaw > 0) {
+            try {
+                const formData = new FormData();
+                formData.append('action', 'add_movement');
+                formData.append('account_id', record.profitAccountId);
+                formData.append('amount', String(record.feeRaw));
+                formData.append('is_decrease', 'true');
+                formData.append('note', '獨立儲值頁面：刪除儲值紀錄回退純利潤庫存');
+                const resp = await fetch('/admin/update_cash_account', { method: 'POST', body: formData, credentials: 'same-origin' });
+                // 有些後端回應是 redirect/html，盡量嘗試 json；若失敗就以文字解析
+                let ok = false;
+                try {
+                    const data = await resp.clone().json();
+                    ok = data?.status === 'success';
+                } catch { ok = resp.ok; }
+                if (!ok) {
+                    await Swal.fire('無法刪除', '後端回退失敗，可能該筆庫存已售出或被占用。', 'error');
+                    return; // 阻止本地刪除
+                }
+            } catch (err) {
+                await Swal.fire('無法刪除', `後端回退請求失敗：${err?.message ?? err}`, 'error');
+                return;
+            }
+        }
+
+        // 後端允許或不涉及後端 → 執行本地回退
+        if (record.type === '儲值入帳') {
+            state.rmbBalance = Math.max(0, state.rmbBalance - (record.creditedRaw || 0));
+            state.totalFees = Math.max(0, state.totalFees - (record.feeRaw || 0));
+        } else if (record.type === '支出') {
+            state.rmbBalance = state.rmbBalance + (record.expenseRaw || 0);
+        }
+
+        state.history = state.history.filter(r => r.id !== id);
+        save();
+        render();
+
+        Swal.fire('已刪除', '紀錄已刪除並回退相關數據。', 'success');
+    });
+    
     // 即時換算功能
     document.getElementById('usdAmount').addEventListener('input', updatePreview);
     document.getElementById('usdToRmbRate').addEventListener('input', updatePreview);
+    document.getElementById('profitAccount').addEventListener('change', updatePreview);
 
     load();
     render();

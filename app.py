@@ -845,6 +845,9 @@ class FIFOService:
             sales_exchange_rate = sales_record.twd_amount / sales_record.rmb_amount  # 售出匯率
             
             # 遍歷每個FIFO分配，計算每批的利潤
+            pure_profit_twd = 0  # 純利潤庫存的絕對利潤
+            regular_profit_twd = 0  # 一般庫存的利潤
+            
             for allocation in allocations:
                 # 獲取對應的庫存記錄
                 inventory = allocation.fifo_inventory
@@ -860,14 +863,22 @@ class FIFOService:
                 # 該批次的成本（TWD）
                 allocated_cost_twd = allocation.allocated_cost_twd
                 
-                # 計算該批次的利潤：(售出匯率 - 買入匯率) × 該批次的售出金額
-                batch_profit_twd = (sales_exchange_rate - purchase_exchange_rate) * allocated_rmb
+                # 檢查是否為純利潤庫存（成本為0）
+                is_pure_profit = allocated_cost_twd == 0
                 
-                # 累計利潤和成本
-                total_profit_twd += batch_profit_twd
-                total_cost_twd += allocated_cost_twd
-                
-                print(f"📊 FIFO利潤計算：批次 {inventory.id}，買入匯率 {purchase_exchange_rate}，售出匯率 {sales_exchange_rate}，分配RMB {allocated_rmb}，批次利潤 {batch_profit_twd} TWD")
+                if is_pure_profit:
+                    # 純利潤庫存：售出金額全部為利潤
+                    pure_profit_twd += sales_record.twd_amount * (allocated_rmb / sales_record.rmb_amount)
+                    print(f"💰 純利潤庫存：批次 {inventory.id}，分配RMB {allocated_rmb}，純利潤 {pure_profit_twd} TWD")
+                else:
+                    # 一般庫存：按匯率差計算利潤
+                    batch_profit_twd = (sales_exchange_rate - purchase_exchange_rate) * allocated_rmb
+                    regular_profit_twd += batch_profit_twd
+                    total_cost_twd += allocated_cost_twd
+                    print(f"📊 一般庫存：批次 {inventory.id}，買入匯率 {purchase_exchange_rate}，售出匯率 {sales_exchange_rate}，分配RMB {allocated_rmb}，批次利潤 {batch_profit_twd} TWD")
+            
+            # 總利潤 = 一般庫存利潤 + 純利潤庫存利潤
+            total_profit_twd = regular_profit_twd + pure_profit_twd
             
             # 計算利潤率
             profit_margin = (total_profit_twd / sales_record.twd_amount * 100) if sales_record.twd_amount > 0 else 0
@@ -877,6 +888,9 @@ class FIFOService:
                 'total_cost_twd': total_cost_twd,
                 'profit_twd': total_profit_twd,
                 'profit_margin': profit_margin,
+                'pure_profit_twd': pure_profit_twd,  # 純利潤庫存產生的絕對利潤
+                'regular_profit_twd': regular_profit_twd,  # 一般庫存產生的利潤
+                'regular_profit_margin': (regular_profit_twd / (sales_record.twd_amount - pure_profit_twd) * 100) if (sales_record.twd_amount - pure_profit_twd) > 0 else 0,  # 一般庫存的利潤率
                 'allocations': [
                     {
                         'inventory_id': allocation.fifo_inventory_id,
@@ -884,7 +898,8 @@ class FIFOService:
                         'allocated_cost': allocation.allocated_cost_twd,
                         'purchase_date': allocation.fifo_inventory.purchase_date.strftime('%Y-%m-%d'),
                         'purchase_exchange_rate': allocation.fifo_inventory.exchange_rate,
-                        'batch_profit': (sales_exchange_rate - allocation.fifo_inventory.exchange_rate) * allocation.allocated_rmb
+                        'is_pure_profit': allocation.allocated_cost_twd == 0,
+                        'batch_profit': (sales_record.twd_amount * (allocation.allocated_rmb / sales_record.rmb_amount)) if allocation.allocated_cost_twd == 0 else (sales_exchange_rate - allocation.fifo_inventory.exchange_rate) * allocation.allocated_rmb
                     }
                     for allocation in allocations
                 ]
@@ -3354,6 +3369,9 @@ def admin_update_cash_account():
                             cost_rate = float(rmb_cost_rate)
                             twd_cost = amount * cost_rate
                             
+                            # 檢查是否為純利潤庫存
+                            is_pure_profit = request.form.get("is_pure_profit") == "true"
+                            
                             # 創建虛擬買入記錄（外部存入）
                             virtual_purchase = PurchaseRecord(
                                 channel_id=None,  # 沒有渠道
@@ -3370,7 +3388,10 @@ def admin_update_cash_account():
                             # 創建對應的FIFO庫存記錄
                             FIFOService.create_inventory_from_purchase(virtual_purchase)
                             
-                            description += f" | 成本匯率: {cost_rate:.4f}"
+                            if is_pure_profit:
+                                description += f" | 純利潤庫存（成本匯率: {cost_rate:.4f}）"
+                            else:
+                                description += f" | 成本匯率: {cost_rate:.4f}"
                             
                         except (ValueError, TypeError) as e:
                             flash(f"成本匯率格式錯誤: {e}", "danger")
@@ -6450,7 +6471,17 @@ def admin_data_recovery():
 @app.route("/independent-balance")
 @login_required
 def independent_balance():
-    return render_template("independent_balance.html")
+    try:
+        rmb_accounts = (
+            db.session.execute(
+                db.select(CashAccount).filter_by(currency="RMB", is_active=True).order_by(CashAccount.holder_id)
+            )
+            .scalars()
+            .all()
+        )
+    except Exception:
+        rmb_accounts = []
+    return render_template("independent_balance.html", rmb_accounts=rmb_accounts)
 
 # ===================================================================
 # 9. 啟動器
