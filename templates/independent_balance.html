@@ -13,9 +13,6 @@
                             <h2 class="mb-1 text-primary"><i class="bi bi-wallet2 me-2"></i>儲值客戶與餘額</h2>
                             <p class="text-muted mb-0">獨立儲值管理系統</p>
                         </div>
-                        <button class="btn btn-outline-danger" id="btnReset">
-                            <i class="bi bi-arrow-counterclockwise me-1"></i>重置資料
-                        </button>
                     </div>
                 </div>
             </div>
@@ -506,34 +503,9 @@
         });
     }
 
-    function resetAll() {
-        Swal.fire({
-            title: '確認重置？',
-            text: '將清除本頁所有本地資料（僅影響瀏覽器 localStorage）',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: '是，重置',
-            cancelButtonText: '取消'
-        }).then(res => {
-            if (res.isConfirmed) {
-                state.rmbBalance = 0;
-                state.totalFees = 0;
-                state.history = [];
-                save();
-                render();
-                document.getElementById('rmbConverted').textContent = '0.00';
-                document.getElementById('feeDeducted').textContent = '0.00';
-                document.getElementById('usdAmount').value = '';
-                document.getElementById('usdToRmbRate').value = '';
-                document.getElementById('expenseAmount').value = '';
-                Swal.fire('完成', '已清空本地資料', 'success');
-            }
-        });
-    }
 
     document.getElementById('btnConvert').addEventListener('click', convertAndDeposit);
     document.getElementById('btnSpend').addEventListener('click', spend);
-    document.getElementById('btnReset').addEventListener('click', resetAll);
     
     // 列表刪除（事件委派）
     document.getElementById('historyTable').addEventListener('click', async (e) => {
