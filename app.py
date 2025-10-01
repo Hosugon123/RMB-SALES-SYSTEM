@@ -291,8 +291,8 @@ class SalesRecord(db.Model):
         db.Integer, db.ForeignKey("user.id"), nullable=False
     )  # <---【修正】統一外鍵目標
     customer = db.relationship("Customer", back_populates="sales")
+    rmb_account = db.relationship("CashAccount", foreign_keys=[rmb_account_id], backref="sales_from_account")
     operator = db.relationship("User", backref="sales_records")
-    rmb_account = db.relationship("CashAccount", foreign_keys=[rmb_account_id])
     transactions = db.relationship(
         "Transaction", back_populates="sales_record", cascade="all, delete-orphan"
     )
@@ -440,11 +440,11 @@ class FIFOService:
                 # 更新庫存剩餘數量
                 inventory.remaining_rmb -= allocate_from_this_batch
                 
-                # 關鍵修正：從實際的庫存來源帳戶扣款RMB
-                if inventory.purchase_record.deposit_account:
-                    deposit_account = inventory.purchase_record.deposit_account
-                    deposit_account.balance -= allocate_from_this_batch
-                    print(f"🔄 從庫存來源帳戶 {deposit_account.name} 扣款: -{allocate_from_this_batch} RMB")
+                # 關鍵修正：從銷售記錄指定的出貨帳戶扣款RMB
+                if sales_record.rmb_account:
+                    sales_account = sales_record.rmb_account
+                    sales_account.balance -= allocate_from_this_batch
+                    print(f"🔄 從出貨帳戶 {sales_account.name} 扣款: -{allocate_from_this_batch} RMB")
                 
                 # 累計成本
                 total_cost += allocation.allocated_cost_twd
