@@ -214,7 +214,36 @@
             const saved = JSON.parse(raw);
             if (typeof saved.rmbBalance === 'number') state.rmbBalance = saved.rmbBalance;
             if (typeof saved.totalFees === 'number') state.totalFees = saved.totalFees;
-            if (Array.isArray(saved.history)) state.history = saved.history;
+            if (Array.isArray(saved.history)) {
+                state.history = saved.history;
+                // 為舊記錄添加缺失的欄位
+                state.history.forEach(item => {
+                    if (item.type === '儲值入帳') {
+                        if (!item.creditedRaw && item.rmb) {
+                            // 從顯示的 rmb 金額推算 creditedRaw（扣除手續費後的金額）
+                            const rmbAmount = parseNumber(item.rmb);
+                            if (isFinite(rmbAmount)) {
+                                item.creditedRaw = rmbAmount;
+                            }
+                        }
+                        if (!item.feeRaw && item.fee) {
+                            // 從顯示的手續費推算 feeRaw
+                            const feeAmount = parseNumber(item.fee);
+                            if (isFinite(feeAmount)) {
+                                item.feeRaw = feeAmount;
+                            }
+                        }
+                    } else if (item.type === '支出') {
+                        if (!item.expenseRaw && item.rmb) {
+                            // 從顯示的 rmb 金額推算 expenseRaw（支出金額）
+                            const expenseAmount = Math.abs(parseNumber(item.rmb));
+                            if (isFinite(expenseAmount)) {
+                                item.expenseRaw = expenseAmount;
+                            }
+                        }
+                    }
+                });
+            }
         } catch (e) { console.warn('load failed', e); }
     }
 
@@ -222,6 +251,26 @@
         try {
             localStorage.setItem(KEY, JSON.stringify(state));
         } catch (e) { console.warn('save failed', e); }
+    }
+
+    function recalculateStats() {
+        // 重新計算統計數據，確保一致性
+        let totalBalance = 0;
+        let totalFees = 0;
+        
+        for (const item of state.history) {
+            if (item.type === '儲值入帳') {
+                totalBalance += (item.creditedRaw || 0);
+                totalFees += (item.feeRaw || 0);
+            } else if (item.type === '支出') {
+                totalBalance -= (item.expenseRaw || 0);
+            }
+        }
+        
+        state.rmbBalance = Math.max(0, totalBalance);
+        state.totalFees = Math.max(0, totalFees);
+        
+        console.log('重新計算統計數據:', { rmbBalance: state.rmbBalance, totalFees: state.totalFees });
     }
 
     function parseNumber(str) {
@@ -361,7 +410,9 @@
                     rmbRaw: rmbConverted,
                     feeRaw: fee,
                     creditedRaw: credited,
-                    profitAccountId: profitAccountIdSelected
+                    profitAccountId: profitAccountIdSelected,
+                    purchaseRecordId: null,
+                    inventoryId: null
                 });
                 save();
                 render();
@@ -381,12 +432,18 @@
                     fetch('/admin/update_cash_account', {
                         method: 'POST',
                         body: formData,
-                        credentials: 'same-origin'
-                    }).then(() => {
-                        // 後端會處理庫存與流水紀錄
-                    }).catch(() => {
-                        // 靜默失敗即可，避免打擾使用者操作
-                    });
+                        credentials: 'same-origin',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    }).then(async (resp) => {
+                        let data = null;
+                        try { data = await resp.json(); } catch(_) {}
+                        const rec = state.history.find(r => r.id === recordId);
+                        if (data && data.status === 'success' && rec) {
+                            rec.purchaseRecordId = data.purchase_record_id || null;
+                            rec.inventoryId = data.inventory_id || null;
+                            save();
+                        }
+                    }).catch(() => {})
                 }
                 
                 // 清空輸入框
@@ -511,39 +568,91 @@
         
         // 若為儲值入帳且涉及後端帳戶，先請求後端回退；若後端拒絕（例如已售出），則阻止刪除
         if (record.type === '儲值入帳' && record.profitAccountId && record.feeRaw > 0) {
+            console.log('準備回退後端手續費:', { 
+                profitAccountId: record.profitAccountId, 
+                feeRaw: record.feeRaw, 
+                purchaseRecordId: record.purchaseRecordId 
+            });
+            
             try {
-                const formData = new FormData();
-                formData.append('action', 'add_movement');
-                formData.append('account_id', record.profitAccountId);
-                formData.append('amount', String(record.feeRaw));
-                formData.append('is_decrease', 'true');
-                formData.append('note', '獨立儲值頁面：刪除儲值紀錄回退純利潤庫存');
-                const resp = await fetch('/admin/update_cash_account', { method: 'POST', body: formData, credentials: 'same-origin' });
-                // 有些後端回應是 redirect/html，盡量嘗試 json；若失敗就以文字解析
-                let ok = false;
-                try {
-                    const data = await resp.clone().json();
-                    ok = data?.status === 'success';
-                } catch { ok = resp.ok; }
-                if (!ok) {
-                    await Swal.fire('無法刪除', '後端回退失敗，可能該筆庫存已售出或被占用。', 'error');
-                    return; // 阻止本地刪除
+                // 若有後端產生的對應入庫批次，優先走專用回滾API（可阻擋已分配/已售出）
+                if (record.purchaseRecordId) {
+                    console.log('使用專用回滾API:', record.purchaseRecordId);
+                    const fd = new FormData();
+                    fd.append('action', 'reverse_pure_profit');
+                    fd.append('purchase_record_id', String(record.purchaseRecordId));
+                    const resp = await fetch('/admin/update_cash_account', { method: 'POST', body: fd, credentials: 'same-origin', headers:{'X-Requested-With':'XMLHttpRequest'} });
+                    const data = await resp.json();
+                    console.log('專用回滾API回應:', data);
+                    if (data.status !== 'success') {
+                        await Swal.fire('無法刪除', data.message || '純利潤庫存已售出或被占用，無法回滾。', 'error');
+                        return;
+                    }
+                } else {
+                    // 舊資料無ID時，退而求其次：以提款方式回退帳戶與庫存
+                    console.log('使用提款方式回退:', { accountId: record.profitAccountId, amount: record.feeRaw });
+                    const formData = new FormData();
+                    formData.append('action', 'add_movement');
+                    formData.append('account_id', record.profitAccountId);
+                    formData.append('amount', String(record.feeRaw));
+                    formData.append('is_decrease', 'true');
+                    formData.append('note', '獨立儲值頁面：刪除儲值紀錄回退純利潤庫存');
+                    const resp = await fetch('/admin/update_cash_account', { method: 'POST', body: formData, credentials: 'same-origin' });
+                    console.log('提款API回應狀態:', resp.status, resp.statusText);
+                    // 有些後端回應是 redirect/html，盡量嘗試 json；若失敗就以文字解析
+                    let ok = false;
+                    try {
+                        const data = await resp.clone().json();
+                        console.log('提款API JSON回應:', data);
+                        ok = data?.status === 'success';
+                    } catch { 
+                        console.log('提款API無法解析JSON，使用狀態碼判斷');
+                        ok = resp.ok; 
+                    }
+                    if (!ok) {
+                        await Swal.fire('無法刪除', '後端回退失敗，可能該筆庫存已售出或被占用。', 'error');
+                        return; // 阻止本地刪除
+                    }
                 }
             } catch (err) {
+                console.error('後端回退請求失敗:', err);
                 await Swal.fire('無法刪除', `後端回退請求失敗：${err?.message ?? err}`, 'error');
                 return;
             }
+        } else {
+            console.log('跳過後端回退:', { 
+                type: record.type, 
+                hasProfitAccountId: !!record.profitAccountId, 
+                feeRaw: record.feeRaw 
+            });
         }
 
         // 後端允許或不涉及後端 → 執行本地回退
         if (record.type === '儲值入帳') {
-            state.rmbBalance = Math.max(0, state.rmbBalance - (record.creditedRaw || 0));
-            state.totalFees = Math.max(0, state.totalFees - (record.feeRaw || 0));
+            const creditedAmount = record.creditedRaw || 0;
+            const feeAmount = record.feeRaw || 0;
+            
+            console.log('刪除儲值入帳:', { creditedAmount, feeAmount, currentBalance: state.rmbBalance, currentFees: state.totalFees });
+            
+            state.rmbBalance = Math.max(0, state.rmbBalance - creditedAmount);
+            state.totalFees = Math.max(0, state.totalFees - feeAmount);
+            
+            console.log('刪除後餘額:', { newBalance: state.rmbBalance, newFees: state.totalFees });
         } else if (record.type === '支出') {
-            state.rmbBalance = state.rmbBalance + (record.expenseRaw || 0);
+            const expenseAmount = record.expenseRaw || 0;
+            
+            console.log('刪除支出:', { expenseAmount, currentBalance: state.rmbBalance });
+            
+            state.rmbBalance = state.rmbBalance + expenseAmount;
+            
+            console.log('刪除後餘額:', { newBalance: state.rmbBalance });
         }
 
         state.history = state.history.filter(r => r.id !== id);
+        
+        // 重新計算統計數據確保一致性
+        recalculateStats();
+        
         save();
         render();
 
@@ -556,6 +665,7 @@
     document.getElementById('profitAccount').addEventListener('change', updatePreview);
 
     load();
+    recalculateStats(); // 載入後重新計算統計數據
     render();
     // 在窗口尺寸變更時也同步高度
     window.addEventListener('resize', () => {

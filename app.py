@@ -496,14 +496,25 @@ class FIFOService:
                 # 計算已出帳數量（原始數量 - 剩餘數量）
                 sold_rmb = inv.rmb_amount - inv.remaining_rmb
                 
-                # 判斷是否為存款記錄（無渠道且無付款帳戶的虛擬買入記錄）
-                is_deposit_record = (inv.purchase_record.channel is None and 
-                                   inv.purchase_record.payment_account is None)
+                # 判斷是否為存款/手續費記錄（無渠道且無付款帳戶的虛擬買入記錄）
+                is_deposit_record = (
+                    inv.purchase_record.channel is None and
+                    inv.purchase_record.payment_account is None
+                )
+                # 純利潤庫存（手續費）檢測：成本為0 或 描述帶有關鍵字
+                try:
+                    desc = getattr(inv.purchase_record, 'description', '') or ''
+                except Exception:
+                    desc = ''
+                is_pure_profit = (inv.purchase_record.twd_cost == 0) or ('純利潤' in desc or '手續費' in desc)
+                channel_label = '手續費' if (is_deposit_record and is_pure_profit) else (
+                    '存款' if is_deposit_record else (inv.purchase_record.channel.name if inv.purchase_record.channel else 'N/A')
+                )
                 
                 inventory_summary.append({
                     'id': inv.id,
                     'purchase_date': inv.purchase_date.strftime('%Y-%m-%d'),
-                    'channel': '存款' if is_deposit_record else (inv.purchase_record.channel.name if inv.purchase_record.channel else 'N/A'),
+                    'channel': channel_label,
                     'payment_account': inv.purchase_record.payment_account.name if inv.purchase_record.payment_account else 'N/A',
                     'deposit_account': inv.purchase_record.deposit_account.name if inv.purchase_record.deposit_account else 'N/A',
                     'original_rmb': inv.rmb_amount,
@@ -639,6 +650,8 @@ class FIFOService:
     def reverse_purchase_inventory(purchase_record_id):
         """完全回滾買入記錄（包括FIFO庫存和買入記錄本身）"""
         try:
+            print(f"🔍 開始回滾買入記錄 {purchase_record_id}")
+            
             # 查找該買入記錄
             purchase_record = (
                 db.session.execute(
@@ -653,6 +666,8 @@ class FIFOService:
                 print(f"⚠️  找不到買入記錄 {purchase_record_id}")
                 return False
             
+            print(f"✅ 找到買入記錄: channel={purchase_record.channel_id}, payment_account={purchase_record.payment_account_id}, twd_cost={purchase_record.twd_cost}")
+            
             # 查找該買入記錄的FIFO庫存
             inventory = (
                 db.session.execute(
@@ -662,6 +677,8 @@ class FIFOService:
                 .scalars()
                 .first()
             )
+            
+            print(f"🔍 查找FIFO庫存: inventory_id={inventory.id if inventory else None}")
             
             # 檢查是否有銷售分配
             if inventory:
@@ -674,13 +691,48 @@ class FIFOService:
                     .all()
                 )
                 
+                print(f"🔍 檢查銷售分配: 找到 {len(allocations)} 個分配記錄")
+                
                 if allocations:
                     print(f"⚠️  庫存批次 {inventory.id} 已有銷售分配，無法直接回滾")
+                    for alloc in allocations:
+                        print(f"   分配記錄: {alloc.id}, 銷售記錄: {alloc.sales_record_id}, 分配RMB: {alloc.allocated_rmb}")
                     return False
                 
                 # 刪除庫存記錄
                 db.session.delete(inventory)
                 print(f"🔄 刪除FIFO庫存記錄 {inventory.id}")
+            else:
+                print(f"⚠️  找不到對應的FIFO庫存記錄，purchase_record_id: {purchase_record_id}")
+                # 即使沒有庫存記錄，我們仍然可以繼續處理買入記錄的回滾
+            
+            # 如果是純利潤庫存（手續費），需要從帳戶餘額中扣除
+            if (purchase_record.channel is None and 
+                purchase_record.payment_account is None and 
+                purchase_record.twd_cost == 0):
+                
+                # 從入庫帳戶中扣除手續費
+                if purchase_record.deposit_account:
+                    deposit_account = purchase_record.deposit_account
+                    deposit_account.balance -= purchase_record.rmb_amount
+                    print(f"🔄 從帳戶 {deposit_account.name} 扣除手續費: -{purchase_record.rmb_amount} RMB")
+                    
+                    # 創建提款流水記錄（使用系統用戶ID，避免current_user問題）
+                    try:
+                        # 嘗試獲取當前用戶ID，如果失敗則使用默認值
+                        operator_id = current_user.id if current_user and hasattr(current_user, 'id') else 1
+                    except:
+                        operator_id = 1  # 默認系統用戶ID
+                    
+                    entry = LedgerEntry(
+                        entry_type="WITHDRAW",
+                        account_id=deposit_account.id,
+                        amount=purchase_record.rmb_amount,
+                        description="獨立儲值頁面：刪除儲值紀錄回退純利潤庫存",
+                        operator_id=operator_id,
+                    )
+                    db.session.add(entry)
+                    print(f"🔄 創建提款流水記錄: -{purchase_record.rmb_amount} RMB")
             
             # 刪除買入記錄本身
             db.session.delete(purchase_record)
@@ -693,6 +745,8 @@ class FIFOService:
         except Exception as e:
             db.session.rollback()
             print(f"❌ 回滾買入記錄失敗: {e}")
+            import traceback
+            print(f"❌ 詳細錯誤信息: {traceback.format_exc()}")
             return False
     
     @staticmethod
@@ -3382,11 +3436,18 @@ def admin_update_cash_account():
                                 twd_cost=twd_cost,
                                 operator_id=current_user.id
                             )
+                            # 標記描述，便於前端與清單顯示
+                            try:
+                                virtual_purchase.description = (
+                                    f"手續費入庫（純利潤庫存）" if is_pure_profit else f"外部存款入庫"
+                                )
+                            except Exception:
+                                pass
                             db.session.add(virtual_purchase)
                             db.session.flush()  # 獲取 ID
                             
                             # 創建對應的FIFO庫存記錄
-                            FIFOService.create_inventory_from_purchase(virtual_purchase)
+                            created_inventory = FIFOService.create_inventory_from_purchase(virtual_purchase)
                             
                             if is_pure_profit:
                                 description += f" | 純利潤庫存（成本匯率: {cost_rate:.4f}）"
@@ -3428,8 +3489,87 @@ def admin_update_cash_account():
                         success_msg += f'（成本匯率: {rmb_cost_rate}）'
                     success_msg += '，並已記錄流水和庫存。'
                     
-                    flash(success_msg, "success")
-                    return redirect(url_for('cash_management'))
+                    # 如果是 AJAX 來源（例如純利潤入庫），回傳 JSON 給前端以保存 inventory/purchase id
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        try:
+                            inv = db.session.execute(
+                                db.select(FIFOInventory).filter_by(purchase_record_id=virtual_purchase.id)
+                            ).scalars().first()
+                            return jsonify({
+                                'status': 'success',
+                                'message': success_msg,
+                                'purchase_record_id': virtual_purchase.id,
+                                'inventory_id': inv.id if inv else None
+                            })
+                        except Exception as e:
+                            return jsonify({'status': 'success', 'message': success_msg})
+                    else:
+                        flash(success_msg, "success")
+                        return redirect(url_for('cash_management'))
+
+        elif action == "reverse_pure_profit":
+            # 回滾純利潤庫存（未售出才可回滾）
+            try:
+                purchase_record_id = int(request.form.get('purchase_record_id', 0))
+            except Exception:
+                return jsonify({'status': 'error', 'message': 'purchase_record_id 無效'}), 400
+            if not purchase_record_id:
+                return jsonify({'status': 'error', 'message': '缺少 purchase_record_id'}), 400
+
+            try:
+                print(f"🔍 開始回滾純利潤庫存，purchase_record_id: {purchase_record_id}")
+                
+                # 先檢查買入記錄是否存在
+                purchase_record = db.session.get(PurchaseRecord, purchase_record_id)
+                if not purchase_record:
+                    return jsonify({'status': 'error', 'message': f'找不到買入記錄 {purchase_record_id}'}), 404
+                
+                print(f"✅ 找到買入記錄: channel={purchase_record.channel_id}, payment_account={purchase_record.payment_account_id}, twd_cost={purchase_record.twd_cost}")
+                
+                # 檢查是否為純利潤庫存
+                is_pure_profit = (purchase_record.channel is None and 
+                                purchase_record.payment_account is None and 
+                                purchase_record.twd_cost == 0)
+                
+                if not is_pure_profit:
+                    return jsonify({'status': 'error', 'message': '該記錄不是純利潤庫存，無法使用此API回滾'}), 400
+                
+                # 檢查FIFO庫存是否存在
+                inventory = (
+                    db.session.execute(
+                        db.select(FIFOInventory)
+                        .filter(FIFOInventory.purchase_record_id == purchase_record_id)
+                    )
+                    .scalars()
+                    .first()
+                )
+                
+                if inventory:
+                    # 檢查是否有銷售分配
+                    allocations = (
+                        db.session.execute(
+                            db.select(FIFOSalesAllocation)
+                            .filter(FIFOSalesAllocation.fifo_inventory_id == inventory.id)
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    
+                    print(f"🔍 檢查銷售分配: 找到 {len(allocations)} 個分配記錄")
+                    
+                    if allocations:
+                        return jsonify({'status': 'error', 'message': f'該批庫存已有 {len(allocations)} 個銷售分配，無法回滾'}), 400
+                
+                # 執行回滾
+                ok = FIFOService.reverse_purchase_inventory(purchase_record_id)
+                if ok:
+                    return jsonify({'status': 'success', 'message': '純利潤庫存已回滾'}), 200
+                else:
+                    return jsonify({'status': 'error', 'message': '回滾失敗，請檢查日誌'}), 500
+                    
+            except Exception as e:
+                print(f"❌ 回滾純利潤庫存失敗: {e}")
+                return jsonify({'status': 'error', 'message': f'回滾失敗: {e}'}), 500
 
         elif action == "transfer_funds":
             from_id = int(request.form.get("from_account_id"))
