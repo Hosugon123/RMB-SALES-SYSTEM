@@ -1811,6 +1811,7 @@ def cash_management_operator():
                         "name": acc.name,
                         "currency": acc.currency,
                         "balance": acc.balance,
+                        "is_active": acc.is_active,
                     }
                 )
                 if acc.currency == "TWD":
@@ -1972,6 +1973,7 @@ def cash_management_operator():
                     "name": acc.name,
                     "currency": acc.currency,
                     "balance": acc.balance,  # 使用實際資料庫餘額
+                    "is_active": acc.is_active,
                 })
                 
                 # 累計持有人總餘額
@@ -2086,6 +2088,7 @@ def cash_management():
                         "name": acc.name,
                         "currency": acc.currency,
                         "balance": acc.balance,
+                        "is_active": acc.is_active,
                     }
                 )
                 if acc.currency == "TWD":
@@ -2371,6 +2374,7 @@ def cash_management():
                     "name": acc.name,
                     "currency": acc.currency,
                     "balance": acc.balance,  # 使用實際資料庫餘額
+                    "is_active": acc.is_active,
                 })
                 
                 # 累計持有人總餘額
