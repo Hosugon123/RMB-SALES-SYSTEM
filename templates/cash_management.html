@@ -965,13 +965,13 @@ document.addEventListener('DOMContentLoaded', function () {
         
         console.log('隱藏帳戶ID欄位創建完成');
         
-        // 填充收款帳戶下拉選單 - 只顯示TWD帳戶
+        // 填充收款帳戶下拉選單 - 只顯示啟用的TWD帳戶
         const twdAccounts = [];
         if (accountsByHolder && Object.keys(accountsByHolder).length > 0) {
             Object.keys(accountsByHolder).forEach(holderId => {
                 const holderData = accountsByHolder[holderId];
                 if (holderData && holderData.accounts && holderData.accounts.length > 0) {
-                    const twdAccountsInGroup = holderData.accounts.filter(acc => acc.currency === 'TWD');
+                    const twdAccountsInGroup = holderData.accounts.filter(acc => acc.currency === 'TWD' && acc.is_active);
                     if (twdAccountsInGroup.length > 0) {
                         twdAccounts.push({
                             holder_name: holderData.holder_name,

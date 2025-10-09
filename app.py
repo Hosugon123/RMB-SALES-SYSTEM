@@ -706,12 +706,11 @@ class FIFOService:
                 print(f"⚠️  找不到對應的FIFO庫存記錄，purchase_record_id: {purchase_record_id}")
                 # 即使沒有庫存記錄，我們仍然可以繼續處理買入記錄的回滾
             
-            # 如果是純利潤庫存（手續費），需要從帳戶餘額中扣除
+            # 回滾帳戶餘額：根據買入記錄類型進行不同的處理
             if (purchase_record.channel is None and 
                 purchase_record.payment_account is None and 
                 purchase_record.twd_cost == 0):
-                
-                # 從入庫帳戶中扣除手續費
+                # 純利潤庫存（手續費）：從入庫帳戶中扣除
                 if purchase_record.deposit_account:
                     deposit_account = purchase_record.deposit_account
                     deposit_account.balance -= purchase_record.rmb_amount
@@ -733,6 +732,19 @@ class FIFOService:
                     )
                     db.session.add(entry)
                     print(f"🔄 創建提款流水記錄: -{purchase_record.rmb_amount} RMB")
+            else:
+                # 正常買入記錄：回滾帳戶餘額
+                # RMB帳戶刪除款項（減少RMB餘額）
+                if purchase_record.deposit_account:
+                    deposit_account = purchase_record.deposit_account
+                    deposit_account.balance -= purchase_record.rmb_amount
+                    print(f"🔄 回滾RMB帳戶 {deposit_account.name}: -{purchase_record.rmb_amount} RMB")
+                
+                # 台幣帳戶回補款項（增加台幣餘額）
+                if purchase_record.payment_account:
+                    payment_account = purchase_record.payment_account
+                    payment_account.balance += purchase_record.twd_cost
+                    print(f"🔄 回補台幣帳戶 {payment_account.name}: +{purchase_record.twd_cost} TWD")
             
             # 刪除買入記錄本身
             db.session.delete(purchase_record)
@@ -4193,8 +4205,12 @@ def api_settlement():
 
         if not customer:
             return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 400
-        if not account or account.currency != "TWD":
-            return jsonify({"status": "error", "message": "無效的台幣收款帳戶。"}), 400
+        if not account:
+            return jsonify({"status": "error", "message": f"找不到帳戶 ID {account_id}，該帳戶可能已被刪除。"}), 400
+        if not account.is_active:
+            return jsonify({"status": "error", "message": f"帳戶「{account.name}」已停用，無法使用。"}), 400
+        if account.currency != "TWD":
+            return jsonify({"status": "error", "message": f"帳戶「{account.name}」的幣種是 {account.currency}，不是台幣帳戶。"}), 400
         if amount > customer.total_receivables_twd:
             return jsonify({
                 "status": "error", 
