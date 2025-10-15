@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>測試利潤調試</title>
+</head>
+<body>
+    <h1>測試利潤調試代碼</h1>
+    <button onclick="testProfitDebug()">測試調試代碼</button>
+    <div id="output"></div>
+
+    <script>
+        function testProfitDebug() {
+            // 模擬利潤提款記錄
+            const mockRecords = [
+                {
+                    id: 1,
+                    type: 'PROFIT_WITHDRAW',
+                    entry_type: 'PROFIT_WITHDRAW',
+                    description: '利潤提款',
+                    profit_before: 1000.50,
+                    profit_after: 950.50,
+                    profit_change: -50.0,
+                    profit: -50.0
+                },
+                {
+                    id: 2,
+                    type: '利潤扣除',
+                    entry_type: 'PROFIT_WITHDRAW',
+                    description: '利潤提款',
+                    profit_before: null,
+                    profit_after: null,
+                    profit_change: null,
+                    profit: -20.0
+                }
+            ];
+
+            console.log('🧪 開始測試利潤調試代碼...');
+            
+            mockRecords.forEach(function(m, index) {
+                console.log(`\n--- 測試記錄 ${index + 1} ---`);
+                
+                // 解析利潤詳細信息
+                const profitBefore = parseFloat(m.profit_before ?? m.profitBefore) || null;
+                const profitAfter = parseFloat(m.profit_after ?? m.profitAfter) || null;
+                const profitChange = parseFloat(m.profit_change ?? m.profitChange) || null;
+                
+                // 判斷是否為利潤提款
+                const rawType = (m.entry_type ?? m.type ?? '').toString();
+                const isProfitWithdraw = rawType === 'PROFIT_WITHDRAW' || rawType === '利潤扣除' || (m.description ?? '').includes('利潤提款');
+                
+                console.log('原始記錄:', m);
+                console.log('解析結果:', { profitBefore, profitAfter, profitChange });
+                console.log('是否為利潤提款:', isProfitWithdraw);
+                
+                if (isProfitWithdraw) {
+                    console.log('🔍 利潤提款記錄調試:', {
+                        id: m.id,
+                        type: m.type,
+                        entry_type: m.entry_type,
+                        description: m.description,
+                        profit_before: m.profit_before,
+                        profit_after: m.profit_after,
+                        profit_change: m.profit_change,
+                        profit: m.profit,
+                        parsed_profitBefore: profitBefore,
+                        parsed_profitAfter: profitAfter,
+                        parsed_profitChange: profitChange
+                    });
+                } else if ((m.type + '').includes('WITHDRAW') || (m.description ?? '').includes('提款')) {
+                    console.log('ℹ️ 疑似提款但未識別為利潤提款，原始資料 m =', m);
+                }
+                
+                // 測試渲染邏輯
+                let profitDetailHtml = '-';
+                
+                if (isProfitWithdraw) {
+                    console.log('🎨 利潤變動詳情渲染調試:', {
+                        id: m.id,
+                        profitBefore: profitBefore,
+                        profitAfter: profitAfter,
+                        profitChange: profitChange,
+                        profit: m.profit,
+                        willShowDetailed: (profitBefore !== null && profitAfter !== null && profitChange !== null),
+                        willShowSimple: (m.profit !== 0)
+                    });
+                }
+                
+                if (profitBefore !== null && profitAfter !== null && profitChange !== null) {
+                    const profitBeforeDisplay = profitBefore.toLocaleString('en-US', {minimumFractionDigits: 2});
+                    const profitAfterDisplay = profitAfter.toLocaleString('en-US', {minimumFractionDigits: 2});
+                    const profitChangeDisplay = (profitChange > 0 ? '+' : '') + profitChange.toLocaleString('en-US', {minimumFractionDigits: 2});
+                    
+                    console.log('✅ 渲染詳細利潤信息:', {
+                        id: m.id,
+                        before: profitBeforeDisplay,
+                        after: profitAfterDisplay,
+                        change: profitChangeDisplay
+                    });
+                    
+                    const changeColorClass = profitChange > 0 ? 'text-success' : 'text-danger';
+                    const changeSymbol = profitChange > 0 ? '+' : '';
+                    
+                    profitDetailHtml = '<div class="small running-balance">' +
+                        '<div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: ' + profitBeforeDisplay + '</div>' +
+                        '<div class="text-info border-bottom border-info pb-1 mb-1">後: ' + profitAfterDisplay + '</div>' +
+                        '<div class="' + changeColorClass + ' fw-bold">變: ' + changeSymbol + profitChangeDisplay + '</div>' +
+                        '</div>';
+                } else if (m.profit !== 0) {
+                    console.log('⚠️ 使用簡化顯示（缺少詳細數據）');
+                    profitDetailHtml = '<div class="small running-balance">' +
+                        '<div class="text-muted">前: 計算中...</div>' +
+                        '<div class="text-muted">後: 計算中...</div>' +
+                        '<div class="text-danger fw-bold">變: ' + m.profit + '</div>' +
+                        '</div>';
+                }
+                
+                console.log('最終 HTML:', profitDetailHtml);
+            });
+            
+            console.log('\n🧪 測試完成！');
+        }
+    </script>
+</body>
+</html>

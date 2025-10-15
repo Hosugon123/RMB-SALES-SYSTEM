@@ -146,7 +146,10 @@
                                 <span class="fw-bold text-danger">NT$ {{ "{:,.2f}".format(customer.total_receivables_twd) }}</span>
                             </td>
                             <td class="text-center">
-                                <button class="btn btn-success btn-sm" onclick="openSettlementModal('{{ customer.id }}', '{{ customer.name }}', {{ customer.total_receivables_twd }})">
+                                <button class="btn btn-success btn-sm settlement-btn" 
+                                        data-customer-id="{{ customer.id }}" 
+                                        data-customer-name="{{ customer.name }}" 
+                                        data-amount="{{ customer.total_receivables_twd }}">
                                     <i class="bi bi-check-circle me-1"></i>銷帳
                                 </button>
                             </td>
@@ -198,7 +201,11 @@
                                 <span class="fw-bold text-warning">NT$ {{ "{:,.2f}".format(pending.amount_twd) }}</span>
                             </td>
                             <td class="text-center">
-                                <button class="btn btn-warning btn-sm" onclick="openPendingPaymentModal('{{ pending.id }}', '{{ pending.purchase_record_id }}', {{ pending.amount_twd }}, '{{ pending.purchase_record.channel.name if pending.purchase_record.channel else "N/A" }}')">
+                                <button class="btn btn-warning btn-sm payment-btn" 
+                                        data-pending-id="{{ pending.id }}" 
+                                        data-purchase-record-id="{{ pending.purchase_record_id }}" 
+                                        data-amount="{{ pending.amount_twd }}" 
+                                        data-channel="{{ pending.purchase_record.channel.name if pending.purchase_record.channel else 'N/A' }}">
                                     <i class="bi bi-credit-card me-1"></i>付款
                                 </button>
                             </td>
@@ -1876,12 +1883,36 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
     
+    // 添加按鈕事件監聽器
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.settlement-btn')) {
+            const btn = e.target.closest('.settlement-btn');
+            const customerId = btn.dataset.customerId;
+            const customerName = btn.dataset.customerName;
+            const amount = parseFloat(btn.dataset.amount);
+            openSettlementModal(customerId, customerName, amount);
+        } else if (e.target.closest('.payment-btn')) {
+            const btn = e.target.closest('.payment-btn');
+            const pendingId = btn.dataset.pendingId;
+            const purchaseRecordId = btn.dataset.purchaseRecordId;
+            const amount = parseFloat(btn.dataset.amount);
+            const channel = btn.dataset.channel;
+            openPendingPaymentModal(pendingId, purchaseRecordId, amount, channel);
+        }
+    });
+
     // 初始化渲染
     renderAccounts();
     loadMovements(1);
     setupCustomerTransactionsListeners(); // 初始化客戶交易紀錄監聽器
     
     console.log('✅ 現金管理頁面初始化完成');
+    
+    // 測試調試代碼是否能正常執行
+    console.log('🧪 測試調試代碼執行...');
+    setTimeout(() => {
+        console.log('🧪 調試代碼測試完成，如果看到這條訊息，說明 JavaScript 正常執行');
+    }, 1000);
 });
 
 // 通用二次確認函數
@@ -2150,6 +2181,11 @@ window.renderMovements = function(transactions) {
     console.log('✅ 找到 ' + transactions.length + ' 筆資金流水，開始渲染...');
     
     transactions.forEach(function(m, index) {
+        // 調試：輸出前5筆記錄的完整數據結構
+        if (index < 5) {
+            console.log(`📋 記錄 ${index + 1} 完整數據:`, m);
+        }
+        
         const twdChange = parseFloat(m.twd_change ?? m.twdChange) || 0;
         const rmbChange = parseFloat(m.rmb_change ?? m.rmbChange) || 0;
         const profit = parseFloat(m.profit ?? 0) || 0;
@@ -2159,11 +2195,17 @@ window.renderMovements = function(transactions) {
         const profitAfter = parseFloat(m.profit_after ?? m.profitAfter) || null;
         const profitChange = parseFloat(m.profit_change ?? m.profitChange) || null;
         
+        // 判斷是否為利潤提款（同時支援原始英文代碼與中文顯示）
+        const rawType = (m.entry_type ?? m.type ?? '').toString();
+        const isProfitWithdraw = rawType === 'PROFIT_WITHDRAW' || rawType === '利潤扣除' || (m.description ?? '').includes('利潤提款');
+        
         // 調試日誌：檢查利潤詳細數據
-        if (m.type === 'PROFIT_WITHDRAW') {
+        if (isProfitWithdraw) {
             console.log('🔍 利潤提款記錄調試:', {
                 id: m.id,
                 type: m.type,
+                entry_type: m.entry_type,
+                description: m.description,
                 profit_before: m.profit_before,
                 profit_after: m.profit_after,
                 profit_change: m.profit_change,
@@ -2172,6 +2214,9 @@ window.renderMovements = function(transactions) {
                 parsed_profitAfter: profitAfter,
                 parsed_profitChange: profitChange
             });
+        } else if ((m.type + '').includes('WITHDRAW') || (m.description ?? '').includes('提款')) {
+            // 若沒有被判定為利潤提款，但疑似提款，輸出原始 m 供調試
+            console.log('ℹ️ 疑似提款但未識別為利潤提款，原始資料 m =', m);
         }
         
         // 將類型轉換為中文顯示
@@ -2258,7 +2303,7 @@ window.renderMovements = function(transactions) {
         let profitDetailHtml = '-';
         
         // 調試日誌：檢查利潤變動詳情渲染邏輯
-        if (m.type === 'PROFIT_WITHDRAW') {
+        if (isProfitWithdraw) {
             console.log('🎨 利潤變動詳情渲染調試:', {
                 id: m.id,
                 profitBefore: profitBefore,
