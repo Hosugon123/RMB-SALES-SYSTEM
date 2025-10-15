@@ -1580,14 +1580,23 @@ def dashboard():
                 total_profit_twd += profit_info.get('profit_twd', 0.0)
         
         # 扣除利潤提款記錄
-        profit_withdrawals = (
-            db.session.execute(
-                db.select(LedgerEntry)
-                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+        try:
+            profit_withdrawals = (
+                db.session.execute(
+                    db.select(LedgerEntry)
+                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: 儀表板查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
+                db.session.rollback()
+                profit_withdrawals = []
+            else:
+                db.session.rollback()
+                raise e
         
         total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
         total_profit_twd -= total_profit_withdrawals
@@ -1786,14 +1795,23 @@ def admin_dashboard():
                 total_profit_twd += profit_info.get('profit_twd', 0.0)
         
         # 扣除利潤提款記錄
-        profit_withdrawals = (
-            db.session.execute(
-                db.select(LedgerEntry)
-                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+        try:
+            profit_withdrawals = (
+                db.session.execute(
+                    db.select(LedgerEntry)
+                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: 儀表板查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
+                db.session.rollback()
+                profit_withdrawals = []
+            else:
+                db.session.rollback()
+                raise e
         
         total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
         total_profit_twd -= total_profit_withdrawals
@@ -4090,15 +4108,24 @@ def admin_update_cash_account():
                                     current_total_profit += profit_info.get('profit_twd', 0.0)
                             
                             # 扣除之前的利潤提款
-                            previous_profit_withdrawals = (
-                                db.session.execute(
-                                    db.select(LedgerEntry)
-                                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
-                                    .filter(LedgerEntry.id != None)  # 排除當前記錄
+                            try:
+                                previous_profit_withdrawals = (
+                                    db.session.execute(
+                                        db.select(LedgerEntry)
+                                        .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                                        .filter(LedgerEntry.id != None)  # 排除當前記錄
+                                    )
+                                    .scalars()
+                                    .all()
                                 )
-                                .scalars()
-                                .all()
-                            )
+                            except Exception as e:
+                                if "profit_before does not exist" in str(e):
+                                    print("警告: 查詢之前的利潤提款記錄時缺少欄位，跳過查詢")
+                                    db.session.rollback()
+                                    previous_profit_withdrawals = []
+                                else:
+                                    db.session.rollback()
+                                    raise e
                             
                             previous_withdrawals = sum(entry.amount for entry in previous_profit_withdrawals)
                             current_total_profit -= previous_withdrawals
@@ -5224,15 +5251,24 @@ def api_customer_transactions(customer_id):
         
         # 獲取該客戶的應收帳款變動記錄（通過LedgerEntry）
         # 查詢所有銷帳記錄，然後在Python中過濾包含客戶名稱的記錄
-        all_settlements = (
-            db.session.execute(
-                db.select(LedgerEntry)
-                .filter(LedgerEntry.entry_type == "SETTLEMENT")
-                .order_by(LedgerEntry.entry_date.desc())
+        try:
+            all_settlements = (
+                db.session.execute(
+                    db.select(LedgerEntry)
+                    .filter(LedgerEntry.entry_type == "SETTLEMENT")
+                    .order_by(LedgerEntry.entry_date.desc())
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: 查詢 SETTLEMENT 記錄時缺少欄位，跳過查詢")
+                db.session.rollback()
+                all_settlements = []
+            else:
+                db.session.rollback()
+                raise e
         
         # 在Python中過濾包含客戶名稱的記錄
         receivable_entries = [
