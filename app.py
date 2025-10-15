@@ -2266,10 +2266,19 @@ def cash_management_operator():
         except Exception as e:
             if "profit_before does not exist" in str(e):
                 print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                db.session.rollback()  # 回滾失敗的事務
                 misc_entries = []
+                db.session.begin()  # 開始新事務
             else:
+                db.session.rollback()  # 回滾失敗的事務
                 raise e
-        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        # 確保在乾淨的事務中查詢 cash_logs
+        try:
+            cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        except Exception as e:
+            print(f"警告: cash_logs 查詢失敗: {e}")
+            db.session.rollback()
+            cash_logs = []
 
         unified_stream = []
         for p in purchases:
@@ -2589,10 +2598,19 @@ def cash_management():
         except Exception as e:
             if "profit_before does not exist" in str(e):
                 print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                db.session.rollback()  # 回滾失敗的事務
                 misc_entries = []
+                db.session.begin()  # 開始新事務
             else:
+                db.session.rollback()  # 回滾失敗的事務
                 raise e
-        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        # 確保在乾淨的事務中查詢 cash_logs
+        try:
+            cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        except Exception as e:
+            print(f"警告: cash_logs 查詢失敗: {e}")
+            db.session.rollback()
+            cash_logs = []
 
         unified_stream = []
         for p in purchases:
@@ -6191,11 +6209,20 @@ def get_cash_management_transactions():
         except Exception as e:
             if "profit_before does not exist" in str(e):
                 print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                db.session.rollback()  # 回滾失敗的事務
                 misc_entries = []
+                db.session.begin()  # 開始新事務
             else:
+                db.session.rollback()  # 回滾失敗的事務
                 raise e
         
-        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        # 確保在乾淨的事務中查詢 cash_logs
+        try:
+            cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        except Exception as e:
+            print(f"警告: cash_logs 查詢失敗: {e}")
+            db.session.rollback()
+            cash_logs = []
 
         unified_stream = []
         
@@ -6421,10 +6448,19 @@ def get_cash_management_totals():
         except Exception as e:
             if "profit_before does not exist" in str(e):
                 print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                db.session.rollback()  # 回滾失敗的事務
                 misc_entries = []
+                db.session.begin()  # 開始新事務
             else:
+                db.session.rollback()  # 回滾失敗的事務
                 raise e
-        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        # 確保在乾淨的事務中查詢 cash_logs
+        try:
+            cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        except Exception as e:
+            print(f"警告: cash_logs 查詢失敗: {e}")
+            db.session.rollback()
+            cash_logs = []
 
         # 構建統一的交易流
         unified_stream = []
@@ -6774,10 +6810,19 @@ def get_account_balances_for_dropdowns():
         except Exception as e:
             if "profit_before does not exist" in str(e):
                 print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                db.session.rollback()  # 回滾失敗的事務
                 misc_entries = []
+                db.session.begin()  # 開始新事務
             else:
+                db.session.rollback()  # 回滾失敗的事務
                 raise e
-        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        # 確保在乾淨的事務中查詢 cash_logs
+        try:
+            cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        except Exception as e:
+            print(f"警告: cash_logs 查詢失敗: {e}")
+            db.session.rollback()
+            cash_logs = []
 
         # 構建統一的交易流
         unified_stream = []
@@ -6995,10 +7040,19 @@ def get_accurate_account_balances():
         except Exception as e:
             if "profit_before does not exist" in str(e):
                 print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                db.session.rollback()  # 回滾失敗的事務
                 misc_entries = []
+                db.session.begin()  # 開始新事務
             else:
+                db.session.rollback()  # 回滾失敗的事務
                 raise e
-        cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        # 確保在乾淨的事務中查詢 cash_logs
+        try:
+            cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+        except Exception as e:
+            print(f"警告: cash_logs 查詢失敗: {e}")
+            db.session.rollback()
+            cash_logs = []
 
         # 構建統一的交易流，使用帳戶ID而不是名稱
         unified_stream = []
