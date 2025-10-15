@@ -100,6 +100,23 @@
                                 name="is_decrease" id="movementWithdraw" value="true"><label class="form-check-label"
                                 for="movementWithdraw">提出 (-)</label></div>
                     </div>
+                    
+                    <!-- 提款類型選擇 -->
+                    <div class="mb-3" id="withdrawTypeDiv" style="display: none;">
+                        <label class="form-label d-block">提款類型</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="withdraw_type" id="withdrawProfit" value="profit" checked>
+                            <label class="form-check-label text-warning" for="withdrawProfit">
+                                <i class="bi bi-arrow-up-circle me-1"></i>利潤提款
+                            </label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="withdraw_type" id="withdrawAsset" value="asset">
+                            <label class="form-check-label text-primary" for="withdrawAsset">
+                                <i class="bi bi-arrow-down-circle me-1"></i>資產提款
+                            </label>
+                        </div>
+                    </div>
                     <div class="mb-3"><label for="movementAmount" class="form-label">金額</label><input type="text"
                             pattern="[0-9]*\.?[0-9]*" class="form-control" id="movementAmount" name="amount" required></div>
                     

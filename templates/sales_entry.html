@@ -239,6 +239,11 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- 刪除記錄審計區塊 -->
+        {% if current_user.is_admin %}
+        {% include '_delete_audit_block.html' %}
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -903,5 +908,4 @@ document.addEventListener('DOMContentLoaded', function () {
         </div>
     </div>
 </div>
-
 {% endblock %}

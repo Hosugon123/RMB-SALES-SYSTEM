@@ -51,10 +51,28 @@
                         <!-- 付款區塊 -->
                         <div class="p-3 mb-3 border rounded bg-light">
                             <h6 class="text-danger"><i class="bi bi-box-arrow-up-right me-2"></i>從哪個 TWD 帳戶付款</h6>
-                            <select class="form-select" id="paymentAccountSelect" name="payment_account_id" required>
+                            <select class="form-select" id="paymentAccountSelect" name="payment_account_id">
                                 <option value="" disabled selected>--- 請選擇付款帳戶 ---</option>
                                 <!-- JavaScript 將會動態填充這裡 -->
                             </select>
+                        </div>
+                        
+                        <!-- 付款狀態選擇 -->
+                        <div class="p-3 mb-3 border rounded bg-warning bg-opacity-10">
+                            <h6 class="text-warning"><i class="bi bi-clock-history me-2"></i>付款狀態</h6>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_status" id="paymentStatusPaid" value="paid" checked>
+                                <label class="form-check-label" for="paymentStatusPaid">
+                                    <strong class="text-success">已付款</strong> - 立即從選定帳戶扣款
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_status" id="paymentStatusUnpaid" value="unpaid">
+                                <label class="form-check-label" for="paymentStatusUnpaid">
+                                    <strong class="text-warning">未付款</strong> - 建立待付款項，稍後處理
+                                </label>
+                            </div>
+                            <small class="text-muted">未付款時，付款帳戶選擇將被忽略</small>
                         </div>
                         <!-- 入庫區塊 -->
                         <div class="p-3 mb-3 border rounded bg-light">
@@ -99,7 +117,8 @@
     </div>
     <!-- ****** 右側：近期買入紀錄 ****** -->
     <div class="col-lg-7">
-        <div class="card border-0 shadow-sm h-100">
+        <div class="d-flex flex-column h-100">
+            <div class="card border-0 shadow-sm flex-grow-1">
              <div class="card-header bg-light"><h5 class="mb-0 fw-normal"><i class="bi bi-clock-history me-2"></i>近期買入紀錄</h5></div>
             <div class="card-body p-2">
                 <div class="table-responsive">
@@ -127,6 +146,12 @@
                     </table>
                 </div>
             </div>
+            </div>
+
+            <!-- 刪除記錄審計區塊 -->
+            {% if current_user.is_admin %}
+            {% include '_delete_audit_block.html' %}
+            {% endif %}
         </div>
     </div>
 </div>
@@ -150,9 +175,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM載入完成，開始初始化...');
     
     // === 1. 從後端獲取資料 ===
-    const channelsData = {{ channels|tojson }};
-    const twdAccountsGrouped = {{ owner_twd_accounts_grouped|tojson }};
-    const rmbAccountsGrouped = {{ owner_rmb_accounts_grouped|tojson }};
+    const channelsData = {{ channels|tojson if channels is defined else '[]' }};
+    const twdAccountsGrouped = {{ owner_twd_accounts_grouped|tojson if owner_twd_accounts_grouped is defined else '{}' }};
+    const rmbAccountsGrouped = {{ owner_rmb_accounts_grouped|tojson if owner_rmb_accounts_grouped is defined else '{}' }};
     
     console.log('後端數據:', { channelsData, twdAccountsGrouped, rmbAccountsGrouped });
     
@@ -171,6 +196,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const channelListModal = document.getElementById('channelListModal');
     const addChannelBtn = document.getElementById('addChannelBtn');
     const newChannelNameInput = document.getElementById('newChannelName');
+    
+    // 付款狀態相關元件
+    const paymentStatusPaid = document.getElementById('paymentStatusPaid');
+    const paymentStatusUnpaid = document.getElementById('paymentStatusUnpaid');
 
     // === 3. 定義 API 地址 ===
     const BUY_IN_API_ENDPOINT = "{{ url_for('api_buy_in') }}";
@@ -178,6 +207,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const GET_CHANNELS_API_ENDPOINT = "{{ url_for('get_channels_public') }}";
 
     // === 4. 功能函式與事件監聽 ===
+
+    // 付款狀態處理邏輯
+    function handlePaymentStatusChange() {
+        const isPaid = paymentStatusPaid.checked;
+        
+        if (isPaid) {
+            // 已付款：啟用付款帳戶選擇，設為必填
+            paymentAccountSelect.disabled = false;
+            paymentAccountSelect.required = true;
+            paymentAccountSelect.parentElement.classList.remove('text-muted');
+        } else {
+            // 未付款：禁用付款帳戶選擇，移除必填
+            paymentAccountSelect.disabled = true;
+            paymentAccountSelect.required = false;
+            paymentAccountSelect.value = '';
+            paymentAccountSelect.parentElement.classList.add('text-muted');
+        }
+    }
+
+    // 綁定付款狀態變更事件
+    if (paymentStatusPaid && paymentStatusUnpaid) {
+        paymentStatusPaid.addEventListener('change', handlePaymentStatusChange);
+        paymentStatusUnpaid.addEventListener('change', handlePaymentStatusChange);
+        
+        // 初始化狀態
+        handlePaymentStatusChange();
+    }
 
     // 【核心修正】填充帶有分組的下拉選單
     function populateGroupedSelect(selectElement, groupedData, currency) {
@@ -250,9 +306,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const channelId = channelSelect.value;
         const channelNameManualValue = channelNameManual.value.trim();
         
-        if (!paymentAccountId || !depositAccountId || !rmbAmount || !exchangeRate) {
-            Swal.fire('錯誤', '請填寫所有必填欄位。', 'error');
-            return;
+        // 獲取付款狀態
+        const paymentStatus = document.querySelector('input[name="payment_status"]:checked')?.value || 'paid';
+        
+        // 根據付款狀態進行不同的驗證
+        if (paymentStatus === 'paid') {
+            // 已付款：需要付款帳戶
+            if (!paymentAccountId || !depositAccountId || !rmbAmount || !exchangeRate) {
+                Swal.fire('錯誤', '請填寫所有必填欄位。', 'error');
+                return;
+            }
+        } else {
+            // 未付款：不需要付款帳戶
+            if (!depositAccountId || !rmbAmount || !exchangeRate) {
+                Swal.fire('錯誤', '請填寫入庫帳戶、買入金額和匯率。', 'error');
+                return;
+            }
         }
         
         // 簡化渠道驗證：只要有渠道名稱就可以
@@ -262,14 +331,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // 顯示確認對話框
+        const twdCost = rmbAmount * exchangeRate;
+        let paymentInfo = '';
+        
+        if (paymentStatus === 'paid') {
+            const paymentAccountName = paymentAccountSelect.options[paymentAccountSelect.selectedIndex]?.text || '未知帳戶';
+            paymentInfo = `<p><strong>付款帳戶:</strong> ${paymentAccountName}</p>`;
+        } else {
+            paymentInfo = `<p><strong>付款狀態:</strong> <span class="text-warning">未付款（將建立待付款項）</span></p>`;
+        }
+        
         const result = await Swal.fire({
             title: '確認執行買入交易',
             html: `
                 <div class="text-start">
                     <p><strong>買入金額:</strong> ¥${rmbAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
                     <p><strong>匯率:</strong> ${exchangeRate.toFixed(4)}</p>
-                    <p><strong>預計成本:</strong> NT$${(rmbAmount * exchangeRate).toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                    <p><strong>預計成本:</strong> NT$${twdCost.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
                     <p><strong>渠道:</strong> ${channelNameManualValue}</p>
+                    ${paymentInfo}
                 </div>
             `,
             icon: 'question',
@@ -294,7 +374,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     rmb_amount: rmbAmount,
                     exchange_rate: exchangeRate,
                     channel_id: channelId || null,
-                    channel_name_manual: channelNameManualValue
+                    channel_name_manual: channelNameManualValue,
+                    payment_status: paymentStatus
                 })
             });
             
@@ -384,7 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 li.className = 'list-group-item d-flex justify-content-between align-items-center';
                 li.innerHTML = `
                     <span>${channel.name}</span>
-                    <button class="btn btn-danger btn-sm" onclick="deleteChannel(${channel.id}, '${channel.name}')">
+                    <button class="btn btn-danger btn-sm" onclick="deleteChannel(${channel.id}, ${JSON.stringify(channel.name)})">
                         <i class="bi bi-trash"></i> 刪除
                     </button>
                 `;
@@ -582,6 +663,13 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('rmbAmount').value = '';
         document.getElementById('exchangeRate').value = '';
         
+        // 重置付款狀態為已付款
+        document.getElementById('paymentStatusPaid').checked = true;
+        document.getElementById('paymentStatusUnpaid').checked = false;
+        
+        // 重置付款帳戶選擇的啟用狀態
+        handlePaymentStatusChange();
+        
         // 重置顯示
         document.getElementById('twdCostDisplay').textContent = 'NT$ 0.00';
         
@@ -621,4 +709,5 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeNumberFormatting();
 });
 </script>
+
 {% endblock %}

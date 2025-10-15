@@ -62,26 +62,26 @@ def init_database():
             inspector = db.inspect(db.engine)
             existing_tables = inspector.get_table_names()
             
-            print(f"🔍 檢查資料庫表格: {existing_tables}")
+            print(f"檢查資料庫表格: {existing_tables}")
             
             if 'user' not in existing_tables:
                 # 只有當表格不存在時才創建
-                print("📝 創建資料庫表格...")
+                print("創建資料庫表格...")
                 db.create_all()
-                print("✅ 資料庫表格已創建")
+                print("資料庫表格已創建")
             else:
-                print("✅ 資料庫表格已存在")
+                print("資料庫表格已存在")
                 
                 # 檢查現有數據
                 try:
                     user_count = User.query.count()
-                    print(f"👥 現有用戶數量: {user_count}")
+                    print(f"現有用戶數量: {user_count}")
                     
                     if user_count > 0:
-                        print("✅ 資料庫中已有數據，跳過初始化")
+                        print("資料庫中已有數據，跳過初始化")
                         return
                 except Exception as e:
-                    print(f"⚠️  檢查用戶數據時出錯: {e}")
+                    print(f"檢查用戶數據時出錯: {e}")
             
             # 檢查是否已有管理員帳戶
             admin_user = User.query.filter_by(username='admin').first()
@@ -96,15 +96,15 @@ def init_database():
                 
                 db.session.add(admin_user)
                 db.session.commit()
-                print("✅ 預設管理員帳戶創建成功")
+                print("預設管理員帳戶創建成功")
                 print("   用戶名: admin")
                 print("   密碼: admin123")
-                print("   ⚠️  請在首次登入後立即修改密碼！")
+                print("   請在首次登入後立即修改密碼！")
             else:
-                print("✅ 管理員帳戶已存在")
+                print("管理員帳戶已存在")
                 
     except Exception as e:
-        print(f"❌ 資料庫初始化失敗: {e}")
+        print(f"資料庫初始化失敗: {e}")
         import traceback
         traceback.print_exc()
         db.session.rollback()
@@ -114,12 +114,12 @@ def init_database():
 def before_request():
     """在每個請求前檢查資料庫是否已初始化"""
     if not hasattr(app, '_database_initialized'):
-        print("🚀 首次請求，初始化資料庫...")
+        print("首次請求，初始化資料庫...")
         init_database()
         app._database_initialized = True
-        print("✅ 資料庫初始化完成")
+        print("資料庫初始化完成")
     else:
-        print("✅ 資料庫已初始化，跳過")
+        print("資料庫已初始化，跳過")
 
 # ===================================================================
 # 3. 資料庫模型 (Models) 定義 - 【V4.0 職責分離重構版】
@@ -208,6 +208,7 @@ class PurchaseRecord(db.Model):
     rmb_amount = db.Column(db.Float, nullable=False)
     exchange_rate = db.Column(db.Float, nullable=False)
     twd_cost = db.Column(db.Float, nullable=False)
+    payment_status = db.Column(db.String(20), nullable=False, default='paid')  # 'paid' 或 'unpaid'
     purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
     operator_id = db.Column(
         db.Integer, db.ForeignKey("user.id"), nullable=False
@@ -223,6 +224,24 @@ class PurchaseRecord(db.Model):
     
     # FIFO 關聯
     fifo_inventory = db.relationship("FIFOInventory", back_populates="purchase_record", cascade="all, delete-orphan")
+    
+    # 待付款項關聯
+    pending_payment = db.relationship("PendingPayment", back_populates="purchase_record", cascade="all, delete-orphan")
+
+
+class PendingPayment(db.Model):
+    """待付款項模型 - 記錄未付款的買入記錄"""
+    __tablename__ = "pending_payments"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_record_id = db.Column(db.Integer, db.ForeignKey("purchase_records.id"), nullable=False)
+    amount_twd = db.Column(db.Float, nullable=False)  # 待付金額（台幣）
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    paid_at = db.Column(db.DateTime, nullable=True)  # 付款時間
+    is_settled = db.Column(db.Boolean, nullable=False, default=False)  # 是否已結清
+    
+    # 關聯關係
+    purchase_record = db.relationship("PurchaseRecord", back_populates="pending_payment")
 
 
 class FIFOInventory(db.Model):
@@ -327,6 +346,12 @@ class LedgerEntry(db.Model):
     operator_id = db.Column(
         db.Integer, db.ForeignKey("user.id"), nullable=False
     )  # <---【修正】統一外鍵目標
+    
+    # 新增：詳細利潤信息欄位
+    profit_before = db.Column(db.Float, nullable=True)  # 變動前利潤
+    profit_after = db.Column(db.Float, nullable=True)   # 變動後利潤
+    profit_change = db.Column(db.Float, nullable=True)  # 變動之利潤數字
+    
     account = db.relationship("CashAccount")
     operator = db.relationship("User")
 
@@ -369,6 +394,167 @@ class CardPurchase(db.Model):
 
 
 # ===================================================================
+# 刪除記錄審計模型
+# ===================================================================
+class DeleteAuditLog(db.Model):
+    """刪除記錄審計模型 - 記錄所有刪除操作"""
+    __tablename__ = "delete_audit_logs"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # 刪除的記錄資訊
+    table_name = db.Column(db.String(50), nullable=False)  # 被刪除的表名
+    record_id = db.Column(db.Integer, nullable=False)  # 被刪除的記錄ID
+    
+    # 刪除前的資料（JSON格式存儲）
+    deleted_data = db.Column(db.Text, nullable=False)  # 被刪除記錄的完整資料
+    
+    # 帳戶餘額變化（JSON格式存儲）
+    balance_changes = db.Column(db.Text, nullable=True)  # 刪除前後的帳戶餘額變化
+    
+    # 操作資訊
+    operation_type = db.Column(db.String(50), nullable=False)  # 操作類型：DELETE, REVERSE_PURCHASE, REVERSE_SALE等
+    description = db.Column(db.String(500), nullable=True)  # 操作描述
+    
+    # 操作者資訊
+    operator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    operator_name = db.Column(db.String(100), nullable=True)  # 操作者名稱（備用）
+    
+    # 時間資訊
+    deleted_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    
+    # IP和用戶代理（用於安全審計）
+    ip_address = db.Column(db.String(45), nullable=True)
+    user_agent = db.Column(db.String(500), nullable=True)
+    
+    # 關聯關係
+    operator = db.relationship("User", backref="delete_audit_logs")
+    
+    def __repr__(self):
+        return f'<DeleteAuditLog {self.id}: {self.table_name}.{self.record_id} by {self.operator_name}>'
+    
+    def to_dict(self):
+        """轉換為字典格式"""
+        return {
+            'id': self.id,
+            'table_name': self.table_name,
+            'record_id': self.record_id,
+            'deleted_data': self.deleted_data,
+            'operation_type': self.operation_type,
+            'description': self.description,
+            'operator_name': self.operator_name,
+            'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
+            'ip_address': self.ip_address,
+            'user_agent': self.user_agent
+        }
+
+
+# ===================================================================
+# 刪除記錄審計服務類
+# ===================================================================
+
+class DeleteAuditService:
+    """刪除記錄審計服務類"""
+    
+    @staticmethod
+    def collect_balance_changes(affected_accounts):
+        """收集帳戶餘額變化資訊"""
+        try:
+            import json
+            
+            balance_changes = []
+            for account in affected_accounts:
+                balance_changes.append({
+                    'account_id': account.id,
+                    'account_name': account.name,
+                    'currency': account.currency,
+                    'balance_before': getattr(account, '_balance_before', None),
+                    'balance_after': account.balance,
+                    'change': account.balance - getattr(account, '_balance_before', account.balance)
+                })
+            
+            return json.dumps(balance_changes, ensure_ascii=False) if balance_changes else None
+            
+        except Exception as e:
+            print(f"收集餘額變化失敗: {e}")
+            return None
+    
+    @staticmethod
+    def log_deletion(table_name, record_id, deleted_data, operation_type, description=None, operator_id=None, request=None, balance_changes=None):
+        """記錄刪除操作"""
+        try:
+            # 獲取操作者資訊
+            operator_name = None
+            if operator_id:
+                operator = db.session.get(User, operator_id)
+                if operator:
+                    operator_name = operator.username
+            
+            # 獲取IP和用戶代理
+            ip_address = None
+            user_agent = None
+            if request:
+                ip_address = request.remote_addr
+                user_agent = request.headers.get('User-Agent', '')[:500]  # 限制長度
+            
+            # 創建審計記錄
+            audit_log = DeleteAuditLog(
+                table_name=table_name,
+                record_id=record_id,
+                deleted_data=deleted_data,
+                operation_type=operation_type,
+                description=description,
+                operator_id=operator_id,
+                operator_name=operator_name,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                balance_changes=balance_changes
+            )
+            
+            db.session.add(audit_log)
+            db.session.commit()
+            
+            print(f"刪除記錄已記錄到審計日誌: {table_name}.{record_id}")
+            return True
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"記錄刪除審計日誌失敗: {e}")
+            return False
+    
+    @staticmethod
+    def get_deletion_logs(table_name=None, operator_id=None, limit=50):
+        """獲取刪除記錄"""
+        try:
+            query = db.session.execute(db.select(DeleteAuditLog))
+            
+            if table_name:
+                query = query.filter(DeleteAuditLog.table_name == table_name)
+            
+            if operator_id:
+                query = query.filter(DeleteAuditLog.operator_id == operator_id)
+            
+            query = query.order_by(DeleteAuditLog.deleted_at.desc()).limit(limit)
+            
+            logs = query.scalars().all()
+            return [log.to_dict() for log in logs]
+            
+        except Exception as e:
+            print(f"獲取刪除記錄失敗: {e}")
+            return []
+    
+    @staticmethod
+    def get_deletion_log_by_id(log_id):
+        """根據ID獲取刪除記錄"""
+        try:
+            log = db.session.get(DeleteAuditLog, log_id)
+            return log.to_dict() if log else None
+        except Exception as e:
+            print(f"獲取刪除記錄失敗: {e}")
+            return None
+
+
+# ===================================================================
 # FIFO 服務類
 # ===================================================================
 
@@ -391,12 +577,12 @@ class FIFOService:
             
             db.session.add(fifo_inventory)
             db.session.commit()
-            print(f"✅ 已創建FIFO庫存記錄: {fifo_inventory}")
+            print(f"已創建FIFO庫存記錄: {fifo_inventory}")
             return fifo_inventory
             
         except Exception as e:
             db.session.rollback()
-            print(f"❌ 創建FIFO庫存失敗: {e}")
+            print(f"創建FIFO庫存失敗: {e}")
             raise
     
     @staticmethod
@@ -444,7 +630,7 @@ class FIFOService:
                 if sales_record.rmb_account:
                     sales_account = sales_record.rmb_account
                     sales_account.balance -= allocate_from_this_batch
-                    print(f"🔄 從出貨帳戶 {sales_account.name} 扣款: -{allocate_from_this_batch} RMB")
+                    print(f"從出貨帳戶 {sales_account.name} 扣款: -{allocate_from_this_batch} RMB")
                 
                 # 累計成本
                 total_cost += allocation.allocated_cost_twd
@@ -453,13 +639,13 @@ class FIFOService:
                 allocations.append(allocation)
                 db.session.add(allocation)
                 
-                print(f"📦 從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {allocation.allocated_cost_twd} TWD")
+                print(f" 從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {allocation.allocated_cost_twd} TWD")
             
             if remaining_to_allocate > 0:
                 raise ValueError(f"庫存不足，還需要 {remaining_to_allocate} RMB")
             
             db.session.commit()
-            print(f"✅ FIFO分配完成，總成本: {total_cost} TWD")
+            print(f"FIFO分配完成，總成本: {total_cost} TWD")
             
             return {
                 'allocations': allocations,
@@ -469,7 +655,7 @@ class FIFOService:
             
         except Exception as e:
             db.session.rollback()
-            print(f"❌ FIFO分配失敗: {e}")
+            print(f"FIFO分配失敗: {e}")
             raise
     
     @staticmethod
@@ -528,7 +714,7 @@ class FIFOService:
             return inventory_summary
             
         except Exception as e:
-            print(f"❌ 獲取庫存狀態失敗: {e}")
+            print(f"獲取庫存狀態失敗: {e}")
             return []
     
     # ===================================================================
@@ -550,7 +736,7 @@ class FIFOService:
             )
             
             if not sales_record:
-                print(f"⚠️  找不到銷售記錄 {sales_record_id}")
+                print(f"找不到銷售記錄 {sales_record_id}")
                 return False
             
             # 查找該銷售記錄的所有FIFO分配
@@ -569,28 +755,36 @@ class FIFOService:
                 customer = sales_record.customer
                 # 減少客戶的應收帳款
                 customer.total_receivables_twd -= sales_record.twd_amount
-                print(f"🔄 更新客戶 {customer.name} 的應收帳款: -{sales_record.twd_amount} TWD")
+                print(f"更新客戶 {customer.name} 的應收帳款: -{sales_record.twd_amount} TWD")
                 
                 # 確保應收帳款不會變成負數
                 if customer.total_receivables_twd < 0:
                     customer.total_receivables_twd = 0
-                    print(f"⚠️  客戶 {customer.name} 的應收帳款已調整為 0")
+                    print(f"客戶 {customer.name} 的應收帳款已調整為 0")
             
             # --- 關鍵修正：恢復RMB帳戶的餘額 ---
+            # 先記錄所有受影響帳戶的原始餘額
+            affected_accounts = []
+            
             # 恢復每個FIFO分配對應的RMB帳戶餘額
             for allocation in allocations:
                 if allocation.fifo_inventory and allocation.fifo_inventory.purchase_record.deposit_account:
                     # 檢查收款帳戶是否為RMB帳戶
                     deposit_account = allocation.fifo_inventory.purchase_record.deposit_account
                     if deposit_account.currency == 'RMB':
+                        # 記錄原始餘額
+                        if deposit_account not in affected_accounts:
+                            deposit_account._balance_before = deposit_account.balance
+                            affected_accounts.append(deposit_account)
+                        
                         # 如果是RMB帳戶，直接恢復RMB餘額
                         deposit_account.balance += allocation.allocated_rmb
-                        print(f"🔄 恢復RMB帳戶 {deposit_account.name} 的餘額: +{allocation.allocated_rmb} RMB")
+                        print(f"恢復RMB帳戶 {deposit_account.name} 的餘額: +{allocation.allocated_rmb} RMB")
                     else:
                         # 如果不是RMB帳戶，需要找到對應的RMB帳戶
                         # 根據買入記錄的邏輯，RMB餘額應該在deposit_account中
                         # 但這裡需要檢查是否有其他RMB帳戶需要恢復
-                        print(f"⚠️  警告：庫存來源帳戶 {deposit_account.name} 不是RMB帳戶")
+                        print(f"警告：庫存來源帳戶 {deposit_account.name} 不是RMB帳戶")
                         
                         # 嘗試找到對應的RMB帳戶
                         # 這裡需要根據業務邏輯來確定如何恢復RMB餘額
@@ -604,9 +798,9 @@ class FIFOService:
                         # 方案2：如果沒有明確的RMB帳戶，則記錄這個問題
                         
                         # 暫時記錄這個問題，讓管理員手動處理
-                        print(f"⚠️  需要手動檢查RMB餘額恢復邏輯")
-                        print(f"    分配RMB: {allocation.allocated_rmb}")
-                        print(f"    庫存來源帳戶: {deposit_account.name} (非RMB帳戶)")
+                        print(f"需要手動檢查RMB餘額恢復邏輯")
+                        print(f"   分配RMB: {allocation.allocated_rmb}")
+                        print(f"   庫存來源帳戶: {deposit_account.name} (非RMB帳戶)")
                         
                         # TODO: 實現更智能的RMB餘額恢復邏輯
                         # 可能需要檢查是否有其他RMB帳戶需要恢復
@@ -618,39 +812,81 @@ class FIFOService:
                 inventory = allocation.fifo_inventory
                 if inventory:
                     inventory.remaining_rmb += allocation.allocated_rmb
-                    print(f"🔄 恢復庫存批次 {inventory.id} 的數量: +{allocation.allocated_rmb} RMB")
+                    print(f"恢復庫存批次 {inventory.id} 的數量: +{allocation.allocated_rmb} RMB")
                 
                 # 刪除分配記錄
                 db.session.delete(allocation)
-                print(f"🔄 刪除FIFO分配記錄 {allocation.id}")
+                print(f"刪除FIFO分配記錄 {allocation.id}")
+            
+            # 記錄刪除審計日誌（在刪除前記錄完整資料）
+            try:
+                import json
+                from flask import request
+                
+                # 準備被刪除記錄的資料
+                deleted_data = {
+                    'id': sales_record.id,
+                    'customer_id': sales_record.customer_id,
+                    'rmb_amount': sales_record.rmb_amount,
+                    'twd_amount': sales_record.twd_amount,
+                    'exchange_rate': sales_record.exchange_rate,
+                    'is_settled': sales_record.is_settled,
+                    'created_at': sales_record.created_at.isoformat() if sales_record.created_at else None,
+                    'operator_id': sales_record.operator_id,
+                    'customer_name': sales_record.customer.name if sales_record.customer else None
+                }
+                
+                # 獲取操作者ID
+                operator_id = None
+                try:
+                    operator_id = current_user.id if current_user and hasattr(current_user, 'id') else 1
+                except:
+                    operator_id = 1
+                
+                # 收集餘額變化資訊
+                balance_changes = DeleteAuditService.collect_balance_changes(affected_accounts)
+                
+                # 記錄審計日誌
+                DeleteAuditService.log_deletion(
+                    table_name='sales_records',
+                    record_id=sales_record_id,
+                    deleted_data=json.dumps(deleted_data, ensure_ascii=False),
+                    operation_type='REVERSE_SALE',
+                    description=f'回滾銷售記錄：客戶 {deleted_data.get("customer_name", "N/A")}, RMB {sales_record.rmb_amount}, TWD {sales_record.twd_amount}',
+                    operator_id=operator_id,
+                    request=request,
+                    balance_changes=balance_changes
+                )
+            except Exception as audit_error:
+                print(f"記錄審計日誌失敗: {audit_error}")
             
             # 刪除銷售記錄本身
             db.session.delete(sales_record)
-            print(f"🔄 刪除銷售記錄 {sales_record_id}")
+            print(f"刪除銷售記錄 {sales_record_id}")
             
             db.session.commit()
-            print(f"✅ 成功完全回滾銷售記錄 {sales_record_id}")
+            print(f"成功完全回滾銷售記錄 {sales_record_id}")
             
             # 調用全局數據同步，確保帳戶餘額和庫存一致
             try:
                 from global_sync import sync_entire_database
                 sync_entire_database(db.session)
-                print(f"✅ 全局數據同步完成，帳戶餘額和庫存已重新整理")
+                print(f"全局數據同步完成，帳戶餘額和庫存已重新整理")
             except Exception as sync_error:
-                print(f"⚠️  全局數據同步失敗: {sync_error}")
+                print(f"全局數據同步失敗: {sync_error}")
             
             return True
             
         except Exception as e:
             db.session.rollback()
-            print(f"❌ 回滾銷售記錄失敗: {e}")
+            print(f"回滾銷售記錄失敗: {e}")
             return False
     
     @staticmethod
     def reverse_purchase_inventory(purchase_record_id):
         """完全回滾買入記錄（包括FIFO庫存和買入記錄本身）"""
         try:
-            print(f"🔍 開始回滾買入記錄 {purchase_record_id}")
+            print(f"開始回滾買入記錄 {purchase_record_id}")
             
             # 查找該買入記錄
             purchase_record = (
@@ -663,10 +899,10 @@ class FIFOService:
             )
             
             if not purchase_record:
-                print(f"⚠️  找不到買入記錄 {purchase_record_id}")
+                print(f"找不到買入記錄 {purchase_record_id}")
                 return False
             
-            print(f"✅ 找到買入記錄: channel={purchase_record.channel_id}, payment_account={purchase_record.payment_account_id}, twd_cost={purchase_record.twd_cost}")
+            print(f"找到買入記錄: channel={purchase_record.channel_id}, payment_account={purchase_record.payment_account_id}, twd_cost={purchase_record.twd_cost}")
             
             # 查找該買入記錄的FIFO庫存
             inventory = (
@@ -678,7 +914,7 @@ class FIFOService:
                 .first()
             )
             
-            print(f"🔍 查找FIFO庫存: inventory_id={inventory.id if inventory else None}")
+            print(f"查找FIFO庫存: inventory_id={inventory.id if inventory else None}")
             
             # 檢查是否有銷售分配
             if inventory:
@@ -691,30 +927,37 @@ class FIFOService:
                     .all()
                 )
                 
-                print(f"🔍 檢查銷售分配: 找到 {len(allocations)} 個分配記錄")
+                print(f"檢查銷售分配: 找到 {len(allocations)} 個分配記錄")
                 
                 if allocations:
-                    print(f"⚠️  庫存批次 {inventory.id} 已有銷售分配，無法直接回滾")
+                    print(f"庫存批次 {inventory.id} 已有銷售分配，無法直接回滾")
                     for alloc in allocations:
-                        print(f"   分配記錄: {alloc.id}, 銷售記錄: {alloc.sales_record_id}, 分配RMB: {alloc.allocated_rmb}")
+                        print(f"  分配記錄: {alloc.id}, 銷售記錄: {alloc.sales_record_id}, 分配RMB: {alloc.allocated_rmb}")
                     return False
                 
                 # 刪除庫存記錄
                 db.session.delete(inventory)
-                print(f"🔄 刪除FIFO庫存記錄 {inventory.id}")
+                print(f"刪除FIFO庫存記錄 {inventory.id}")
             else:
-                print(f"⚠️  找不到對應的FIFO庫存記錄，purchase_record_id: {purchase_record_id}")
+                print(f"找不到對應的FIFO庫存記錄，purchase_record_id: {purchase_record_id}")
                 # 即使沒有庫存記錄，我們仍然可以繼續處理買入記錄的回滾
             
             # 回滾帳戶餘額：根據買入記錄類型進行不同的處理
+            # 先記錄所有受影響帳戶的原始餘額
+            affected_accounts = []
+            
             if (purchase_record.channel is None and 
                 purchase_record.payment_account is None and 
                 purchase_record.twd_cost == 0):
                 # 純利潤庫存（手續費）：從入庫帳戶中扣除
                 if purchase_record.deposit_account:
                     deposit_account = purchase_record.deposit_account
+                    # 記錄原始餘額
+                    deposit_account._balance_before = deposit_account.balance
+                    affected_accounts.append(deposit_account)
+                    
                     deposit_account.balance -= purchase_record.rmb_amount
-                    print(f"🔄 從帳戶 {deposit_account.name} 扣除手續費: -{purchase_record.rmb_amount} RMB")
+                    print(f"從帳戶 {deposit_account.name} 扣除手續費: -{purchase_record.rmb_amount} RMB")
                     
                     # 創建提款流水記錄（使用系統用戶ID，避免current_user問題）
                     try:
@@ -731,34 +974,84 @@ class FIFOService:
                         operator_id=operator_id,
                     )
                     db.session.add(entry)
-                    print(f"🔄 創建提款流水記錄: -{purchase_record.rmb_amount} RMB")
+                    print(f"創建提款流水記錄: -{purchase_record.rmb_amount} RMB")
             else:
                 # 正常買入記錄：回滾帳戶餘額
                 # RMB帳戶刪除款項（減少RMB餘額）
                 if purchase_record.deposit_account:
                     deposit_account = purchase_record.deposit_account
+                    # 記錄原始餘額
+                    deposit_account._balance_before = deposit_account.balance
+                    affected_accounts.append(deposit_account)
+                    
                     deposit_account.balance -= purchase_record.rmb_amount
-                    print(f"🔄 回滾RMB帳戶 {deposit_account.name}: -{purchase_record.rmb_amount} RMB")
+                    print(f"回滾RMB帳戶 {deposit_account.name}: -{purchase_record.rmb_amount} RMB")
                 
                 # 台幣帳戶回補款項（增加台幣餘額）
                 if purchase_record.payment_account:
                     payment_account = purchase_record.payment_account
+                    # 記錄原始餘額
+                    payment_account._balance_before = payment_account.balance
+                    affected_accounts.append(payment_account)
+                    
                     payment_account.balance += purchase_record.twd_cost
-                    print(f"🔄 回補台幣帳戶 {payment_account.name}: +{purchase_record.twd_cost} TWD")
+                    print(f"回補台幣帳戶 {payment_account.name}: +{purchase_record.twd_cost} TWD")
+            
+            # 記錄刪除審計日誌（在刪除前記錄完整資料）
+            try:
+                import json
+                from flask import request
+                
+                # 準備被刪除記錄的資料
+                deleted_data = {
+                    'id': purchase_record.id,
+                    'payment_account_id': purchase_record.payment_account_id,
+                    'deposit_account_id': purchase_record.deposit_account_id,
+                    'channel_id': purchase_record.channel_id,
+                    'rmb_amount': purchase_record.rmb_amount,
+                    'exchange_rate': purchase_record.exchange_rate,
+                    'twd_cost': purchase_record.twd_cost,
+                    'purchase_date': purchase_record.purchase_date.isoformat() if purchase_record.purchase_date else None,
+                    'operator_id': purchase_record.operator_id
+                }
+                
+                # 獲取操作者ID
+                operator_id = None
+                try:
+                    operator_id = current_user.id if current_user and hasattr(current_user, 'id') else 1
+                except:
+                    operator_id = 1
+                
+                # 收集餘額變化資訊
+                balance_changes = DeleteAuditService.collect_balance_changes(affected_accounts)
+                
+                # 記錄審計日誌
+                DeleteAuditService.log_deletion(
+                    table_name='purchase_records',
+                    record_id=purchase_record_id,
+                    deleted_data=json.dumps(deleted_data, ensure_ascii=False),
+                    operation_type='REVERSE_PURCHASE',
+                    description=f'回滾買入記錄：RMB {purchase_record.rmb_amount}, 台幣成本 {purchase_record.twd_cost}',
+                    operator_id=operator_id,
+                    request=request,
+                    balance_changes=balance_changes
+                )
+            except Exception as audit_error:
+                print(f"記錄審計日誌失敗: {audit_error}")
             
             # 刪除買入記錄本身
             db.session.delete(purchase_record)
-            print(f"🔄 刪除買入記錄 {purchase_record_id}")
+            print(f"刪除買入記錄 {purchase_record_id}")
             
             db.session.commit()
-            print(f"✅ 成功完全回滾買入記錄 {purchase_record_id}")
+            print(f"成功完全回滾買入記錄 {purchase_record_id}")
             return True
             
         except Exception as e:
             db.session.rollback()
-            print(f"❌ 回滾買入記錄失敗: {e}")
+            print(f"回滾買入記錄失敗: {e}")
             import traceback
-            print(f"❌ 詳細錯誤信息: {traceback.format_exc()}")
+            print(f"詳細錯誤信息: {traceback.format_exc()}")
             return False
     
     @staticmethod
@@ -796,7 +1089,7 @@ class FIFOService:
             return issues
             
         except Exception as e:
-            print(f"❌ 庫存一致性審計失敗: {e}")
+            print(f"庫存一致性審計失敗: {e}")
             return [f"審計過程發生錯誤: {e}"]
     
     @staticmethod
@@ -825,12 +1118,12 @@ class FIFOService:
                 fixed_issues.append(f"修復庫存批次 {inv.id} 的負數數量")
             
             db.session.commit()
-            print(f"✅ 修復了 {len(fixed_issues)} 個庫存一致性问题")
+            print(f"修復了 {len(fixed_issues)} 個庫存一致性问题")
             return fixed_issues
             
         except Exception as e:
             db.session.rollback()
-            print(f"❌ 修復庫存一致性失敗: {e}")
+            print(f"修復庫存一致性失敗: {e}")
             return []
     
     @staticmethod
@@ -877,14 +1170,14 @@ class FIFOService:
                     'remaining_after': inventory.remaining_rmb
                 })
                 
-                print(f"📦 從庫存批次 {inventory.id} 扣減 {reduce_from_this_batch} RMB，剩餘 {inventory.remaining_rmb} RMB")
+                print(f" 從庫存批次 {inventory.id} 扣減 {reduce_from_this_batch} RMB，剩餘 {inventory.remaining_rmb} RMB")
             
             db.session.flush()  # 確保更新被保存
-            print(f"✅ 成功按FIFO扣減庫存 {amount} RMB，原因：{reason}")
+            print(f"成功按FIFO扣減庫存 {amount} RMB，原因：{reason}")
             return reduced_items
             
         except Exception as e:
-            print(f"❌ 扣減庫存失敗: {e}")
+            print(f"扣減庫存失敗: {e}")
             raise
     
     @staticmethod
@@ -935,13 +1228,13 @@ class FIFOService:
                 if is_pure_profit:
                     # 純利潤庫存：售出金額全部為利潤
                     pure_profit_twd += sales_record.twd_amount * (allocated_rmb / sales_record.rmb_amount)
-                    print(f"💰 純利潤庫存：批次 {inventory.id}，分配RMB {allocated_rmb}，純利潤 {pure_profit_twd} TWD")
+                    print(f"純利潤庫存：批次 {inventory.id}，分配RMB {allocated_rmb}，純利潤 {pure_profit_twd} TWD")
                 else:
                     # 一般庫存：按匯率差計算利潤
                     batch_profit_twd = (sales_exchange_rate - purchase_exchange_rate) * allocated_rmb
                     regular_profit_twd += batch_profit_twd
                     total_cost_twd += allocated_cost_twd
-                    print(f"📊 一般庫存：批次 {inventory.id}，買入匯率 {purchase_exchange_rate}，售出匯率 {sales_exchange_rate}，分配RMB {allocated_rmb}，批次利潤 {batch_profit_twd} TWD")
+                    print(f"一般庫存：批次 {inventory.id}，買入匯率 {purchase_exchange_rate}，售出匯率 {sales_exchange_rate}，分配RMB {allocated_rmb}，批次利潤 {batch_profit_twd} TWD")
             
             # 總利潤 = 一般庫存利潤 + 純利潤庫存利潤
             total_profit_twd = regular_profit_twd + pure_profit_twd
@@ -972,7 +1265,7 @@ class FIFOService:
             }
             
         except Exception as e:
-            print(f"❌ 計算利潤失敗: {e}")
+            print(f"計算利潤失敗: {e}")
             return None
     
     @staticmethod
@@ -1024,7 +1317,7 @@ class FIFOService:
                     'purchase_exchange_rate': inventory.exchange_rate
                 })
                 
-                print(f"📊 預覽：從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {batch_cost_twd} TWD")
+                print(f"預覽：從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {batch_cost_twd} TWD")
             
             if remaining_to_calculate > 0:
                 return None  # 庫存不足
@@ -1046,7 +1339,7 @@ class FIFOService:
                 # 累計利潤
                 total_profit_twd += batch_profit_twd
                 
-                print(f"📊 FIFO預覽利潤計算：批次 {item['purchase_date']}，買入匯率 {purchase_exchange_rate}，售出匯率 {sales_exchange_rate}，RMB {batch_rmb}，批次利潤 {batch_profit_twd} TWD")
+                print(f"FIFO預覽利潤計算：批次 {item['purchase_date']}，買入匯率 {purchase_exchange_rate}，售出匯率 {sales_exchange_rate}，RMB {batch_rmb}，批次利潤 {batch_profit_twd} TWD")
             
             # 計算利潤率
             revenue_twd = rmb_amount * sales_exchange_rate
@@ -1061,7 +1354,7 @@ class FIFOService:
             }
             
         except Exception as e:
-            print(f"❌ 計算銷售利潤預覽失敗: {e}")
+            print(f"計算銷售利潤預覽失敗: {e}")
             return None
     
     @staticmethod
@@ -1109,7 +1402,7 @@ class FIFOService:
                     'batch_cost_twd': batch_cost_twd
                 })
                 
-                print(f"📊 預覽：從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {batch_cost_twd} TWD")
+                print(f"預覽：從庫存批次 {inventory.id} 分配 {allocate_from_this_batch} RMB，成本 {batch_cost_twd} TWD")
             
             if remaining_to_calculate > 0:
                 return None  # 庫存不足
@@ -1127,7 +1420,7 @@ class FIFOService:
             }
             
         except Exception as e:
-            print(f"❌ 計算利潤預覽失敗: {e}")
+            print(f"計算利潤預覽失敗: {e}")
             return None
 
 
@@ -1188,18 +1481,18 @@ def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
-        print(f"🔍 登入嘗試: username={username}")  # 調試日誌
+        print(f"登入嘗試: username={username}")  # 調試日誌
         
         user = User.query.filter_by(username=username).first()
-        print(f"🔍 用戶查詢結果: {user}")  # 調試日誌
+        print(f"用戶查詢結果: {user}")  # 調試日誌
         
         if user and user.check_password(password):
-            print(f"✅ 登入成功: {username}")  # 調試日誌
+            print(f"登入成功: {username}")  # 調試日誌
             login_user(user, remember=True)
             flash(f"歡迎回來，{username}！", "success")
             return redirect(url_for("dashboard"))
         else:
-            print(f"❌ 登入失敗: {username}")  # 調試日誌
+            print(f"登入失敗: {username}")  # 調試日誌
             flash("無效的使用者名稱或密碼。", "danger")
     return render_template("login.html")
 
@@ -1271,7 +1564,7 @@ def dashboard():
             .all()
         )
 
-        # 計算總利潤（從所有銷售記錄計算）
+        # 計算總利潤（從所有銷售記錄計算，並扣除利潤提款）
         total_profit_twd = 0.0
         all_sales = (
             db.session.execute(
@@ -1285,6 +1578,21 @@ def dashboard():
             profit_info = FIFOService.calculate_profit_for_sale(sale)
             if profit_info:
                 total_profit_twd += profit_info.get('profit_twd', 0.0)
+        
+        # 扣除利潤提款記錄
+        profit_withdrawals = (
+            db.session.execute(
+                db.select(LedgerEntry)
+                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+            )
+            .scalars()
+            .all()
+        )
+        
+        total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
+        total_profit_twd -= total_profit_withdrawals
+        
+        print(f"DEBUG: 普通用戶儀表板利潤計算 - 銷售利潤: {total_profit_twd + total_profit_withdrawals:.2f}, 利潤提款: {total_profit_withdrawals:.2f}, 最終利潤: {total_profit_twd:.2f}")
 
         return render_template(
             "dashboard.html",
@@ -1307,6 +1615,113 @@ def dashboard():
             recent_purchases=[],
             recent_sales=[],
             is_admin=False
+        )
+
+
+@app.route("/admin/delete_audit_logs")
+@admin_required
+def admin_delete_audit_logs():
+    """刪除記錄審計頁面"""
+    try:
+        # 獲取查詢參數
+        table_name = request.args.get('table_name', '')
+        operator_id = request.args.get('operator_id', '')
+        page = int(request.args.get('page', 1))
+        per_page = 20
+        
+        # 構建查詢
+        query = db.select(DeleteAuditLog)
+        
+        if table_name:
+            query = query.filter(DeleteAuditLog.table_name == table_name)
+        
+        if operator_id:
+            try:
+                operator_id_int = int(operator_id)
+                query = query.filter(DeleteAuditLog.operator_id == operator_id_int)
+            except ValueError:
+                pass
+        
+        # 排序和分頁
+        query = query.order_by(DeleteAuditLog.deleted_at.desc())
+        
+        # 獲取總數
+        total_logs = db.session.execute(db.select(db.func.count(DeleteAuditLog.id))).scalar()
+        
+        # 重新執行查詢以獲取分頁結果
+        audit_logs = db.session.execute(
+            query.offset((page - 1) * per_page).limit(per_page)
+        ).scalars().all()
+        
+        # 轉換為字典格式
+        logs_data = []
+        for log in audit_logs:
+            try:
+                import json
+                deleted_data = json.loads(log.deleted_data) if log.deleted_data else {}
+            except:
+                deleted_data = {}
+            
+            try:
+                balance_changes = json.loads(log.balance_changes) if log.balance_changes else None
+            except:
+                balance_changes = None
+            
+            log_dict = {
+                'id': log.id,
+                'table_name': log.table_name,
+                'record_id': log.record_id,
+                'deleted_data': deleted_data,
+                'operation_type': log.operation_type,
+                'description': log.description,
+                'operator_name': log.operator_name,
+                'deleted_at': log.deleted_at,
+                'ip_address': log.ip_address,
+                'balance_changes': balance_changes
+            }
+            logs_data.append(log_dict)
+        
+        # 分頁資訊
+        pagination = {
+            'page': page,
+            'per_page': per_page,
+            'total': total_logs,
+            'pages': (total_logs + per_page - 1) // per_page,
+            'has_prev': page > 1,
+            'has_next': page * per_page < total_logs,
+            'prev_num': page - 1,
+            'next_num': page + 1,
+        }
+        
+        # 獲取所有操作者列表（用於篩選）
+        operators = db.session.execute(
+            db.select(User.id, User.username)
+            .order_by(User.username)
+        ).all()
+        
+        return render_template(
+            "admin/delete_audit_logs.html",
+            audit_logs=logs_data,
+            pagination=pagination,
+            table_name=table_name,
+            operator_id=operator_id,
+            operators=operators,
+            total_logs=total_logs
+        )
+        
+    except Exception as e:
+        print(f"載入刪除記錄審計頁面失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("載入刪除記錄審計頁面時發生錯誤", "danger")
+        return render_template(
+            "admin/delete_audit_logs.html",
+            audit_logs=[],
+            pagination=None,
+            table_name="",
+            operator_id="",
+            operators=[],
+            total_logs=0
         )
 
 
@@ -1355,7 +1770,7 @@ def admin_dashboard():
         # 只計算台幣資產，不包含人民幣估值
         twd_assets = total_twd_cash
 
-        # 計算總利潤（從所有銷售記錄計算）
+        # 計算總利潤（從所有銷售記錄計算，並扣除利潤提款）
         total_profit_twd = 0.0
         all_sales = (
             db.session.execute(
@@ -1369,6 +1784,21 @@ def admin_dashboard():
             profit_info = FIFOService.calculate_profit_for_sale(sale)
             if profit_info:
                 total_profit_twd += profit_info.get('profit_twd', 0.0)
+        
+        # 扣除利潤提款記錄
+        profit_withdrawals = (
+            db.session.execute(
+                db.select(LedgerEntry)
+                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+            )
+            .scalars()
+            .all()
+        )
+        
+        total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
+        total_profit_twd -= total_profit_withdrawals
+        
+        print(f"DEBUG: 管理員儀表板利潤計算 - 銷售利潤: {total_profit_twd + total_profit_withdrawals:.2f}, 利潤提款: {total_profit_withdrawals:.2f}, 最終利潤: {total_profit_twd:.2f}")
         
         # 设置变量别名以保持模板兼容性
         total_unsettled_amount_twd = total_receivables
@@ -1694,9 +2124,9 @@ def api_sales_entry():
         try:
             # 使用FIFO服務分配庫存
             fifo_result = FIFOService.allocate_inventory_for_sale(new_sale)
-            print(f"✅ FIFO庫存分配成功: {fifo_result}")
+            print(f"FIFO庫存分配成功: {fifo_result}")
         except Exception as e:
-            print(f"❌ FIFO庫存分配失敗: {e}")
+            print(f"FIFO庫存分配失敗: {e}")
             # 如果FIFO分配失敗，回滾整個交易
             db.session.rollback()
             return jsonify({
@@ -1711,9 +2141,9 @@ def api_sales_entry():
         try:
             from global_sync import sync_entire_database
             sync_entire_database(db.session)
-            print("✅ 銷售記錄創建後全局數據同步完成")
+            print(" 銷售記錄創建後全局數據同步完成")
         except Exception as sync_error:
-            print(f"⚠️ 全局數據同步失敗（不影響銷售記錄）: {sync_error}")
+            print(f"全局數據同步失敗（不影響銷售記錄）: {sync_error}")
 
         return jsonify(
             {
@@ -1726,7 +2156,7 @@ def api_sales_entry():
         return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"!!! Error in api_sales_entry: {e}")
+        print(f"!! Error in api_sales_entry: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1788,7 +2218,7 @@ def cash_management_operator():
             
             total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
         except Exception as customer_error:
-            print(f"⚠️ Customer表查詢失敗，可能表不存在: {customer_error}")
+            print(f"Customer表查詢失敗，可能表不存在: {customer_error}")
             customers_with_receivables = []
             total_receivables = 0.0
 
@@ -1991,6 +2421,40 @@ def cash_management_operator():
         end_idx = start_idx + items_per_page
         paginated_stream = unified_stream[start_idx:end_idx]
 
+        # 查詢待付款項數據
+        try:
+            pending_payments = (
+                db.session.execute(
+                    db.select(PendingPayment)
+                    .filter_by(is_settled=False)
+                    .order_by(PendingPayment.created_at.desc())
+                )
+                .scalars()
+                .all()
+            )
+        except Exception as pending_error:
+            print(f"PendingPayment表查詢失敗，可能表不存在: {pending_error}")
+            pending_payments = []
+
+        # 準備 owner_accounts 數據
+        all_accounts_obj = (
+            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            .scalars()
+            .all()
+        )
+        
+        owner_accounts_data = [
+            {
+                "id": a.id,
+                "name": a.name,
+                "currency": a.currency,
+                "holder_id": a.holder_id,
+                "balance": a.balance
+            }
+            for a in all_accounts_obj
+        ]
+        
+
         return render_template(
             "cash_management.html",
             holders=holders_data,
@@ -1999,6 +2463,8 @@ def cash_management_operator():
             total_rmb=total_rmb,
             total_receivables_twd=total_receivables,
             customers_with_receivables=customers_with_receivables,
+            pending_payments=pending_payments,
+            owner_accounts=owner_accounts_data,
             movements=paginated_stream,
             current_page=page,
             total_pages=total_pages,
@@ -2016,6 +2482,8 @@ def cash_management_operator():
             total_rmb=0.0,
             total_receivables_twd=0.0,
             customers_with_receivables=[],
+            pending_payments=[],
+            owner_accounts=[],
             movements=[],
             current_page=1,
             total_pages=1,
@@ -2065,7 +2533,7 @@ def cash_management():
             
             total_receivables = sum(c.total_receivables_twd for c in customers_with_receivables)
         except Exception as customer_error:
-            print(f"⚠️ Customer表查詢失敗，可能表不存在: {customer_error}")
+            print(f"Customer表查詢失敗，可能表不存在: {customer_error}")
             customers_with_receivables = []
             total_receivables = 0.0
 
@@ -2158,7 +2626,7 @@ def cash_management():
             rmb_change = 0
             
             # 調試信息：檢查每個記帳記錄
-            print(f"🔍 DEBUG: 處理記帳記錄 - 類型: {entry.entry_type}, 帳戶: {entry.account.name if entry.account else 'N/A'}, 金額: {entry.amount}")
+            print(f"DEBUG: 處理記帳記錄 - 類型: {entry.entry_type}, 帳戶: {entry.account.name if entry.account else 'N/A'}, 金額: {entry.amount}")
             
             # 優化：移除對BUY_IN_DEBIT和BUY_IN_CREDIT的特殊處理
             # 因為買入交易現在只使用PurchaseRecord，不需要額外的LedgerEntry
@@ -2172,7 +2640,7 @@ def cash_management():
                     # 其他類型（如提款、轉出）是減少TWD餘額
                     twd_change = -entry.amount
                 
-                print(f"  💰 TWD帳戶變動: {twd_change} (類型: {entry.entry_type})")
+                print(f"  TWD帳戶變動: {twd_change} (類型: {entry.entry_type})")
                 
             elif entry.account and entry.account.currency == "RMB":
                 rmb_change = (
@@ -2181,7 +2649,7 @@ def cash_management():
                     else -entry.amount
                 )
                 
-                print(f"  💰 RMB帳戶變動: {rmb_change} (類型: {entry.entry_type})")
+                print(f"  RMB帳戶變動: {rmb_change} (類型: {entry.entry_type})")
             
             # 顯示所有記帳記錄，包括提款記錄
             # 移除過濾，確保提款記錄被包含在內
@@ -2224,7 +2692,7 @@ def cash_management():
                     deposit_account = "N/A"
                 
                 # 調試信息：檢查添加到流水記錄的數據
-                print(f"  📝 添加到流水記錄: 類型={entry.entry_type}, TWD變動={twd_change}, RMB變動={rmb_change}")
+                print(f"  添加到流水記錄: 類型={entry.entry_type}, TWD變動={twd_change}, RMB變動={rmb_change}")
                 
                 unified_stream.append(
                     {
@@ -2339,7 +2807,7 @@ def cash_management():
             
             # 調試信息：檢查變動值
             if twd_change != 0 or rmb_change != 0:
-                print(f"🔍 DEBUG: 交易 {transaction.get('type', 'N/A')} - TWD變動: {twd_change}, RMB變動: {rmb_change}")
+                print(f"DEBUG: 交易 {transaction.get('type', 'N/A')} - TWD變動: {twd_change}, RMB變動: {rmb_change}")
             
             # 計算此筆交易後的餘額
             running_twd_balance += twd_change
@@ -2351,7 +2819,7 @@ def cash_management():
             
             # 調試信息：檢查累積餘額
             if twd_change != 0 or rmb_change != 0:
-                print(f"  📊 累積餘額: TWD={running_twd_balance}, RMB={running_rmb_balance}")
+                print(f"  累積餘額: TWD={running_twd_balance}, RMB={running_rmb_balance}")
         
         # 重新按日期倒序排列，保持顯示順序
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
@@ -2402,6 +2870,21 @@ def cash_management():
             "next_num": page + 1,
         }
 
+        # 查詢待付款項數據
+        try:
+            pending_payments = (
+                db.session.execute(
+                    db.select(PendingPayment)
+                    .filter_by(is_settled=False)
+                    .order_by(PendingPayment.created_at.desc())
+                )
+                .scalars()
+                .all()
+            )
+        except Exception as pending_error:
+            print(f"PendingPayment表查詢失敗，可能表不存在: {pending_error}")
+            pending_payments = []
+
         # --- 關鍵修正：確保您傳遞的是正確的分頁後數據 ---
         return render_template(
             "cash_management.html",
@@ -2409,6 +2892,7 @@ def cash_management():
             total_rmb=total_rmb,
             total_receivables_twd=total_receivables,
             customers_with_receivables=customers_with_receivables,
+            pending_payments=pending_payments,
             accounts_by_holder=accounts_by_holder,
             movements=paginated_items,  # <-- 傳遞分頁後的當前頁數據
             pagination=pagination,  # <-- 傳遞分頁控制對象
@@ -2419,12 +2903,13 @@ def cash_management():
                     "name": a.name,
                     "currency": a.currency,
                     "holder_id": a.holder_id,
+                    "balance": a.balance
                 }
                 for a in all_accounts_obj
             ],
         )
     except Exception as e:
-        print(f"!!! 現金管理頁面發生錯誤: {e}")
+        print(f"!! 現金管理頁面發生錯誤: {e}")
         import traceback
 
         traceback.print_exc()
@@ -2435,6 +2920,7 @@ def cash_management():
             total_rmb=0,
             total_receivables_twd=0,
             customers_with_receivables=[],
+            pending_payments=[],
             accounts_by_holder={},
             movements=[],
             holders=[],
@@ -2684,33 +3170,34 @@ def api_buy_in():
         if action == "record_purchase":
             # 1. 獲取並驗證資料
             try:
-                payment_account_id = int(data.get("payment_account_id"))
+                payment_account_id = data.get("payment_account_id")
+                if payment_account_id:
+                    payment_account_id = int(payment_account_id)
                 deposit_account_id = int(data.get("deposit_account_id"))
                 rmb_amount = float(data.get("rmb_amount"))
                 exchange_rate = float(data.get("exchange_rate"))
                 channel_id = data.get("channel_id")  # 可能為空字符串、null或數字
                 channel_name_manual = data.get("channel_name_manual", "").strip()
+                payment_status = data.get("payment_status", "paid")  # 默認為已付款
             except (ValueError, TypeError, AttributeError):
                 return (
                     jsonify({"status": "error", "message": "輸入的資料格式不正確。"}),
                     400,
                 )
 
-            if not all(
-                [
-                    payment_account_id,
-                    deposit_account_id,
-                    rmb_amount > 0,
-                    exchange_rate > 0,
-                ]
-            ):
-                return (
-                    jsonify(
-                        {
-                            "status": "error",
-                            "message": "所有帳戶和金額欄位都必須正確填寫。",
-                        }
-                    ),
+            # 根據付款狀態進行不同的驗證
+            if payment_status == "paid":
+                # 已付款：需要付款帳戶
+                if not all([payment_account_id, deposit_account_id, rmb_amount > 0, exchange_rate > 0]):
+                    return (
+                        jsonify({"status": "error", "message": "所有帳戶和金額欄位都必須正確填寫。"}),
+                        400,
+                    )
+            else:
+                # 未付款：不需要付款帳戶
+                if not all([deposit_account_id, rmb_amount > 0, exchange_rate > 0]):
+                    return (
+                        jsonify({"status": "error", "message": "入庫帳戶和金額欄位都必須正確填寫。"}),
                     400,
                 )
             
@@ -2724,14 +3211,16 @@ def api_buy_in():
                 )
 
             # 2. 查詢資料庫物件
-            payment_account = db.session.get(CashAccount, payment_account_id)
+            payment_account = None
+            if payment_account_id:
+                payment_account = db.session.get(CashAccount, payment_account_id)
+                if not payment_account or payment_account.currency != "TWD":
+                    return (
+                        jsonify({"status": "error", "message": "無效的 TWD 付款帳戶。"}),
+                        400,
+                    )
+            
             deposit_account = db.session.get(CashAccount, deposit_account_id)
-
-            if not payment_account or payment_account.currency != "TWD":
-                return (
-                    jsonify({"status": "error", "message": "無效的 TWD 付款帳戶。"}),
-                    400,
-                )
             if not deposit_account or deposit_account.currency != "RMB":
                 return (
                     jsonify({"status": "error", "message": "無效的 RMB 入庫帳戶。"}),
@@ -2740,7 +3229,9 @@ def api_buy_in():
 
             # 3. 核心業務邏輯
             twd_cost = rmb_amount * exchange_rate
-            if payment_account.balance < twd_cost:
+            
+            # 根據付款狀態檢查餘額
+            if payment_status == "paid" and payment_account and payment_account.balance < twd_cost:
                 return (
                     jsonify(
                         {
@@ -2770,17 +3261,22 @@ def api_buy_in():
                 final_channel_id = channel.id
 
             # 更新帳戶餘額
-            payment_account.balance -= twd_cost
+            if payment_status == "paid" and payment_account:
+                # 已付款：立即扣款
+                payment_account.balance -= twd_cost
+            
+            # 入庫（無論付款狀態如何都要入庫）
             deposit_account.balance += rmb_amount
 
             # 創建採購紀錄
             new_purchase = PurchaseRecord(
-                payment_account_id=payment_account.id,
+                payment_account_id=payment_account.id if payment_account else None,
                 deposit_account_id=deposit_account.id,
                 channel_id=final_channel_id,
                 rmb_amount=rmb_amount,
                 exchange_rate=exchange_rate,
                 twd_cost=twd_cost,
+                payment_status=payment_status,
                 operator_id=current_user.id,  # <--- V4.0 核心功能！
             )
             db.session.add(new_purchase)
@@ -2789,10 +3285,24 @@ def api_buy_in():
             # 創建FIFO庫存記錄
             try:
                 FIFOService.create_inventory_from_purchase(new_purchase)
-                print(f"✅ 已為買入記錄 {new_purchase.id} 創建FIFO庫存")
+                print(f"已為買入記錄 {new_purchase.id} 創建FIFO庫存")
             except Exception as e:
-                print(f"❌ 創建FIFO庫存失敗: {e}")
+                print(f"創建FIFO庫存失敗: {e}")
                 # 即使FIFO創建失敗，也不影響主要交易
+                pass
+            
+            # 如果付款狀態為未付款，創建待付款項
+            if payment_status == "unpaid":
+                try:
+                    pending_payment = PendingPayment(
+                        purchase_record_id=new_purchase.id,
+                        amount_twd=twd_cost
+                    )
+                    db.session.add(pending_payment)
+                    print(f"已為買入記錄 {new_purchase.id} 創建待付款項: NT$ {twd_cost:,.2f}")
+                except Exception as e:
+                    print(f"創建待付款項失敗: {e}")
+                    # 即使待付款項創建失敗，也不影響主要交易
                 pass
 
             # 優化：移除重複的記帳記錄，只保留主要的PurchaseRecord
@@ -2804,14 +3314,20 @@ def api_buy_in():
             try:
                 from global_sync import sync_entire_database
                 sync_entire_database(db.session)
-                print("✅ 買入記錄創建後全局數據同步完成")
+                print(" 買入記錄創建後全局數據同步完成")
             except Exception as sync_error:
-                print(f"⚠️ 全局數據同步失敗（不影響買入記錄）: {sync_error}")
+                print(f"全局數據同步失敗（不影響買入記錄）: {sync_error}")
+
+            # 根據付款狀態返回不同的成功訊息
+            if payment_status == "paid":
+                message = f"交易成功！已從 {payment_account.name} 付款，並將 RMB 存入 {deposit_account.name}。"
+            else:
+                message = f"交易成功！已將 RMB 存入 {deposit_account.name}，待付款項 NT$ {twd_cost:,.2f} 已建立。"
 
             return jsonify(
                 {
                     "status": "success",
-                    "message": f"交易成功！已從 {payment_account.name} 付款，並將 RMB 存入 {deposit_account.name}。",
+                    "message": message,
                 }
             )
 
@@ -2826,7 +3342,7 @@ def api_buy_in():
 
     except Exception as e:
         db.session.rollback()
-        print(f"!!! Error in api_buy_in: {e}")  # 在後端印出詳細錯誤
+        print(f"!! Error in api_buy_in: {e}")  # 在後端印出詳細錯誤
         import traceback
 
         traceback.print_exc()
@@ -2834,6 +3350,132 @@ def api_buy_in():
             jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}),
             500,
         )
+
+
+@app.route("/api/settle-pending-payment", methods=["POST"])
+@login_required
+def settle_pending_payment_api():
+    """
+    處理待付款項銷帳的 API
+    """
+    try:
+        data = request.get_json()
+        pending_id = data.get("pending_id")
+        payment_account_id = data.get("payment_account_id")
+        settlement_amount = float(data.get("settlement_amount"))
+        note = data.get("note", "").strip()
+        
+        # 驗證必填欄位
+        if not all([pending_id, payment_account_id, settlement_amount]):
+            return jsonify({"status": "error", "message": "缺少必填欄位"}), 400
+        
+        # 查詢待付款項
+        pending_payment = db.session.get(PendingPayment, pending_id)
+        if not pending_payment:
+            return jsonify({"status": "error", "message": "找不到待付款項"}), 404
+        
+        if pending_payment.is_settled:
+            return jsonify({"status": "error", "message": "該待付款項已經結清"}), 400
+        
+        # 查詢付款帳戶
+        payment_account = db.session.get(CashAccount, payment_account_id)
+        if not payment_account or payment_account.currency != "TWD":
+            return jsonify({"status": "error", "message": "無效的 TWD 付款帳戶"}), 400
+        
+        # 檢查銷帳金額
+        if settlement_amount <= 0:
+            return jsonify({"status": "error", "message": "銷帳金額必須大於 0"}), 400
+        
+        if settlement_amount > pending_payment.amount_twd:
+            return jsonify({"status": "error", "message": "銷帳金額不能超過待付金額"}), 400
+        
+        # 檢查帳戶餘額
+        if payment_account.balance < settlement_amount:
+            return jsonify({"status": "error", "message": f"付款帳戶餘額不足，需要 {settlement_amount:,.2f}，但僅剩 {payment_account.balance:,.2f}"}), 400
+        
+        # 執行銷帳
+        # 1. 扣除付款帳戶餘額
+        payment_account.balance -= settlement_amount
+        
+        # 2. 更新待付款項狀態
+        pending_payment.amount_twd -= settlement_amount
+        pending_payment.paid_at = datetime.utcnow()
+        
+        # 如果完全結清，標記為已結清
+        if pending_payment.amount_twd <= 0:
+            pending_payment.is_settled = True
+            pending_payment.amount_twd = 0
+        
+        # 3. 創建流水記錄
+        description = f"待付款項銷帳 - 買入記錄 #{pending_payment.purchase_record_id}"
+        if note:
+            description += f" | {note}"
+        
+        # 創建流水記錄
+        ledger_entry = LedgerEntry(
+            account_id=payment_account.id,
+            amount=-settlement_amount,  # 負數表示支出
+            description=description,
+            operator_id=current_user.id
+        )
+        db.session.add(ledger_entry)
+        
+        # 提交所有變更
+        db.session.commit()
+        
+        # 記錄刪除審計日誌
+        try:
+            import json
+            from flask import request
+            
+            # 準備被銷帳的資料
+            deleted_data = {
+                'pending_payment_id': pending_payment.id,
+                'purchase_record_id': pending_payment.purchase_record_id,
+                'original_amount_twd': pending_payment.amount_twd + settlement_amount,  # 原始金額
+                'settlement_amount': settlement_amount,
+                'remaining_amount': pending_payment.amount_twd,
+                'payment_account_id': payment_account.id,
+                'payment_account_name': payment_account.name,
+                'note': note,
+                'settled_at': datetime.utcnow().isoformat()
+            }
+            
+            # 記錄帳戶餘額變化
+            affected_accounts = [payment_account]
+            payment_account._balance_before = payment_account.balance + settlement_amount  # 記錄原始餘額
+            
+            balance_changes = DeleteAuditService.collect_balance_changes(affected_accounts)
+            
+            # 記錄審計日誌
+            DeleteAuditService.log_deletion(
+                table_name='pending_payments',
+                record_id=pending_payment.id,
+                deleted_data=json.dumps(deleted_data, ensure_ascii=False),
+                operation_type='SETTLE_PENDING_PAYMENT',
+                description=f'待付款項銷帳：買入記錄 #{pending_payment.purchase_record_id}，銷帳金額 NT$ {settlement_amount:,.2f}',
+                operator_id=current_user.id,
+                request=request,
+                balance_changes=balance_changes
+            )
+        except Exception as audit_error:
+            print(f"記錄銷帳審計日誌失敗: {audit_error}")
+        
+        # 返回成功訊息
+        if pending_payment.is_settled:
+            message = f"待付款項已完全結清！從 {payment_account.name} 扣款 NT$ {settlement_amount:,.2f}。"
+        else:
+            message = f"部分銷帳成功！從 {payment_account.name} 扣款 NT$ {settlement_amount:,.2f}，剩餘待付 NT$ {pending_payment.amount_twd:,.2f}。"
+        
+        return jsonify({
+            "status": "success",
+            "message": message
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"待付款項銷帳失敗: {e}")
+        return jsonify({"status": "error", "message": "銷帳操作失敗"}), 500
 
 
 @app.route("/api/process_payment", methods=["POST"])
@@ -2959,7 +3601,7 @@ def process_payment_api():
 
     except Exception as e:
         db.session.rollback()
-        print(f"!!! Error in process_payment_api: {e}")
+        print(f"!! Error in process_payment_api: {e}")
         import traceback
 
         traceback.print_exc()
@@ -3013,7 +3655,7 @@ def fifo_inventory():
         )
         
     except Exception as e:
-        print(f"❌ 載入FIFO庫存頁面時發生錯誤: {e}")
+        print(f"載入FIFO庫存頁面時發生錯誤: {e}")
         flash(f"載入FIFO庫存頁面時發生錯誤: {e}", "danger")
         return render_template(
             "fifo_inventory.html",
@@ -3068,7 +3710,7 @@ def api_fifo_inventory_status():
         })
         
     except Exception as e:
-        print(f"❌ 獲取FIFO庫存狀態失敗: {e}")
+        print(f"獲取FIFO庫存狀態失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'獲取庫存狀態失敗: {e}'
@@ -3090,7 +3732,7 @@ def api_audit_inventory():
             'issues': issues
         })
     except Exception as e:
-        print(f"❌ 審計庫存一致性失敗: {e}")
+        print(f"審計庫存一致性失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'審計失敗: {e}'
@@ -3108,7 +3750,7 @@ def api_fix_inventory():
             'fixed_issues': fixed_issues
         })
     except Exception as e:
-        print(f"❌ 修復庫存一致性失敗: {e}")
+        print(f"修復庫存一致性失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'修復失敗: {e}'
@@ -3143,7 +3785,7 @@ def api_inventory_status():
         })
         
     except Exception as e:
-        print(f"❌ 獲取庫存狀態報告失敗: {e}")
+        print(f"獲取庫存狀態報告失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'獲取狀態報告失敗: {e}'
@@ -3167,7 +3809,7 @@ def api_reverse_sale_allocation(sales_record_id):
                 'message': f'取消銷售記錄 {sales_record_id} 失敗'
             }), 400
     except Exception as e:
-        print(f"❌ 取消銷售記錄失敗: {e}")
+        print(f"取消銷售記錄失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'取消失敗: {e}'
@@ -3206,7 +3848,7 @@ def api_user_reverse_sale(sales_record_id):
                 'message': f'取消銷售記錄 {sales_record_id} 失敗'
             }), 400
     except Exception as e:
-        print(f"❌ 用戶取消銷售記錄失敗: {e}")
+        print(f"用戶取消銷售記錄失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'取消失敗: {e}'
@@ -3230,7 +3872,7 @@ def api_reverse_purchase_inventory(purchase_record_id):
                 'message': f'取消買入記錄 {purchase_record_id} 失敗，可能已有銷售分配'
             }), 400
     except Exception as e:
-        print(f"❌ 取消買入記錄失敗: {e}")
+        print(f"取消買入記錄失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'取消失敗: {e}'
@@ -3261,7 +3903,7 @@ def api_reverse_card_purchase(card_purchase_id):
         
     except Exception as e:
         db.session.rollback()
-        print(f"❌ 回滾刷卡記錄失敗: {e}")
+        print(f"回滾刷卡記錄失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'回滾失敗: {e}'
@@ -3353,6 +3995,7 @@ def admin_update_cash_account():
             account_id = int(request.form.get("account_id"))
             amount = float(request.form.get("amount"))
             is_decrease = request.form.get("is_decrease") == "true"
+            withdraw_type = request.form.get("withdraw_type", "asset")  # 默認為資產提款
             note = request.form.get("note", "").strip()
             account = db.session.get(CashAccount, account_id)
             if account:
@@ -3370,10 +4013,15 @@ def admin_update_cash_account():
                         # 處理提款
                         account.balance -= amount
                         
-                        # 將備註信息存儲在description中，用分隔符分離
-                        description = "外部提款"
-                        if note:
-                            description += f" | {note}"
+                        # 根據提款類型設置描述
+                        if withdraw_type == "profit":
+                            description = "利潤提款"
+                            if note:
+                                description += f" | {note}"
+                        else:  # asset
+                            description = "資產提款"
+                            if note:
+                                description += f" | {note}"
                         
                         # 如果是RMB帳戶，需要按FIFO原則扣減庫存
                         if account.currency == "RMB":
@@ -3392,17 +4040,64 @@ def admin_update_cash_account():
                                 flash(f"扣減庫存失敗: {e}", "danger")
                                 return redirect(url_for('cash_management'))
                         
+                        # 計算當前總利潤（用於記錄變動前後利潤）
+                        current_total_profit = 0.0
+                        if withdraw_type == "profit":
+                            # 計算當前銷售利潤總和
+                            all_sales = (
+                                db.session.execute(db.select(SalesRecord))
+                                .scalars()
+                                .all()
+                            )
+                            
+                            for sale in all_sales:
+                                profit_info = FIFOService.calculate_profit_for_sale(sale)
+                                if profit_info:
+                                    current_total_profit += profit_info.get('profit_twd', 0.0)
+                            
+                            # 扣除之前的利潤提款
+                            previous_profit_withdrawals = (
+                                db.session.execute(
+                                    db.select(LedgerEntry)
+                                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                                    .filter(LedgerEntry.id != None)  # 排除當前記錄
+                                )
+                                .scalars()
+                                .all()
+                            )
+                            
+                            previous_withdrawals = sum(entry.amount for entry in previous_profit_withdrawals)
+                            current_total_profit -= previous_withdrawals
+                        
                         # 創建流水記錄
+                        entry_type = "PROFIT_WITHDRAW" if withdraw_type == "profit" else "ASSET_WITHDRAW"
                         entry = LedgerEntry(
-                            entry_type="WITHDRAW",
+                            entry_type=entry_type,
                             account_id=account.id,
                             amount=amount,  # 提款金額
                             description=description,
                             operator_id=current_user.id,
                         )
                         
+                        # 如果是利潤提款，記錄詳細利潤信息（如果欄位存在）
+                        if withdraw_type == "profit":
+                            # 安全地設置利潤詳細信息
+                            if hasattr(entry, 'profit_before'):
+                                entry.profit_before = current_total_profit
+                                entry.profit_after = current_total_profit - amount
+                                entry.profit_change = -amount  # 負數表示減少
+                                print(f"DEBUG: 利潤提款記錄 - 變動前: {entry.profit_before:.2f}, 變動後: {entry.profit_after:.2f}, 變動: {entry.profit_change:.2f}")
+                            else:
+                                print("WARNING: 利潤詳細欄位不存在，跳過詳細記錄")
+                        else:
+                            # 資產提款不影響利潤，設為 None（如果欄位存在）
+                            if hasattr(entry, 'profit_before'):
+                                entry.profit_before = None
+                                entry.profit_after = None
+                                entry.profit_change = None
+                        
                         # 調試信息：檢查提款記錄
-                        print(f"🔍 DEBUG: 創建提款記錄 - 金額: {amount}, 帳戶: {account.name}, 類型: WITHDRAW")
+                        print(f"DEBUG: 創建提款記錄 - 金額: {amount}, 帳戶: {account.name}, 類型: WITHDRAW")
                         db.session.add(entry)
                         db.session.commit()
                         
@@ -3410,9 +4105,9 @@ def admin_update_cash_account():
                         try:
                             from global_sync import sync_entire_database
                             sync_entire_database(db.session)
-                            print("✅ 提款操作後全局數據同步完成")
+                            print(" 提款操作後全局數據同步完成")
                         except Exception as sync_error:
-                            print(f"⚠️ 全局數據同步失敗: {sync_error}")
+                            print(f"全局數據同步失敗: {sync_error}")
                         
                         success_msg = f'已從 "{account.name}" 提出 {amount:,.2f}'
                         if account.currency == "RMB":
@@ -3496,9 +4191,9 @@ def admin_update_cash_account():
                     try:
                         from global_sync import sync_entire_database
                         sync_entire_database(db.session)
-                        print("✅ 存款操作後全局數據同步完成")
+                        print(" 存款操作後全局數據同步完成")
                     except Exception as sync_error:
-                        print(f"⚠️ 全局數據同步失敗: {sync_error}")
+                        print(f"全局數據同步失敗: {sync_error}")
                     
                     success_msg = f'已向 "{account.name}" 存入 {amount:,.2f}'
                     if account.currency == "RMB" and rmb_cost_rate:
@@ -3533,14 +4228,14 @@ def admin_update_cash_account():
                 return jsonify({'status': 'error', 'message': '缺少 purchase_record_id'}), 400
 
             try:
-                print(f"🔍 開始回滾純利潤庫存，purchase_record_id: {purchase_record_id}")
+                print(f"開始回滾純利潤庫存，purchase_record_id: {purchase_record_id}")
                 
                 # 先檢查買入記錄是否存在
                 purchase_record = db.session.get(PurchaseRecord, purchase_record_id)
                 if not purchase_record:
                     return jsonify({'status': 'error', 'message': f'找不到買入記錄 {purchase_record_id}'}), 404
                 
-                print(f"✅ 找到買入記錄: channel={purchase_record.channel_id}, payment_account={purchase_record.payment_account_id}, twd_cost={purchase_record.twd_cost}")
+                print(f"找到買入記錄: channel={purchase_record.channel_id}, payment_account={purchase_record.payment_account_id}, twd_cost={purchase_record.twd_cost}")
                 
                 # 檢查是否為純利潤庫存
                 is_pure_profit = (purchase_record.channel is None and 
@@ -3571,7 +4266,7 @@ def admin_update_cash_account():
                         .all()
                     )
                     
-                    print(f"🔍 檢查銷售分配: 找到 {len(allocations)} 個分配記錄")
+                    print(f"檢查銷售分配: 找到 {len(allocations)} 個分配記錄")
                     
                     if allocations:
                         return jsonify({'status': 'error', 'message': f'該批庫存已有 {len(allocations)} 個銷售分配，無法回滾'}), 400
@@ -3584,7 +4279,7 @@ def admin_update_cash_account():
                     return jsonify({'status': 'error', 'message': '回滾失敗，請檢查日誌'}), 500
                     
             except Exception as e:
-                print(f"❌ 回滾純利潤庫存失敗: {e}")
+                print(f"回滾純利潤庫存失敗: {e}")
                 return jsonify({'status': 'error', 'message': f'回滾失敗: {e}'}), 500
 
         elif action == "transfer_funds":
@@ -3633,7 +4328,7 @@ def admin_update_cash_account():
 
     except Exception as e:
         db.session.rollback()
-        print(f"!!! 現金帳戶更新失敗: {e}")
+        print(f"!! 現金帳戶更新失敗: {e}")
         import traceback
 
         traceback.print_exc()
@@ -3774,7 +4469,7 @@ def record_purchase_api():
 
     except Exception as e:
         db.session.rollback()
-        print(f"!!! 買入 API 發生錯誤: {e}")
+        print(f"!! 買入 API 發生錯誤: {e}")
         import traceback
 
         traceback.print_exc()
@@ -3869,7 +4564,7 @@ def record_sale_cost(sale_rmb_amount):
 def get_frequent_customers():
     """獲取常用客戶列表"""
     try:
-        print(f"🔍 API調用: get_frequent_customers by user {current_user.username}")
+        print(f"API調用: get_frequent_customers by user {current_user.username}")
         
         # 先檢查Customer表
         frequent_customers = (
@@ -3880,9 +4575,9 @@ def get_frequent_customers():
             .all()
         )
         
-        print(f"📊 Customer表中找到 {len(frequent_customers)} 個客戶:")
+        print(f"Customer表中找到 {len(frequent_customers)} 個客戶:")
         for customer in frequent_customers:
-            print(f"   - {customer.name} (ID: {customer.id})")
+            print(f"  - {customer.name} (ID: {customer.id})")
         
 
         
@@ -3951,7 +4646,7 @@ def api_calculate_profit():
     except (ValueError, TypeError):
         return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
     except Exception as e:
-        print(f"!!! Error in api_calculate_profit: {e}")
+        print(f"!! Error in api_calculate_profit: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": "伺服器內部錯誤，計算失敗。"}), 500
@@ -3976,7 +4671,7 @@ def api_clear_all_data():
         return jsonify({"status": "error", "message": "確認碼錯誤，操作已取消。"}), 400
     
     try:
-        print(f"🧹 管理員 {current_user.username} 開始執行數據清空操作...")
+        print(f"管理員 {current_user.username} 開始執行數據清空操作...")
         
         # 關鍵修復：按照外鍵依賴關係的正確順序清空數據
         
@@ -3985,81 +4680,81 @@ def api_clear_all_data():
         try:
             transactions_count = db.session.execute(db.select(func.count()).select_from(db.text('transactions'))).scalar()
             db.session.execute(db.text('DELETE FROM transactions'))
-            print(f"✅ 已清空 {transactions_count} 筆交易記錄")
+            print(f"已清空 {transactions_count} 筆交易記錄")
         except Exception as transactions_error:
-            print(f"⚠️ Transactions表清空失敗或不存在: {transactions_error}")
+            print(f"Transactions表清空失敗或不存在: {transactions_error}")
         
         # 2. 清空 FIFO 銷售分配記錄 (引用 fifo_inventory)
         fifo_sales_allocations_count = 0
         try:
             fifo_sales_allocations_count = db.session.execute(db.select(func.count()).select_from(db.text('fifo_sales_allocations'))).scalar()
             db.session.execute(db.text('DELETE FROM fifo_sales_allocations'))
-            print(f"✅ 已清空 {fifo_sales_allocations_count} 筆FIFO銷售分配記錄")
+            print(f"已清空 {fifo_sales_allocations_count} 筆FIFO銷售分配記錄")
         except Exception as fifo_sales_error:
-            print(f"⚠️ FIFO銷售分配表清空失敗或不存在: {fifo_sales_error}")
+            print(f"FIFO銷售分配表清空失敗或不存在: {fifo_sales_error}")
         
         # 3. 清空 FIFO 庫存記錄 (引用 purchase_records)
         fifo_count = 0
         try:
             fifo_count = db.session.execute(db.select(func.count()).select_from(db.text('fifo_inventory'))).scalar()
             db.session.execute(db.text('DELETE FROM fifo_inventory'))
-            print(f"✅ 已清空 {fifo_count} 筆FIFO庫存記錄")
+            print(f"已清空 {fifo_count} 筆FIFO庫存記錄")
         except Exception as fifo_error:
-            print(f"⚠️ FIFO庫存表清空失敗或不存在: {fifo_error}")
+            print(f"FIFO庫存表清空失敗或不存在: {fifo_error}")
         
         # 4. 清空售出訂單 (被 transactions 引用)
         sales_count = db.session.execute(db.select(func.count(SalesRecord.id))).scalar()
         db.session.execute(db.delete(SalesRecord))
-        print(f"✅ 已清空 {sales_count} 筆售出訂單")
+        print(f"已清空 {sales_count} 筆售出訂單")
         
         # 5. 清空買入訂單 (現在沒有外鍵依賴了)
         purchase_count = db.session.execute(db.select(func.count(PurchaseRecord.id))).scalar()
         db.session.execute(db.delete(PurchaseRecord))
-        print(f"✅ 已清空 {purchase_count} 筆買入訂單")
+        print(f"已清空 {purchase_count} 筆買入訂單")
         
         # 6. 清空現金流水記錄 (LedgerEntry, CashLog)
         ledger_count = db.session.execute(db.select(func.count(LedgerEntry.id))).scalar()
         db.session.execute(db.delete(LedgerEntry))
-        print(f"✅ 已清空 {ledger_count} 筆帳本記錄")
+        print(f"已清空 {ledger_count} 筆帳本記錄")
         
         cash_log_count = db.session.execute(db.select(func.count(CashLog.id))).scalar()
         db.session.execute(db.delete(CashLog))
-        print(f"✅ 已清空 {cash_log_count} 筆現金日誌")
+        print(f"已清空 {cash_log_count} 筆現金日誌")
         
         # 7. 清空刷卡記錄 (如果存在)
         card_purchase_count = 0
         try:
             card_purchase_count = db.session.execute(db.select(func.count(CardPurchase.id))).scalar()
             db.session.execute(db.delete(CardPurchase))
-            print(f"✅ 已清空 {card_purchase_count} 筆刷卡記錄")
+            print(f"已清空 {card_purchase_count} 筆刷卡記錄")
         except Exception as card_error:
-            print(f"⚠️ 刷卡記錄表清空失敗或不存在: {card_error}")
+            print(f"刷卡記錄表清空失敗或不存在: {card_error}")
         
         # 8. 清空所有帳戶金額 (將餘額設為0，但保留帳戶結構)
         accounts = db.session.execute(db.select(CashAccount)).scalars().all()
         account_count = 0
         for account in accounts:
             if account.balance != 0:
-                print(f"  📊 清空帳戶: {account.name} ({account.currency}) 餘額: {account.balance} -> 0")
+                print(f"  清空帳戶: {account.name} ({account.currency}) 餘額: {account.balance} -> 0")
                 account.balance = 0
                 account_count += 1
-        print(f"✅ 已清空 {account_count} 個帳戶的餘額")
+        print(f"已清空 {account_count} 個帳戶的餘額")
         
         # 9. 清空應收帳款 (將客戶的應收帳款設為0，但保留客戶記錄)
         customers = db.session.execute(db.select(Customer)).scalars().all()
         receivable_count = 0
         for customer in customers:
             if customer.total_receivables_twd > 0:
-                print(f"  💰 清空客戶應收: {customer.name} 應收款: {customer.total_receivables_twd} -> 0")
+                print(f"  清空客戶應收: {customer.name} 應收款: {customer.total_receivables_twd} -> 0")
                 customer.total_receivables_twd = 0
                 receivable_count += 1
-        print(f"✅ 已清空 {receivable_count} 位客戶的應收帳款")
+        print(f"已清空 {receivable_count} 位客戶的應收帳款")
         
         # 提交所有更改
         db.session.commit()
         
         total_message = f"數據清空完成！清空了 {purchase_count} 筆買入、{sales_count} 筆售出、{account_count} 個帳戶餘額、{ledger_count} 筆帳本記錄、{cash_log_count} 筆現金日誌、{receivable_count} 位客戶應收帳款、{fifo_count} 筆FIFO庫存、{fifo_sales_allocations_count} 筆FIFO分配、{transactions_count} 筆交易記錄、{card_purchase_count} 筆刷卡記錄。"
-        print(f"🎉 {total_message}")
+        print(f" {total_message}")
         
         return jsonify({
             "status": "success", 
@@ -4081,10 +4776,113 @@ def api_clear_all_data():
     except Exception as e:
         db.session.rollback()
         error_msg = f"數據清空失敗: {e}"
-        print(f"❌ {error_msg}")
+        print(f"{error_msg}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": error_msg}), 500
+
+
+@app.route("/api/users", methods=["GET"])
+@login_required
+def api_users():
+    """獲取用戶列表API"""
+    try:
+        users = db.session.execute(
+            db.select(User.id, User.username)
+            .order_by(User.username)
+        ).all()
+        
+        users_data = [{'id': user.id, 'username': user.username} for user in users]
+        
+        return jsonify({
+            'status': 'success',
+            'users': users_data
+        })
+        
+    except Exception as e:
+        print(f"獲取用戶列表失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'獲取用戶列表失敗: {e}'
+        }), 500
+
+
+@app.route("/api/delete_audit_logs", methods=["GET"])
+@login_required
+def api_delete_audit_logs():
+    """獲取刪除記錄審計API"""
+    try:
+        # 獲取查詢參數
+        table_name = request.args.get('table_name', '')
+        operator_id = request.args.get('operator_id', '')
+        limit = int(request.args.get('limit', 20))
+        
+        # 限制查詢數量
+        limit = min(limit, 100)  # 最多100筆
+        
+        # 構建查詢
+        query = db.select(DeleteAuditLog)
+        
+        if table_name:
+            query = query.filter(DeleteAuditLog.table_name == table_name)
+        
+        if operator_id:
+            try:
+                operator_id_int = int(operator_id)
+                query = query.filter(DeleteAuditLog.operator_id == operator_id_int)
+            except ValueError:
+                pass
+        
+        # 排序和限制
+        query = query.order_by(DeleteAuditLog.deleted_at.desc()).limit(limit)
+        
+        # 執行查詢
+        audit_logs = db.session.execute(query).scalars().all()
+        
+        # 轉換為字典格式
+        logs_data = []
+        for log in audit_logs:
+            try:
+                import json
+                deleted_data = json.loads(log.deleted_data) if log.deleted_data else {}
+            except:
+                deleted_data = {}
+            
+            try:
+                balance_changes = json.loads(log.balance_changes) if log.balance_changes else None
+            except:
+                balance_changes = None
+            
+            log_dict = {
+                'id': log.id,
+                'table_name': log.table_name,
+                'record_id': log.record_id,
+                'deleted_data': deleted_data,
+                'operation_type': log.operation_type,
+                'description': log.description,
+                'operator_name': log.operator_name,
+                'deleted_at': log.deleted_at.isoformat() if log.deleted_at else None,
+                'ip_address': log.ip_address,
+                'balance_changes': balance_changes
+            }
+            logs_data.append(log_dict)
+        
+        # 獲取總數（用於計數）
+        total_count = db.session.execute(db.select(func.count(DeleteAuditLog.id))).scalar()
+        
+        return jsonify({
+            'status': 'success',
+            'logs': logs_data,
+            'total': total_count,
+            'limit': limit
+        })
+        
+    except Exception as e:
+        print(f"獲取刪除記錄審計失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'獲取刪除記錄失敗: {e}'
+        }), 500
 
 
 @app.route("/api/delete-account", methods=["POST"])
@@ -4142,7 +4940,7 @@ def api_delete_account():
             # 這裡可以根據實際的資料庫結構添加更多檢查
             
         except Exception as check_error:
-            print(f"⚠️ 檢查外鍵約束時出錯: {check_error}")
+            print(f"檢查外鍵約束時出錯: {check_error}")
             # 如果檢查失敗，我們不應該繼續，而是返回錯誤
             return jsonify({
                 "status": "error",
@@ -4162,7 +4960,7 @@ def api_delete_account():
             
         except Exception as delete_error:
             db.session.rollback()
-            print(f"❌ 刪除帳戶時出錯: {delete_error}")
+            print(f"刪除帳戶時出錯: {delete_error}")
             
             # 檢查是否是外鍵約束錯誤
             if "ForeignKeyViolation" in str(delete_error) or "foreign key constraint" in str(delete_error).lower():
@@ -4181,7 +4979,7 @@ def api_delete_account():
         except:
             pass  # 如果回滾也失敗，我們無能為力
         
-        print(f"❌ 刪除帳戶時發生嚴重錯誤: {e}")
+        print(f"刪除帳戶時發生嚴重錯誤: {e}")
         return jsonify({"status": "error", "message": "刪除帳戶時發生嚴重錯誤，請稍後重試。"}), 500
 
 
@@ -4265,7 +5063,7 @@ def api_settlement():
         return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"!!! Error in api_settlement: {e}")
+        print(f"!! Error in api_settlement: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
@@ -4301,7 +5099,7 @@ def api_customers_manage():
         })
         
     except Exception as e:
-        print(f"❌ 獲取客戶管理數據失敗: {e}")
+        print(f"獲取客戶管理數據失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'獲取客戶數據失敗: {e}'
@@ -4335,7 +5133,7 @@ def api_customer_delete(customer_id):
         
     except Exception as e:
         db.session.rollback()
-        print(f"❌ 刪除客戶失敗: {e}")
+        print(f"刪除客戶失敗: {e}")
         return jsonify({
             "status": "error",
             "message": f"刪除客戶失敗: {e}"
@@ -4362,7 +5160,7 @@ def api_customer_restore(customer_id):
         
     except Exception as e:
         db.session.rollback()
-        print(f"❌ 恢復客戶失敗: {e}")
+        print(f"恢復客戶失敗: {e}")
         return jsonify({
             "status": "error",
             "message": f"恢復客戶失敗: {e}"
@@ -4409,21 +5207,21 @@ def api_customer_transactions(customer_id):
         ]
         
         # 調試：打印查詢到的銷帳記錄
-        print(f"🔍 查詢銷帳記錄:")
-        print(f"   - 客戶名稱: {customer.name}")
-        print(f"   - 所有銷帳記錄數量: {len(all_settlements)}")
-        print(f"   - 過濾後包含客戶名稱的銷帳記錄數量: {len(receivable_entries)}")
+        print(f"查詢銷帳記錄:")
+        print(f"  - 客戶名稱: {customer.name}")
+        print(f"  - 所有銷帳記錄數量: {len(all_settlements)}")
+        print(f"  - 過濾後包含客戶名稱的銷帳記錄數量: {len(receivable_entries)}")
         
         # 打印所有銷帳記錄的描述，幫助調試
         if len(all_settlements) > 0:
-            print(f"   - 所有銷帳記錄描述:")
+            print(f"  - 所有銷帳記錄描述:")
             for entry in all_settlements:
-                print(f"     * {entry.description}")
+                print(f"    * {entry.description}")
         
         if len(receivable_entries) > 0:
-            print(f"   - 匹配的銷帳記錄描述:")
+            print(f"  - 匹配的銷帳記錄描述:")
             for entry in receivable_entries:
-                print(f"     * {entry.description}")
+                print(f"    * {entry.description}")
         
         # 直接使用數據庫中存儲的應收帳款值，確保與現金管理頁面一致
         total_receivables = customer.total_receivables_twd
@@ -4466,11 +5264,11 @@ def api_customer_transactions(customer_id):
         # 按日期排序
         transactions.sort(key=lambda x: x['date'], reverse=True)
         
-        print(f"🔍 客戶 {customer.name} 的交易紀錄:")
-        print(f"   - 銷售記錄數量: {len(sales_records)}")
-        print(f"   - 銷帳記錄數量: {len(receivable_entries)}")
-        print(f"   - 總交易數量: {len(transactions)}")
-        print(f"   - 當前應收帳款: {total_receivables}")
+        print(f"客戶 {customer.name} 的交易紀錄:")
+        print(f"  - 銷售記錄數量: {len(sales_records)}")
+        print(f"  - 銷帳記錄數量: {len(receivable_entries)}")
+        print(f"  - 總交易數量: {len(transactions)}")
+        print(f"  - 當前應收帳款: {total_receivables}")
         
         return jsonify({
             'status': 'success',
@@ -4480,7 +5278,7 @@ def api_customer_transactions(customer_id):
         })
         
     except Exception as e:
-        print(f"❌ 獲取客戶交易紀錄失敗: {e}")
+        print(f"獲取客戶交易紀錄失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'獲取交易紀錄失敗: {e}'
@@ -4669,7 +5467,7 @@ def export_test_page():
     </style>
 </head>
 <body>
-    <h1>🔍 數據庫導出測試</h1>
+    <h1> 數據庫導出測試</h1>
     
     <p>點擊下面的按鈕來導出您的本地數據庫數據：</p>
     
@@ -4698,11 +5496,11 @@ def export_test_page():
                     // 顯示統計信息
                     const stats = `
                         <div class="status success">
-                            ✅ 導出成功！<br>
+                             導出成功！<br>
                             👥 用戶: ${exportedData.users ? exportedData.users.length : 0} 個<br>
                             🏢 持有人: ${exportedData.holders ? exportedData.holders.length : 0} 個<br>
-                            💰 現金帳戶: ${exportedData.cash_accounts ? exportedData.cash_accounts.length : 0} 個<br>
-                            👤 客戶: ${exportedData.customers ? exportedData.customers.length : 0} 個<br>
+                             現金帳戶: ${exportedData.cash_accounts ? exportedData.cash_accounts.length : 0} 個<br>
+                             客戶: ${exportedData.customers ? exportedData.customers.length : 0} 個<br>
                             📡 渠道: ${exportedData.channels ? exportedData.channels.length : 0} 個
                         </div>
                     `;
@@ -4716,11 +5514,11 @@ def export_test_page():
                     
                 } else {
                     const error = await response.text();
-                    statusDiv.innerHTML = `<div class="status error">❌ 導出失敗: ${error}</div>`;
+                    statusDiv.innerHTML = `<div class="status error"> 導出失敗: ${error}</div>`;
                 }
                 
             } catch (error) {
-                statusDiv.innerHTML = `<div class="status error">❌ 請求失敗: ${error.message}</div>`;
+                statusDiv.innerHTML = `<div class="status error"> 請求失敗: ${error.message}</div>`;
             }
         }
         
@@ -5054,7 +5852,7 @@ def debug_database_page():
 </head>
 <body>
     <div class="container">
-        <h1>🔍 資料庫診斷</h1>
+        <h1> 資料庫診斷</h1>
         <div id="result"></div>
         <button onclick="diagnose()">開始診斷</button>
     </div>
@@ -5068,7 +5866,7 @@ def debug_database_page():
                 const response = await fetch('/api/debug_database');
                 const data = await response.json();
                 
-                let html = '<h3>📊 診斷結果：</h3>';
+                let html = '<h3> 診斷結果：</h3>';
                 
                 if (data.database_type) {
                     html += `<div class="info"><strong>資料庫類型：</strong> ${data.database_type}</div>`;
@@ -5194,7 +5992,7 @@ def import_data_page():
 </head>
 <body>
     <div class="container">
-        <h1>🔄 數據庫同步 - Render部署</h1>
+        <h1> 數據庫同步 - Render部署</h1>
         
         <div class="info">
             <strong>說明：</strong>此工具會將您的本地數據庫數據導入到Render的雲端數據庫中，確保兩邊數據同步。
@@ -5216,7 +6014,7 @@ def import_data_page():
             importBtn.disabled = true;
             importBtn.textContent = '⏳ 正在導入...';
             
-            statusDiv.innerHTML = '<div class="status info">🔄 正在導入數據，請稍候...</div>';
+            statusDiv.innerHTML = '<div class="status info"> 正在導入數據，請稍候...</div>';
             resultDiv.innerHTML = '';
             
             try {
@@ -5229,14 +6027,14 @@ def import_data_page():
                 
                 if (response.ok && data.status === 'success') {
                     // 顯示成功信息
-                    statusDiv.innerHTML = '<div class="status success">✅ 數據導入成功完成！</div>';
+                    statusDiv.innerHTML = '<div class="status success"> 數據導入成功完成！</div>';
                     
                     // 顯示統計信息
                     const stats = data.statistics;
                     const totalData = data.total_data;
                     
                     resultDiv.innerHTML = `
-                        <h3>📊 導入統計：</h3>
+                        <h3> 導入統計：</h3>
                         <div class="stats">
                             <div class="stat-card">
                                 <div class="stat-number">${stats.users_imported}</div>
@@ -5260,7 +6058,7 @@ def import_data_page():
                             </div>
                         </div>
                         
-                        <h3>🔄 更新統計：</h3>
+                        <h3> 更新統計：</h3>
                         <div class="stats">
                             <div class="stat-card">
                                 <div class="stat-number">${stats.accounts_updated}</div>
@@ -5283,14 +6081,14 @@ def import_data_page():
                     `;
                     
                 } else {
-                    statusDiv.innerHTML = `<div class="status error">❌ 導入失敗: ${data.error || '未知錯誤'}</div>`;
+                    statusDiv.innerHTML = `<div class="status error"> 導入失敗: ${data.error || '未知錯誤'}</div>`;
                     if (data.error) {
                         resultDiv.innerHTML = `<pre>錯誤詳情: ${data.error}</pre>`;
                     }
                 }
                 
             } catch (error) {
-                statusDiv.innerHTML = `<div class="status error">❌ 請求失敗: ${error.message}</div>`;
+                statusDiv.innerHTML = `<div class="status error"> 請求失敗: ${error.message}</div>`;
                 resultDiv.innerHTML = `<pre>錯誤詳情: ${error.stack}</pre>`;
             } finally {
                 // 重新啟用按鈕
@@ -5458,7 +6256,8 @@ def get_cash_management_transactions():
                     else:
                         payment_account = "N/A"
 
-                unified_stream.append({
+                # 構建基本記錄
+                record = {
                     "type": entry.entry_type,
                     "date": entry.entry_date.isoformat(),
                     "description": entry.description,
@@ -5468,7 +6267,17 @@ def get_cash_management_transactions():
                     "payment_account": payment_account,
                     "deposit_account": deposit_account,
                     "note": getattr(entry, 'note', None),
-                })
+                }
+                
+                # 如果是利潤提款，添加詳細利潤信息
+                if entry.entry_type == "PROFIT_WITHDRAW":
+                    # 安全地獲取利潤詳細信息（處理欄位可能不存在的情況）
+                    record["profit_before"] = getattr(entry, 'profit_before', None)
+                    record["profit_after"] = getattr(entry, 'profit_after', None)
+                    record["profit_change"] = getattr(entry, 'profit_change', None)
+                    record["profit"] = getattr(entry, 'profit_change', None)  # 保持向後兼容
+                
+                unified_stream.append(record)
 
         # 處理現金日誌記錄
         for log in cash_logs:
@@ -5554,7 +6363,7 @@ def get_cash_management_transactions():
         })
 
     except Exception as e:
-        print(f"❌ 獲取分頁流水記錄時出錯: {e}")
+        print(f"獲取分頁流水記錄時出錯: {e}")
         return jsonify({"status": "error", "message": f"系統錯誤: {str(e)}"}), 500
 
 
@@ -5755,7 +6564,7 @@ def api_add_user():
 
     except Exception as e:
         db.session.rollback()
-        print(f"!!! Error in api_add_user: {e}")
+        print(f"!! Error in api_add_user: {e}")
         return (
             jsonify({"status": "error", "message": "伺服器內部錯誤，新增失敗。"}),
             500,
@@ -6238,7 +7047,7 @@ def get_accurate_account_balances():
                 'current_balance': 0  # 從0開始，基於交易紀錄計算
             }
         
-        print(f"🔍 調試：開始處理 {len(unified_stream)} 筆交易...")
+        print(f"調試：開始處理 {len(unified_stream)} 筆交易...")
         
         # 按時間順序處理每筆交易，累積計算每個帳戶的餘額
         for i, transaction in enumerate(unified_stream):
@@ -6253,11 +7062,11 @@ def get_accurate_account_balances():
                 if acc_info['currency'] == 'TWD' and twd_change != 0:
                     old_balance = acc_info['current_balance']
                     acc_info['current_balance'] += twd_change
-                    print(f"  交易 {i+1}: {acc_info['name']} TWD {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {twd_change:,.2f})")
+                    print(f" 交易 {i+1}: {acc_info['name']} TWD {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {twd_change:,.2f})")
                 elif acc_info['currency'] == 'RMB' and rmb_change != 0:
                     old_balance = acc_info['current_balance']
                     acc_info['current_balance'] += rmb_change
-                    print(f"  交易 {i+1}: {acc_info['name']} RMB {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {rmb_change:,.2f})")
+                    print(f" 交易 {i+1}: {acc_info['name']} RMB {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {rmb_change:,.2f})")
             
             # 處理入款帳戶（通常是增加餘額）
             if deposit_account_id and deposit_account_id in account_balances:
@@ -6265,11 +7074,11 @@ def get_accurate_account_balances():
                 if acc_info['currency'] == 'TWD' and twd_change != 0:
                     old_balance = acc_info['current_balance']
                     acc_info['current_balance'] += twd_change
-                    print(f"  交易 {i+1}: {acc_info['name']} TWD {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {twd_change:,.2f})")
+                    print(f" 交易 {i+1}: {acc_info['name']} TWD {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {twd_change:,.2f})")
                 elif acc_info['currency'] == 'RMB' and rmb_change != 0:
                     old_balance = acc_info['current_balance']
                     acc_info['current_balance'] += rmb_change
-                    print(f"  交易 {i+1}: {acc_info['name']} RMB {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {rmb_change:,.2f})")
+                    print(f" 交易 {i+1}: {acc_info['name']} RMB {old_balance:,.2f} -> {acc_info['current_balance']:,.2f} (變動: {rmb_change:,.2f})")
             
             # 特殊處理：如果沒有明確的出款/入款帳戶，但有金額變動
             if not payment_account_id and not deposit_account_id:
@@ -6351,15 +7160,15 @@ def remote_data_recovery():
         # 檢查是否有管理員權限（這裡可以根據您的權限系統調整）
         # 例如檢查 session 或 token
         
-        print("🔧 開始遠程數據修復...")
+        print(" 開始遠程數據修復...")
         
         # 檢查資料庫連接
         try:
             from sqlalchemy import text
             db.session.execute(text("SELECT 1"))
-            print("✅ 資料庫連接正常")
+            print(" 資料庫連接正常")
         except Exception as db_error:
-            print(f"❌ 資料庫連接失敗: {db_error}")
+            print(f"資料庫連接失敗: {db_error}")
             return jsonify({
                 "status": "error",
                 "message": f"資料庫連接失敗: {str(db_error)}",
@@ -6370,9 +7179,9 @@ def remote_data_recovery():
         print("📦 修復庫存數據...")
         try:
             inventories = FIFOInventory.query.all()
-            print(f"✅ 找到 {len(inventories)} 個庫存批次")
+            print(f"找到 {len(inventories)} 個庫存批次")
         except Exception as inv_error:
-            print(f"❌ 查詢庫存數據失敗: {inv_error}")
+            print(f"查詢庫存數據失敗: {inv_error}")
             return jsonify({
                 "status": "error",
                 "message": f"查詢庫存數據失敗: {str(inv_error)}",
@@ -6401,12 +7210,12 @@ def remote_data_recovery():
             })
         
         # 2. 修復現金帳戶餘額
-        print("💰 修復現金帳戶餘額...")
+        print(" 修復現金帳戶餘額...")
         try:
             cash_accounts = CashAccount.query.all()
-            print(f"✅ 找到 {len(cash_accounts)} 個現金帳戶")
+            print(f"找到 {len(cash_accounts)} 個現金帳戶")
         except Exception as cash_error:
-            print(f"❌ 查詢現金帳戶失敗: {cash_error}")
+            print(f"查詢現金帳戶失敗: {cash_error}")
             return jsonify({
                 "status": "error",
                 "message": f"查詢現金帳戶失敗: {str(cash_error)}",
@@ -6479,9 +7288,9 @@ def remote_data_recovery():
         print("📋 修復客戶應收帳款...")
         try:
             customers = Customer.query.all()
-            print(f"✅ 找到 {len(customers)} 個客戶")
+            print(f"找到 {len(customers)} 個客戶")
         except Exception as cust_error:
-            print(f"❌ 查詢客戶數據失敗: {cust_error}")
+            print(f"查詢客戶數據失敗: {cust_error}")
             return jsonify({
                 "status": "error",
                 "message": f"查詢客戶數據失敗: {str(cust_error)}",
@@ -6526,7 +7335,7 @@ def remote_data_recovery():
         
         total_receivables = Customer.query.with_entities(func.sum(Customer.total_receivables_twd)).scalar() or 0
         
-        print("✅ 遠程數據修復完成！")
+        print(" 遠程數據修復完成！")
         
         return jsonify({
             "status": "success",
@@ -6556,7 +7365,7 @@ def remote_data_recovery():
         })
         
     except Exception as e:
-        print(f"❌ 遠程數據修復失敗: {e}")
+        print(f"遠程數據修復失敗: {e}")
         traceback.print_exc()
         db.session.rollback()
         
@@ -6706,7 +7515,7 @@ def api_total_profit():
         })
         
     except Exception as e:
-        print(f"❌ 計算總利潤失敗: {e}")
+        print(f"計算總利潤失敗: {e}")
         return jsonify({
             'status': 'error',
             'message': f'計算總利潤時發生錯誤: {str(e)}'

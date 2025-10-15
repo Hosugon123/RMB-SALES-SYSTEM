@@ -28,6 +28,26 @@
                 min-width: 90px !important;
             }
         }
+        
+        /* 防止表格文字換行 */
+        .table th, .table td {
+            white-space: nowrap;
+            padding: 0.5rem 0.75rem;
+        }
+        
+        /* 允許描述欄位換行 */
+        .table th:nth-child(3), .table td:nth-child(3) {
+            white-space: normal;
+        }
+        
+        /* 允許備註欄位換行 */
+        .table th:nth-child(7), .table td:nth-child(7) {
+            white-space: normal;
+        }
+        /* 允許利潤變動欄位（第 11 欄）換行 */
+        .table th:nth-child(11), .table td:nth-child(11) {
+            white-space: normal;
+        }
     </style>
     <!-- 標題行 -->
     <div class="row align-items-center mb-4">
@@ -104,7 +124,7 @@
         <div class="card-body p-0">
             {% if customers_with_receivables %}
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table align-middle mb-0">
                     <thead class="table-light">
                         <tr>
                             <th class="ps-3">客戶名稱</th>
@@ -147,6 +167,58 @@
         </div>
     </div>
 
+    <!-- 待付款項管理區塊 -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0 fw-light"><i class="bi bi-credit-card me-2"></i>待付款項管理</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if pending_payments %}
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">買入記錄ID</th>
+                            <th>渠道</th>
+                            <th class="text-end">待付金額</th>
+                            <th class="text-center">操作</th>
+                            <th class="pe-3">說明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pending in pending_payments %}
+                        <tr>
+                            <td class="ps-3">
+                                <span class="fw-bold">#{{ pending.purchase_record_id }}</span>
+                            </td>
+                            <td>
+                                <small>{{ pending.purchase_record.channel.name if pending.purchase_record.channel else 'N/A' }}</small>
+                            </td>
+                            <td class="text-end">
+                                <span class="fw-bold text-warning">NT$ {{ "{:,.2f}".format(pending.amount_twd) }}</span>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-warning btn-sm" onclick="openPendingPaymentModal('{{ pending.id }}', '{{ pending.purchase_record_id }}', {{ pending.amount_twd }}, '{{ pending.purchase_record.channel.name if pending.purchase_record.channel else "N/A" }}')">
+                                    <i class="bi bi-credit-card me-1"></i>付款
+                                </button>
+                            </td>
+                            <td class="pe-3">
+                                <small class="text-muted">點擊付款按鈕進行銷帳</small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center p-4 text-muted">
+                <i class="bi bi-check-circle display-4 text-success"></i>
+                <p class="mt-2">尚無待付款項</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
     <!-- 資金流水區塊 -->
     <div class="card shadow-sm mt-4">
         <div class="card-header">
@@ -154,20 +226,20 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table align-middle mb-0">
                     <thead class="table-light">
                         <tr>
                             <th class="ps-3">時間</th>
                             <th>類型</th>
                             <th>描述</th>
-                            <th>操作人員</th>
-                            <th>出款帳戶</th>
-                            <th>入款帳戶</th>
+                            <th style="min-width: 60px;">操作人</th>
+                            <th style="min-width: 70px;">出款戶</th>
+                            <th style="min-width: 70px;">入款戶</th>
                             <th>備註</th>
                             <th class="text-end" id="twd-header">TWD 變動</th>
                             <th class="text-end" id="rmb-header">RMB 變動</th>
                             <th class="text-end">累積餘額</th>
-                            <th class="text-end pe-3">利潤</th>
+                            <th class="text-end pe-3">利潤變動</th>
                         </tr>
                     </thead>
                     <tbody id="movements-tbody">
@@ -235,9 +307,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // 從後端模板變數直接取得初始資料（避免 tojson 失敗）
-    var accountsByHolder = {{ accounts_by_holder|tojson|safe if accounts_by_holder is defined else '{}' }};
-    var holders = {{ holders|tojson|safe if holders is defined else '[]' }};
-    var movements = {{ movements|tojson|safe if movements is defined else '[]' }};
+    // 設為全域變數以便其他函數使用
+    window.accountsByHolder = {{ accounts_by_holder|tojson|safe if accounts_by_holder is defined else '{}' }};
+    window.holders = {{ holders|tojson|safe if holders is defined else '[]' }};
+    window.movements = {{ movements|tojson|safe if movements is defined else '[]' }};
+    var accountsByHolder = window.accountsByHolder;
+    var holders = window.holders;
+    var movements = window.movements;
     var customersList = [];
     
     console.log('📊 數據檢查:', { holders: holders, accountsByHolder: accountsByHolder, movements: movements });
@@ -449,7 +525,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 
-    // 設置RMB匯率欄位的顯示/隱藏邏輯
+    // 設置RMB匯率欄位和台幣提款來源欄位的顯示/隱藏邏輯
     function setupRmbRateFieldLogic() {
         // 監聽操作類型選擇的變化
         const depositRadio = document.getElementById('movementDeposit');
@@ -463,6 +539,16 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (accountId) {
                         checkAndShowRmbRateField(accountId);
                     }
+                    
+                    // 隱藏提款類型選擇欄位
+                    const withdrawTypeDiv = document.getElementById('withdrawTypeDiv');
+                    if (withdrawTypeDiv) {
+                        withdrawTypeDiv.style.display = 'none';
+                        console.log('✅ 隱藏提款類型選擇欄位');
+                    }
+                    
+                    // 隱藏台幣提款來源選擇欄位
+                    hideTwdWithdrawSourceField();
                 }
             });
             
@@ -478,8 +564,60 @@ document.addEventListener('DOMContentLoaded', function () {
                             rmbRateInput.value = '';
                         }
                     }
+                    
+                    // 顯示提款類型選擇欄位
+                    const withdrawTypeDiv = document.getElementById('withdrawTypeDiv');
+                    if (withdrawTypeDiv) {
+                        withdrawTypeDiv.style.display = 'block';
+                        console.log('✅ 顯示提款類型選擇欄位');
+                    }
+                    
+                    // 檢查是否需要顯示台幣提款來源選擇欄位
+                    const accountId = document.getElementById('movementAccountId')?.value;
+                    if (accountId) {
+                        checkAndShowTwdWithdrawSourceField(accountId);
+                    }
                 }
             });
+        }
+    }
+    
+    // 隱藏台幣提款來源選擇欄位
+    function hideTwdWithdrawSourceField() {
+        const twdWithdrawSourceDiv = document.getElementById('twdWithdrawSourceDiv');
+        if (twdWithdrawSourceDiv) {
+            twdWithdrawSourceDiv.style.display = 'none';
+        }
+    }
+    
+    // 檢查並顯示台幣提款來源選擇欄位
+    function checkAndShowTwdWithdrawSourceField(accountId) {
+        // 從帳戶數據中查找該帳戶的幣別
+        let isTwdAccount = false;
+        for (const holderId in accountsByHolder) {
+            const holder = accountsByHolder[holderId];
+            for (const account of holder.accounts) {
+                if (account.id == accountId && account.currency === 'TWD') {
+                    isTwdAccount = true;
+                    break;
+                }
+            }
+            if (isTwdAccount) break;
+        }
+        
+        // 顯示或隱藏台幣提款來源選擇欄位
+        const twdWithdrawSourceDiv = document.getElementById('twdWithdrawSourceDiv');
+        if (twdWithdrawSourceDiv) {
+            if (isTwdAccount) {
+                twdWithdrawSourceDiv.style.display = 'block';
+                // 設置預設值為資產餘額
+                const assetRadio = document.getElementById('withdrawSourceAsset');
+                if (assetRadio) {
+                    assetRadio.checked = true;
+                }
+            } else {
+                twdWithdrawSourceDiv.style.display = 'none';
+            }
         }
     }
     
@@ -496,8 +634,17 @@ document.addEventListener('DOMContentLoaded', function () {
         const accountIdInput = document.getElementById('movementAccountId');
         if (accountIdInput) accountIdInput.value = accountId;
         
+        // 重置所有選擇欄位
+        hideTwdWithdrawSourceField();
+        
         // 檢查是否為RMB帳戶，如果是則顯示匯率欄位
         checkAndShowRmbRateField(accountId);
+        
+        // 檢查是否為TWD帳戶且選擇提款，如果是則顯示扣除來源選擇欄位
+        const withdrawRadio = document.getElementById('movementWithdraw');
+        if (withdrawRadio && withdrawRadio.checked) {
+            checkAndShowTwdWithdrawSourceField(accountId);
+        }
         
         // 顯示模態框
         const modal = new bootstrap.Modal(document.getElementById('addMovementModal'));
@@ -1302,7 +1449,35 @@ document.addEventListener('DOMContentLoaded', function () {
         transactions.forEach(function(m, index) {
             const twdChange = parseFloat(m.twd_change ?? m.twdChange) || 0;
             const rmbChange = parseFloat(m.rmb_change ?? m.rmbChange) || 0;
-            const profit = parseFloat(m.profit ?? 0) || 0;
+            let profit = parseFloat(m.profit ?? 0) || 0;
+            
+            // 處理利潤顯示格式
+            let profitDisplay = '';
+            if (m.type === 'PROFIT_WITHDRAW' || (m.description && m.description.includes('利潤扣除'))) {
+                // 從description中解析原利潤和新利潤信息
+                const description = m.description || '';
+                const originalMatch = description.match(/原利潤: ([\d,]+\.?\d*)/);
+                const newMatch = description.match(/新利潤: ([\d,]+\.?\d*)/);
+                
+                if (originalMatch && newMatch) {
+                    const originalProfit = parseFloat(originalMatch[1].replace(/,/g, ''));
+                    const newProfit = parseFloat(newMatch[1].replace(/,/g, ''));
+                    const deductedAmount = Math.abs(twdChange);
+                    profitDisplay = `${originalProfit.toLocaleString()} - ${deductedAmount.toLocaleString()} = ${newProfit.toLocaleString()}`;
+                } else {
+                    // 如果解析失敗，顯示簡單格式
+                    const deductedAmount = Math.abs(twdChange);
+                    profitDisplay = `-${deductedAmount.toLocaleString()}`;
+                }
+                profit = -Math.abs(twdChange);  // 保持原有的profit值用於顏色判斷
+            } else if (m.type === 'SALES' || (m.description && m.description.includes('售出'))) {
+                // 售出：顯示 "原利潤 + 售出利潤 = 新利潤"
+                const saleProfit = Math.abs(profit);
+                profitDisplay = `+${saleProfit.toLocaleString()}`;  // 暫時顯示簡單格式
+            } else {
+                // 其他情況：顯示簡單的數字
+                profitDisplay = profit !== 0 ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+            }
             
             // 將類型轉換為中文顯示
             let typeDisplay = m.type;
@@ -1347,6 +1522,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     typeDisplay = '客戶付款';
                     typeClass = 'badge bg-success-subtle text-success-emphasis';
                     break;
+                case 'PROFIT_WITHDRAW':
+                    typeDisplay = '利潤扣除';
+                    typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+                    break;
                 default:
                     typeDisplay = m.type;
                     typeClass = 'badge bg-info-subtle text-info-emphasis';
@@ -1355,7 +1534,6 @@ document.addEventListener('DOMContentLoaded', function () {
             // 格式化金額顯示
             const twdDisplay = twdChange !== 0 ? (twdChange > 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
             const rmbDisplay = rmbChange !== 0 ? (rmbChange > 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-            const profitDisplay = profit !== 0 ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
             
             // 設置金額顏色
             const twdClass = twdChange > 0 ? 'text-success' : (twdChange < 0 ? 'text-danger' : 'text-muted');
@@ -1372,15 +1550,21 @@ document.addEventListener('DOMContentLoaded', function () {
             
             const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
             const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
+            
+            // 描述和備註現在都在description中，用 | 分隔
+            const fullDescription = m.description || '-';
+            const parts = fullDescription.split(' | ');
+            const description = parts[0] || '-';
+            const note = parts.slice(1).join(' | ') || '-';
 
             const row = '<tr>' +
                 '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : '-') + '</small></td>' +
                 '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
-                '<td><small>' + (m.description || '-') + '</small></td>' +
+                '<td><small>' + description + '</small></td>' +
                 '<td><small>' + (m.operator || '-') + '</small></td>' +
                 '<td><small>' + paymentAccount + '</small></td>' +
                 '<td><small>' + depositAccount + '</small></td>' +
-                '<td><small>' + (m.note || '-') + '</small></td>' +
+                '<td><small>' + note + '</small></td>' +
                 '<td class="text-end"><span class="' + twdClass + '">' + twdDisplay + '</span></td>' +
                 '<td class="text-end"><span class="' + rmbClass + '">' + rmbDisplay + '</span></td>' +
                 '<td class="text-end">' + runningBalanceHtml + '</td>' +
@@ -1970,6 +2154,26 @@ window.renderMovements = function(transactions) {
         const rmbChange = parseFloat(m.rmb_change ?? m.rmbChange) || 0;
         const profit = parseFloat(m.profit ?? 0) || 0;
         
+        // 新增：詳細利潤信息
+        const profitBefore = parseFloat(m.profit_before ?? m.profitBefore) || null;
+        const profitAfter = parseFloat(m.profit_after ?? m.profitAfter) || null;
+        const profitChange = parseFloat(m.profit_change ?? m.profitChange) || null;
+        
+        // 調試日誌：檢查利潤詳細數據
+        if (m.type === 'PROFIT_WITHDRAW') {
+            console.log('🔍 利潤提款記錄調試:', {
+                id: m.id,
+                type: m.type,
+                profit_before: m.profit_before,
+                profit_after: m.profit_after,
+                profit_change: m.profit_change,
+                profit: m.profit,
+                parsed_profitBefore: profitBefore,
+                parsed_profitAfter: profitAfter,
+                parsed_profitChange: profitChange
+            });
+        }
+        
         // 將類型轉換為中文顯示
         let typeDisplay = m.type;
         let typeClass = 'badge bg-info-subtle text-info-emphasis';
@@ -2013,6 +2217,14 @@ window.renderMovements = function(transactions) {
                 typeDisplay = '客戶付款';
                 typeClass = 'badge bg-success-subtle text-success-emphasis';
                 break;
+            case 'PROFIT_WITHDRAW':
+                typeDisplay = '利潤扣除';
+                typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+                break;
+            case 'ASSET_WITHDRAW':
+                typeDisplay = '資產提款';
+                typeClass = 'badge bg-secondary-subtle text-secondary-emphasis';
+                break;
             default:
                 typeDisplay = m.type;
                 typeClass = 'badge bg-info-subtle text-info-emphasis';
@@ -2023,10 +2235,16 @@ window.renderMovements = function(transactions) {
         const rmbDisplay = rmbChange !== 0 ? (rmbChange > 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
         const profitDisplay = profit !== 0 ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
         
+        // 格式化詳細利潤信息
+        const profitBeforeDisplay = profitBefore !== null ? profitBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        const profitAfterDisplay = profitAfter !== null ? profitAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        const profitChangeDisplay = profitChange !== null ? (profitChange > 0 ? '+' : '') + profitChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        
         // 根據變化類型設置顏色
         const twdColorClass = twdChange > 0 ? 'text-success' : twdChange < 0 ? 'text-danger' : 'text-muted';
         const rmbColorClass = rmbChange > 0 ? 'text-success' : rmbChange < 0 ? 'text-danger' : 'text-muted';
         const profitColorClass = profit > 0 ? 'text-success' : profit < 0 ? 'text-danger' : 'text-muted';
+        const profitChangeColorClass = profitChange !== null ? (profitChange > 0 ? 'text-success' : 'text-danger') : 'text-muted';
         
         // 累積餘額（同上方渲染保持一致）
         const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
@@ -2035,6 +2253,48 @@ window.renderMovements = function(transactions) {
             '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + (runningTwd || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
             '<div class="text-success">¥ ' + (runningRmb || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
             '</div>';
+
+        // 利潤變動詳情（模仿累積餘額的顯示方式）
+        let profitDetailHtml = '-';
+        
+        // 調試日誌：檢查利潤變動詳情渲染邏輯
+        if (m.type === 'PROFIT_WITHDRAW') {
+            console.log('🎨 利潤變動詳情渲染調試:', {
+                id: m.id,
+                profitBefore: profitBefore,
+                profitAfter: profitAfter,
+                profitChange: profitChange,
+                profit: profit,
+                willShowDetailed: (profitBefore !== null && profitAfter !== null && profitChange !== null),
+                willShowSimple: (profit !== 0)
+            });
+        }
+        
+        if (profitBefore !== null && profitAfter !== null && profitChange !== null) {
+            // 有利潤變動記錄，顯示詳細信息
+            const changeColorClass = profitChange > 0 ? 'text-success' : 'text-danger';
+            const changeSymbol = profitChange > 0 ? '+' : '';
+            
+            console.log('✅ 渲染詳細利潤信息:', {
+                id: m.id,
+                before: profitBeforeDisplay,
+                after: profitAfterDisplay,
+                change: changeSymbol + profitChangeDisplay
+            });
+            
+            profitDetailHtml = '<div class="small running-balance">' +
+                '<div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: ' + profitBeforeDisplay + '</div>' +
+                '<div class="text-info border-bottom border-info pb-1 mb-1">後: ' + profitAfterDisplay + '</div>' +
+                '<div class="' + changeColorClass + ' fw-bold">變: ' + changeSymbol + profitChangeDisplay + '</div>' +
+                '</div>';
+        } else if (profit !== 0) {
+            // 有傳統利潤記錄，顯示簡單信息（數據庫尚未更新時的臨時顯示）
+            profitDetailHtml = '<div class="small running-balance">' +
+                '<div class="text-muted">前: 計算中...</div>' +
+                '<div class="text-muted">後: 計算中...</div>' +
+                '<div class="' + profitColorClass + ' fw-bold">變: ' + profitDisplay + '</div>' +
+                '</div>';
+        }
 
         const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
         const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
@@ -2050,7 +2310,7 @@ window.renderMovements = function(transactions) {
             '<td class="text-end"><small class="' + twdColorClass + '">' + twdDisplay + '</small></td>' +
             '<td class="text-end"><small class="' + rmbColorClass + '">' + rmbDisplay + '</small></td>' +
             '<td class="text-end">' + runningBalanceHtml + '</td>' +
-            '<td class="text-end pe-3"><small class="' + profitColorClass + '">' + profitDisplay + '</small></td>' +
+            '<td class="text-end pe-3">' + profitDetailHtml + '</td>' +
             '</tr>';
         
         movementsTbody.innerHTML += row;
@@ -2176,6 +2436,394 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+// 待付款項銷帳功能
+window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, channelName) {
+    console.log('打開待付款項銷帳模態框:', { pendingId, purchaseRecordId, amount, channelName });
+    
+    // 創建動態模態框
+    const modalHtml = `
+        <div class="modal fade" id="pendingPaymentModal" tabindex="-1" aria-labelledby="pendingPaymentModalLabel">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="pendingPaymentModalLabel">
+                            <i class="bi bi-credit-card me-2"></i>待付款項銷帳
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <h6><strong>付款資訊</strong></h6>
+                            <p><strong>買入記錄ID:</strong> #${purchaseRecordId}</p>
+                            <p><strong>渠道:</strong> ${channelName}</p>
+                            <p><strong>待付金額:</strong> NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                        </div>
+                        
+                        <form id="pendingPaymentForm">
+                            <div class="mb-3">
+                                <label for="paymentAccountSelect" class="form-label">
+                                    <strong>從哪個 TWD 帳戶付款</strong>
+                                </label>
+                                <select class="form-select" id="paymentAccountSelect" required>
+                                    <option value="" disabled selected>--- 請選擇付款帳戶 ---</option>
+                                    <!-- 將由 JavaScript 動態填充 -->
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="settlementAmount" class="form-label">
+                                    <strong>銷帳金額 (TWD)</strong>
+                                </label>
+                                <input type="text" class="form-control" id="settlementAmount" 
+                                       value="${amount}" pattern="[0-9]*\.?[0-9]*" required>
+                                <small class="text-muted">請輸入有效的數字金額</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="settlementNote" class="form-label">
+                                    <strong>備註 (選填)</strong>
+                                </label>
+                                <textarea class="form-control" id="settlementNote" rows="3" 
+                                          placeholder="輸入付款相關備註..."></textarea>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="button" class="btn btn-warning" onclick="executePendingPaymentSettlement('${pendingId}', ${amount})">
+                            <i class="bi bi-credit-card me-1"></i>確認付款
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 移除現有的模態框（如果存在）
+    const existingModal = document.getElementById('pendingPaymentModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 添加模態框到頁面
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // 填充付款帳戶選項
+    populatePaymentAccounts();
+    
+    // 延遲顯示模態框，確保 DOM 已更新
+    setTimeout(() => {
+        const modalElement = document.getElementById('pendingPaymentModal');
+        const modal = new bootstrap.Modal(modalElement);
+        
+        // 立即初始化數字格式化（在模態框顯示前）
+        const settlementAmountInput = document.getElementById('settlementAmount');
+        if (settlementAmountInput) {
+            console.log('🔍 模態框創建時立即初始化數字格式化:', {
+                originalValue: settlementAmountInput.value,
+                expectedAmount: '${amount}',
+                hasGetActualValue: !!settlementAmountInput.getActualValue
+            });
+            
+            // 手動初始化數字格式化
+            if (typeof setupNumberInputFormatting === 'function') {
+                try {
+                    setupNumberInputFormatting(settlementAmountInput, { maxDecimals: 2 });
+                    console.log('✅ 銷帳金額輸入框數字格式化已立即應用');
+                } catch (error) {
+                    console.error('❌ setupNumberInputFormatting 執行失敗:', error);
+                    // 手動創建 getActualValue 方法作為備用
+                    settlementAmountInput.getActualValue = function() {
+                        return this.value;
+                    };
+                }
+            } else {
+                console.warn('⚠️ setupNumberInputFormatting 函數不存在，嘗試手動創建');
+                // 手動創建 getActualValue 方法作為備用
+                settlementAmountInput.getActualValue = function() {
+                    return this.value;
+                };
+            }
+            
+            // 驗證初始化結果
+            setTimeout(() => {
+                console.log('🔍 初始化後檢查:', {
+                    hasGetActualValue: !!settlementAmountInput.getActualValue,
+                    value: settlementAmountInput.value,
+                    getActualValue: settlementAmountInput.getActualValue ? settlementAmountInput.getActualValue() : 'N/A'
+                });
+            }, 50);
+        }
+        
+        // 添加事件監聽器確保正確的 aria-hidden 狀態
+        modalElement.addEventListener('shown.bs.modal', function () {
+            this.setAttribute('aria-hidden', 'false');
+            this.setAttribute('aria-modal', 'true');
+            
+            // 為銷帳金額輸入框應用數字格式化
+            const settlementAmountInput = document.getElementById('settlementAmount');
+            if (settlementAmountInput) {
+                console.log('🔍 模態框顯示時的初始值:', {
+                    originalValue: settlementAmountInput.value,
+                    expectedAmount: '${amount}',
+                    hasGetActualValue: !!settlementAmountInput.getActualValue
+                });
+                
+                // 確保數字格式化被正確應用
+                if (typeof setupNumberInputFormatting === 'function') {
+                    setupNumberInputFormatting(settlementAmountInput, { maxDecimals: 2 });
+                    console.log('✅ 銷帳金額輸入框數字格式化已應用');
+                } else {
+                    console.warn('⚠️ setupNumberInputFormatting 函數不存在');
+                }
+                
+                // 驗證 getActualValue 方法是否存在
+                setTimeout(() => {
+                    console.log('🔍 延遲檢查 getActualValue:', {
+                        hasGetActualValue: !!settlementAmountInput.getActualValue,
+                        value: settlementAmountInput.value
+                    });
+                }, 100);
+            }
+        });
+        
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            this.setAttribute('aria-hidden', 'true');
+            this.removeAttribute('aria-modal');
+            // 清理模態框
+            this.remove();
+        });
+        
+        modal.show();
+    }, 100);
+};
+
+// 填充付款帳戶選項
+function populatePaymentAccounts() {
+    const paymentAccountSelect = document.getElementById('paymentAccountSelect');
+    if (!paymentAccountSelect) return;
+    
+    console.log('🔍 開始填充付款帳戶選項...');
+    
+    // 清空現有選項
+    paymentAccountSelect.innerHTML = '<option value="" disabled selected>--- 請選擇付款帳戶 ---</option>';
+    
+    // 從 accountsByHolder 數據中獲取 TWD 帳戶
+    if (typeof window.accountsByHolder !== 'undefined' && window.accountsByHolder) {
+        let twdAccountCount = 0;
+        
+        Object.keys(window.accountsByHolder).forEach(holderId => {
+            const holderData = window.accountsByHolder[holderId];
+            if (holderData && holderData.accounts) {
+                holderData.accounts.forEach(account => {
+                    if (account.currency === 'TWD') {
+                        const option = document.createElement('option');
+                        option.value = account.id;
+                        option.textContent = `${account.name} (餘額: ${account.currency} ${account.balance.toLocaleString()})`;
+                        paymentAccountSelect.appendChild(option);
+                        twdAccountCount++;
+                        console.log('✅ 添加 TWD 帳戶:', account.name, '餘額:', account.balance);
+                    }
+                });
+            }
+        });
+        
+        console.log(`✅ 成功添加 ${twdAccountCount} 個 TWD 帳戶到付款選項`);
+    } else {
+        console.error('❌ 無法獲取 accountsByHolder 數據');
+        // 添加錯誤提示選項
+        const errorOption = document.createElement('option');
+        errorOption.value = '';
+        errorOption.textContent = '--- 無法載入帳戶數據 ---';
+        errorOption.disabled = true;
+        paymentAccountSelect.appendChild(errorOption);
+    }
+}
+
+// 執行待付款項銷帳
+window.executePendingPaymentSettlement = async function(pendingId, originalAmount) {
+    const paymentAccountId = document.getElementById('paymentAccountSelect').value;
+    
+    // 正確處理數字輸入
+    const settlementAmountInput = document.getElementById('settlementAmount');
+    let settlementAmount;
+    
+    console.log('🔍 銷帳金額輸入框信息:', {
+        type: settlementAmountInput.type,
+        value: settlementAmountInput.value,
+        valueLength: settlementAmountInput.value.length,
+        valueCharCodes: settlementAmountInput.value.split('').map(c => c.charCodeAt(0)),
+        hasGetActualValue: !!settlementAmountInput.getActualValue
+    });
+    
+    // 測試 parseFloat 是否正常工作
+    console.log('🔍 parseFloat 測試:', {
+        'parseFloat("1200")': parseFloat("1200"),
+        'parseFloat("test")': parseFloat("test"),
+        'parseFloat("")': parseFloat(""),
+        'typeof parseFloat': typeof parseFloat,
+        'parseFloat.toString()': parseFloat.toString().substring(0, 100)
+    });
+    
+    // 優先使用 getActualValue 方法（如果存在），否則直接解析 value
+    if (settlementAmountInput.getActualValue) {
+        const actualValue = settlementAmountInput.getActualValue();
+        console.log('🔍 使用 getActualValue 方法:', {
+            rawValue: actualValue,
+            type: typeof actualValue,
+            length: actualValue ? actualValue.length : 0,
+            charCodes: actualValue ? actualValue.split('').map(c => c.charCodeAt(0)) : []
+        });
+        
+        // 嘗試多種解析方式
+        settlementAmount = parseFloat(actualValue);
+        console.log('🔍 parseFloat 結果:', settlementAmount);
+        
+        if (isNaN(settlementAmount)) {
+            console.warn('⚠️ parseFloat 失敗，嘗試 Number()');
+            settlementAmount = Number(actualValue);
+            console.log('🔍 Number() 結果:', settlementAmount);
+        }
+        
+        if (isNaN(settlementAmount)) {
+            console.warn('⚠️ Number() 也失敗，嘗試一元加號運算符');
+            settlementAmount = +actualValue;
+            console.log('🔍 一元加號結果:', settlementAmount);
+        }
+        
+        // 最後的備用方案：手動解析
+        if (isNaN(settlementAmount)) {
+            console.warn('⚠️ 所有解析方式都失敗，嘗試手動解析');
+            const cleanValue = actualValue.replace(/[^\d.-]/g, '');
+            if (cleanValue) {
+                settlementAmount = parseFloat(cleanValue);
+                console.log('🔍 手動解析結果:', settlementAmount);
+            }
+        }
+    } else {
+        // 移除格式化字符後解析
+        const rawValue = settlementAmountInput.value.replace(/[^0-9.-]/g, '');
+        console.log('🔍 使用直接解析方法:', rawValue);
+        
+        settlementAmount = parseFloat(rawValue);
+        if (isNaN(settlementAmount)) {
+            settlementAmount = Number(rawValue);
+        }
+        if (isNaN(settlementAmount)) {
+            settlementAmount = +rawValue;
+        }
+    }
+    
+    // 如果解析失敗，嘗試更寬鬆的解析方式
+    if (isNaN(settlementAmount)) {
+        console.warn('⚠️ 標準解析失敗，嘗試更寬鬆的解析');
+        const fallbackValue = settlementAmountInput.value.replace(/[^\d.-]/g, '');
+        settlementAmount = parseFloat(fallbackValue);
+        console.log('🔍 寬鬆解析結果:', settlementAmount);
+        
+        // 如果還是失敗，嘗試最寬鬆的解析
+        if (isNaN(settlementAmount)) {
+            console.warn('⚠️ 寬鬆解析也失敗，嘗試最寬鬆的解析');
+            const ultraFallbackValue = settlementAmountInput.value.replace(/[^\d]/g, '');
+            settlementAmount = parseFloat(ultraFallbackValue);
+            console.log('🔍 最寬鬆解析結果:', settlementAmount);
+        }
+        
+        // 最終備用方案：直接從字符串構建數字
+        if (isNaN(settlementAmount)) {
+            console.warn('⚠️ 所有解析都失敗，嘗試字符串構建');
+            const digitsOnly = settlementAmountInput.value.replace(/[^\d]/g, '');
+            if (digitsOnly) {
+                settlementAmount = parseInt(digitsOnly, 10);
+                console.log('🔍 字符串構建結果:', settlementAmount);
+            }
+        }
+    }
+    
+    console.log('🔍 解析後的銷帳金額:', settlementAmount);
+    console.log('🔍 原始待付金額:', originalAmount);
+    console.log('🔍 比較結果:', {
+        settlementAmount: settlementAmount,
+        originalAmount: originalAmount,
+        isGreater: settlementAmount > originalAmount,
+        comparison: `${settlementAmount} > ${originalAmount} = ${settlementAmount > originalAmount}`
+    });
+    
+    const settlementNote = document.getElementById('settlementNote').value.trim();
+    
+    if (!paymentAccountId) {
+        Swal.fire('錯誤', '請選擇付款帳戶', 'error');
+        return;
+    }
+    
+    if (!settlementAmount || settlementAmount <= 0 || isNaN(settlementAmount)) {
+        console.error('❌ 銷帳金額驗證失敗:', { settlementAmount, isNaN: isNaN(settlementAmount) });
+        Swal.fire('錯誤', '請輸入有效的銷帳金額', 'error');
+        return;
+    }
+    
+    if (settlementAmount > originalAmount) {
+        console.error('❌ 銷帳金額超過待付金額:', {
+            settlementAmount,
+            originalAmount,
+            difference: settlementAmount - originalAmount
+        });
+        Swal.fire('錯誤', '銷帳金額不能超過待付金額', 'error');
+        return;
+    }
+    
+    // 確認對話框
+    const result = await Swal.fire({
+        title: '確認付款',
+        html: `
+            <div class="text-start">
+                <p><strong>待付款項ID:</strong> #${pendingId}</p>
+                <p><strong>銷帳金額:</strong> NT$ ${settlementAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                <p><strong>備註:</strong> ${settlementNote || '無'}</p>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '確認付款',
+        cancelButtonText: '取消'
+    });
+    
+    if (!result.isConfirmed) return;
+    
+    try {
+        const response = await fetch('/api/settle-pending-payment', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                pending_id: pendingId,
+                payment_account_id: parseInt(paymentAccountId),
+                settlement_amount: settlementAmount,
+                note: settlementNote
+            })
+        });
+        
+        const responseData = await response.json();
+        
+        if (responseData.status === 'success') {
+            Swal.fire('成功', responseData.message, 'success').then(() => {
+                // 關閉模態框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('pendingPaymentModal'));
+                if (modal) modal.hide();
+                
+                // 重新載入頁面以更新數據
+                window.location.reload();
+            });
+        } else {
+            Swal.fire('錯誤', responseData.message, 'error');
+        }
+    } catch (error) {
+        console.error('銷帳請求失敗:', error);
+        Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+    }
+};
 
 </script>
 

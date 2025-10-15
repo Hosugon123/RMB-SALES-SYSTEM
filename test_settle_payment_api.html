@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>待付款項銷帳 API 測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>待付款項銷帳 API 測試</h1>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>測試 API 請求</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="testPendingId" class="form-label">待付款項 ID</label>
+                            <input type="number" class="form-control" id="testPendingId" value="1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="testPaymentAccountId" class="form-label">付款帳戶 ID</label>
+                            <input type="number" class="form-control" id="testPaymentAccountId" value="1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="testSettlementAmount" class="form-label">銷帳金額</label>
+                            <input type="number" class="form-control" id="testSettlementAmount" value="22500" step="0.01">
+                        </div>
+                        <div class="mb-3">
+                            <label for="testNote" class="form-label">備註</label>
+                            <textarea class="form-control" id="testNote" rows="3">測試銷帳</textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="testSettlePaymentAPI()">測試 API</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>API 響應結果</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="apiResponse" class="bg-light p-3" style="height: 300px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>測試說明</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <h6><strong>測試步驟：</strong></h6>
+                            <ol>
+                                <li>確保您已經登入系統</li>
+                                <li>輸入有效的待付款項 ID（從資料庫中獲取）</li>
+                                <li>輸入有效的付款帳戶 ID（TWD 帳戶）</li>
+                                <li>輸入銷帳金額（建議使用實際的待付金額）</li>
+                                <li>點擊「測試 API」按鈕</li>
+                                <li>查看響應結果和錯誤信息</li>
+                            </ol>
+                        </div>
+                        <div class="alert alert-warning">
+                            <h6><strong>注意事項：</strong></h6>
+                            <ul>
+                                <li>這個測試會實際執行銷帳操作</li>
+                                <li>請確保測試數據是安全的</li>
+                                <li>建議在測試環境中使用</li>
+                                <li>如果出現錯誤，請檢查伺服器控制台日誌</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 顯示 API 響應
+        function displayResponse(response, error = null) {
+            const responseDiv = document.getElementById('apiResponse');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            let content = `[${timestamp}] API 測試結果:\n\n`;
+            
+            if (error) {
+                content += `❌ 錯誤: ${error}\n\n`;
+            } else {
+                content += `✅ 狀態碼: ${response.status}\n`;
+                content += `📋 響應內容:\n${JSON.stringify(response, null, 2)}\n\n`;
+            }
+            
+            responseDiv.textContent += content;
+            responseDiv.scrollTop = responseDiv.scrollHeight;
+        }
+        
+        // 測試待付款項銷帳 API
+        async function testSettlePaymentAPI() {
+            const pendingId = document.getElementById('testPendingId').value;
+            const paymentAccountId = document.getElementById('testPaymentAccountId').value;
+            const settlementAmount = parseFloat(document.getElementById('testSettlementAmount').value);
+            const note = document.getElementById('testNote').value;
+            
+            console.log('🧪 開始測試待付款項銷帳 API...');
+            
+            const requestData = {
+                pending_id: parseInt(pendingId),
+                payment_account_id: parseInt(paymentAccountId),
+                settlement_amount: settlementAmount,
+                note: note
+            };
+            
+            console.log('📤 發送請求數據:', requestData);
+            
+            try {
+                const response = await fetch('/api/settle-pending-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const responseData = await response.json();
+                
+                console.log('📥 收到響應:', responseData);
+                displayResponse(responseData);
+                
+                if (response.ok && responseData.status === 'success') {
+                    Swal.fire('成功', responseData.message, 'success');
+                } else {
+                    Swal.fire('錯誤', responseData.message || 'API 請求失敗', 'error');
+                }
+                
+            } catch (error) {
+                console.error('❌ API 請求失敗:', error);
+                displayResponse(null, error.message);
+                Swal.fire('錯誤', `API 請求失敗: ${error.message}`, 'error');
+            }
+        }
+        
+        // 頁面載入時初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ 待付款項銷帳 API 測試頁面已載入');
+        });
+    </script>
+</body>
+</html>
+
+

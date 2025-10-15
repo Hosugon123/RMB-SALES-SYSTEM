@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript 語法修復測試</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <h1>JavaScript 語法修復測試</h1>
+    
+    <button onclick="testCancelPurchaseRecord()">測試取消買入記錄</button>
+    <button onclick="testOpenSettlementModal()">測試打開銷帳模態框</button>
+    <button onclick="testOpenPendingPaymentModal()">測試打開待付款模態框</button>
+    
+    <script src="static/js/template_helpers.js"></script>
+    <script>
+        // 測試函數
+        function testCancelPurchaseRecord() {
+            console.log('測試 cancelPurchaseRecord 函數...');
+            cancelPurchaseRecord(123, '測試渠道', 1000.50);
+        }
+        
+        function testOpenSettlementModal() {
+            console.log('測試 openSettlementModal 函數...');
+            openSettlementModal(456, '測試客戶', 2500.75);
+        }
+        
+        function testOpenPendingPaymentModal() {
+            console.log('測試 openPendingPaymentModal 函數...');
+            openPendingPaymentModal(789, 101112, 1500.25, '測試渠道');
+        }
+        
+        // 測試模板字符串語法
+        function testTemplateStrings() {
+            console.log('測試模板字符串語法...');
+            const amount = 1234.56;
+            const customerName = "測試客戶";
+            const channelName = "測試渠道";
+            
+            // 這些應該不會產生語法錯誤
+            const message1 = `客戶: ${customerName}, 金額: NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            const message2 = `渠道: ${channelName}, 金額: NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            
+            console.log(message1);
+            console.log(message2);
+        }
+        
+        // 頁面載入時執行測試
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ JavaScript 語法修復測試頁面已載入');
+            testTemplateStrings();
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,292 @@
+<!-- 已刪除紀錄區塊 - 可重用的組件 -->
+<div class="card border-primary shadow mt-3" id="deleteAuditBlock">
+    <div class="card-header bg-primary text-white py-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="mb-0">
+                <i class="bi bi-trash me-1"></i>已刪除紀錄
+                <span class="badge bg-secondary ms-1" id="auditCount">載入中...</span>
+            </small>
+            <div>
+                <button type="button" class="btn btn-light btn-sm py-1 px-2" onclick="toggleAuditBlock()">
+                    <i class="bi bi-chevron-up" id="auditToggleIcon"></i>
+                </button>
+                <a href="{{ url_for('admin_delete_audit_logs') }}" class="btn btn-warning btn-sm py-1 px-2 ms-1" title="查看完整刪除記錄">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card-body py-2" id="auditContent" style="display: none; max-height: 200px; overflow-y: auto;">
+        <!-- 篩選器 -->
+        <div class="row mb-2">
+            <div class="col-md-4">
+                <label for="auditTableFilter" class="form-label small">資料表</label>
+                <select class="form-select form-select-sm" id="auditTableFilter" onchange="filterAuditLogs()">
+                    <option value="">全部</option>
+                    <option value="purchase_records">買入記錄</option>
+                    <option value="sales_records">銷售記錄</option>
+                    <option value="card_purchases">刷卡記錄</option>
+                    <option value="fifo_inventory">FIFO庫存</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="auditOperatorFilter" class="form-label small">操作者</label>
+                <select class="form-select form-select-sm" id="auditOperatorFilter" onchange="filterAuditLogs()">
+                    <option value="">全部</option>
+                    <!-- 操作者選項將通過JavaScript動態載入 -->
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="auditLimitFilter" class="form-label small">顯示數量</label>
+                <select class="form-select form-select-sm" id="auditLimitFilter" onchange="filterAuditLogs()">
+                    <option value="5">最近 5 筆</option>
+                    <option value="10" selected>最近 10 筆</option>
+                    <option value="20">最近 20 筆</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- 刪除記錄列表 -->
+        <div id="auditLogsList">
+            <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm" role="status">
+                    <span class="visually-hidden">載入中...</span>
+                </div>
+                <span class="ms-2">載入刪除記錄...</span>
+            </div>
+        </div>
+        
+        <!-- 查看更多 -->
+        <div class="text-center mt-2">
+            <a href="{{ url_for('admin_delete_audit_logs') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-list me-1"></i>完整記錄
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+// 已刪除紀錄區塊的JavaScript功能
+let auditLogsData = [];
+let isAuditBlockOpen = false;
+
+// 切換刪除記錄區塊顯示/隱藏
+function toggleAuditBlock() {
+    const content = document.getElementById('auditContent');
+    const icon = document.getElementById('auditToggleIcon');
+    
+    if (isAuditBlockOpen) {
+        content.style.display = 'none';
+        icon.className = 'bi bi-chevron-down';
+        isAuditBlockOpen = false;
+    } else {
+        content.style.display = 'block';
+        icon.className = 'bi bi-chevron-up';
+        isAuditBlockOpen = true;
+        loadAuditLogs();
+    }
+}
+
+// 載入刪除記錄
+async function loadAuditLogs() {
+    try {
+        const tableFilter = document.getElementById('auditTableFilter')?.value || '';
+        const operatorFilter = document.getElementById('auditOperatorFilter')?.value || '';
+        const limit = document.getElementById('auditLimitFilter')?.value || '20';
+        
+        const params = new URLSearchParams({
+            limit: limit,
+            table_name: tableFilter,
+            operator_id: operatorFilter
+        });
+        
+        const response = await fetch(`/api/delete_audit_logs?${params}`);
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            auditLogsData = data.logs;
+            renderAuditLogs(data.logs);
+            updateAuditCount(data.total);
+        } else {
+            throw new Error(data.message || '載入失敗');
+        }
+    } catch (error) {
+        console.error('載入刪除記錄失敗:', error);
+        document.getElementById('auditLogsList').innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                載入刪除記錄失敗: ${error.message}
+            </div>
+        `;
+    }
+}
+
+// 渲染刪除記錄列表
+function renderAuditLogs(logs) {
+    const container = document.getElementById('auditLogsList');
+    
+    if (!logs || logs.length === 0) {
+        container.innerHTML = `
+        <div class="text-center py-4">
+            <i class="bi bi-trash" style="font-size: 2rem;" class="text-muted mb-2"></i>
+            <p class="text-muted mb-0">沒有找到刪除記錄</p>
+        </div>
+        `;
+        return;
+    }
+    
+    const logsHtml = logs.map(log => `
+        <div class="border rounded p-2 mb-1">
+            <div class="row align-items-start">
+                <div class="col-md-2">
+                    <span class="badge ${getTableBadgeClass(log.table_name)} me-1">
+                        ${getTableDisplayName(log.table_name)}
+                    </span>
+                    <small class="text-muted">#${log.record_id}</small>
+                </div>
+                <div class="col-md-2">
+                    <span class="badge ${getOperationBadgeClass(log.operation_type)}">
+                        ${getOperationDisplayName(log.operation_type)}
+                    </span>
+                </div>
+                <div class="col-md-6">
+                    <div class="small" title="${log.description || '無描述'}" style="word-wrap: break-word; white-space: normal; line-height: 1.2;">
+                        ${log.description || '<span class="text-muted">無描述</span>'}
+                        ${log.balance_changes ? renderBalanceChanges(log.balance_changes) : ''}
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <small class="text-muted">
+                        ${log.operator_name || '系統'}
+                    </small>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    container.innerHTML = logsHtml;
+}
+
+// 更新刪除記錄數量
+function updateAuditCount(total) {
+    const countElement = document.getElementById('auditCount');
+    if (countElement) {
+        countElement.textContent = total;
+    }
+}
+
+// 篩選刪除記錄
+function filterAuditLogs() {
+    loadAuditLogs();
+}
+
+
+// 工具函數
+function getTableBadgeClass(tableName) {
+    const classes = {
+        'purchase_records': 'bg-primary',
+        'sales_records': 'bg-success',
+        'card_purchases': 'bg-warning',
+        'fifo_inventory': 'bg-info'
+    };
+    return classes[tableName] || 'bg-secondary';
+}
+
+function getTableDisplayName(tableName) {
+    const names = {
+        'purchase_records': '買入',
+        'sales_records': '銷售',
+        'card_purchases': '刷卡',
+        'fifo_inventory': '庫存'
+    };
+    return names[tableName] || tableName;
+}
+
+function getOperationBadgeClass(operationType) {
+    const classes = {
+        'REVERSE_PURCHASE': 'bg-danger',
+        'REVERSE_SALE': 'bg-warning',
+        'DELETE': 'bg-dark'
+    };
+    return classes[operationType] || 'bg-secondary';
+}
+
+function getOperationDisplayName(operationType) {
+    const names = {
+        'REVERSE_PURCHASE': '回滾買入',
+        'REVERSE_SALE': '回滾銷售',
+        'DELETE': '刪除'
+    };
+    return names[operationType] || operationType;
+}
+
+function renderBalanceChanges(balanceChangesJson) {
+    try {
+        const changes = JSON.parse(balanceChangesJson);
+        if (!changes || changes.length === 0) return '';
+        
+        let html = '<div class="mt-1">';
+        changes.forEach(change => {
+            const changeText = change.change > 0 ? `+${change.change}` : change.change;
+            const changeClass = change.change > 0 ? 'text-success' : 'text-danger';
+            html += `<div class="small ${changeClass}">${change.account_name}: ${change.balance_before || 0} → ${change.balance_after} (${changeText}) ${change.currency}</div>`;
+        });
+        html += '</div>';
+        return html;
+    } catch (e) {
+        return '';
+    }
+}
+
+function formatDateTime(dateTimeStr) {
+    if (!dateTimeStr) return 'N/A';
+    const date = new Date(dateTimeStr);
+    return date.toLocaleString('zh-TW', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// 頁面載入時初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 載入操作者列表
+    loadOperators();
+});
+
+// 載入操作者列表
+async function loadOperators() {
+    try {
+        const response = await fetch('/api/users');
+        
+        // 檢查回應狀態
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const select = document.getElementById('auditOperatorFilter');
+            if (select) {
+                const options = data.users.map(user => 
+                    `<option value="${user.id}">${user.username}</option>`
+                ).join('');
+                select.innerHTML = '<option value="">全部</option>' + options;
+            }
+        } else {
+            throw new Error(data.message || '獲取用戶列表失敗');
+        }
+    } catch (error) {
+        console.error('載入操作者列表失敗:', error);
+        
+        // 在UI中顯示錯誤（可選）
+        const select = document.getElementById('auditOperatorFilter');
+        if (select) {
+            select.innerHTML = '<option value="">載入失敗</option>';
+        }
+    }
+}
+</script>

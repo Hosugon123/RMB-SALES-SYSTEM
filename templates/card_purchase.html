@@ -290,4 +290,9 @@ document.addEventListener('DOMContentLoaded', function () {
     calculateAndUpdate();
 });
 </script>
+
+<!-- 刪除記錄審計區塊 -->
+{% if current_user.is_admin %}
+{% include '_delete_audit_block.html' %}
+{% endif %}
 {% endblock %}

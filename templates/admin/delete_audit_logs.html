@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}已刪除紀錄 - 管理後台{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-trash-alt me-2"></i>已刪除紀錄
+                    </h4>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-info me-2">總計 {{ total_logs }} 筆記錄</span>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleFilters()">
+                            <i class="fas fa-filter me-1"></i>篩選
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 篩選區域 -->
+                <div class="card-body border-bottom" id="filters" style="display: none;">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-4">
+                            <label for="table_name" class="form-label">資料表</label>
+                            <select class="form-select" id="table_name" name="table_name">
+                                <option value="">全部</option>
+                                <option value="purchase_records" {% if table_name == 'purchase_records' %}selected{% endif %}>買入記錄</option>
+                                <option value="sales_records" {% if table_name == 'sales_records' %}selected{% endif %}>銷售記錄</option>
+                                <option value="card_purchases" {% if table_name == 'card_purchases' %}selected{% endif %}>刷卡記錄</option>
+                                <option value="fifo_inventory" {% if table_name == 'fifo_inventory' %}selected{% endif %}>FIFO庫存</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="operator_id" class="form-label">操作者</label>
+                            <select class="form-select" id="operator_id" name="operator_id">
+                                <option value="">全部</option>
+                                {% for operator in operators %}
+                                <option value="{{ operator.id }}" {% if operator_id == operator.id|string %}selected{% endif %}>
+                                    {{ operator.username }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2">
+                                <i class="fas fa-search me-1"></i>查詢
+                            </button>
+                            <a href="{{ url_for('admin_delete_audit_logs') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-1"></i>清除
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="card-body p-0">
+                    {% if audit_logs %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="80">ID</th>
+                                    <th width="120">資料表</th>
+                                    <th width="100">記錄ID</th>
+                                    <th width="150">操作類型</th>
+                                    <th>描述</th>
+                                    <th width="120">操作者</th>
+                                    <th width="150">刪除時間</th>
+                                    <th width="120">IP地址</th>
+                                    <th width="80">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in audit_logs %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ log.id }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge 
+                                            {% if log.table_name == 'purchase_records' %}bg-primary
+                                            {% elif log.table_name == 'sales_records' %}bg-success
+                                            {% elif log.table_name == 'card_purchases' %}bg-warning
+                                            {% elif log.table_name == 'fifo_inventory' %}bg-info
+                                            {% else %}bg-secondary
+                                            {% endif %}">
+                                            {% if log.table_name == 'purchase_records' %}買入記錄
+                                            {% elif log.table_name == 'sales_records' %}銷售記錄
+                                            {% elif log.table_name == 'card_purchases' %}刷卡記錄
+                                            {% elif log.table_name == 'fifo_inventory' %}FIFO庫存
+                                            {% else %}{{ log.table_name }}
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <code>{{ log.record_id }}</code>
+                                    </td>
+                                    <td>
+                                        <span class="badge 
+                                            {% if log.operation_type == 'REVERSE_PURCHASE' %}bg-danger
+                                            {% elif log.operation_type == 'REVERSE_SALE' %}bg-warning
+                                            {% elif log.operation_type == 'DELETE' %}bg-dark
+                                            {% else %}bg-secondary
+                                            {% endif %}">
+                                            {% if log.operation_type == 'REVERSE_PURCHASE' %}回滾買入
+                                            {% elif log.operation_type == 'REVERSE_SALE' %}回滾銷售
+                                            {% elif log.operation_type == 'DELETE' %}刪除
+                                            {% else %}{{ log.operation_type }}
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div style="max-width: 400px; word-wrap: break-word; white-space: normal; line-height: 1.3;" title="{{ log.description }}">
+                                            {{ log.description or '無' }}
+                                            {% if log.balance_changes %}
+                                                <div class="mt-1">
+                                                    {% for change in log.balance_changes %}
+                                                        <div class="small {% if change.change > 0 %}text-success{% else %}text-danger{% endif %}">
+                                                            {{ change.account_name }}: {{ change.balance_before or 0 }} → {{ change.balance_after }} ({% if change.change > 0 %}+{% endif %}{{ change.change }}) {{ change.currency }}
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark">
+                                            {{ log.operator_name or '系統' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {{ log.deleted_at.strftime('%Y-%m-%d %H:%M:%S') if log.deleted_at else 'N/A' }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <code class="small">{{ log.ip_address or 'N/A' }}</code>
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-outline-info btn-sm" 
+                                                onclick="viewDetails({{ log.id }})" 
+                                                title="查看詳細資料">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- 分頁 -->
+                    {% if pagination and pagination.pages > 1 %}
+                    <div class="card-footer">
+                        <nav aria-label="刪除記錄分頁">
+                            <ul class="pagination pagination-sm justify-content-center mb-0">
+                                {% if pagination.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin_delete_audit_logs', page=pagination.prev_num, table_name=table_name, operator_id=operator_id) }}">
+                                        上一頁
+                                    </a>
+                                </li>
+                                {% endif %}
+                                
+                                {% for page_num in range(max(1, pagination.page - 2), min(pagination.pages + 1, pagination.page + 3)) %}
+                                <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                                    <a class="page-link" href="{{ url_for('admin_delete_audit_logs', page=page_num, table_name=table_name, operator_id=operator_id) }}">
+                                        {{ page_num }}
+                                    </a>
+                                </li>
+                                {% endfor %}
+                                
+                                {% if pagination.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin_delete_audit_logs', page=pagination.next_num, table_name=table_name, operator_id=operator_id) }}">
+                                        下一頁
+                                    </a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        
+                        <div class="text-center text-muted small">
+                            顯示第 {{ (pagination.page - 1) * pagination.per_page + 1 }} - 
+                            {{ min(pagination.page * pagination.per_page, pagination.total) }} 筆，
+                            共 {{ pagination.total }} 筆記錄
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-trash-alt fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">沒有找到刪除記錄</h5>
+                        <p class="text-muted">目前沒有任何刪除記錄</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 詳細資料模態框 -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-info-circle me-2"></i>刪除記錄詳細資料
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="detailsContent">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">載入中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleFilters() {
+    const filters = document.getElementById('filters');
+    filters.style.display = filters.style.display === 'none' ? 'block' : 'none';
+}
+
+function viewDetails(logId) {
+    // 顯示模態框
+    const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
+    modal.show();
+    
+    // 載入詳細資料
+    const content = document.getElementById('detailsContent');
+    content.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">載入中...</span></div></div>';
+    
+    // 這裡可以添加AJAX請求來獲取詳細資料
+    // 暫時顯示提示訊息
+    setTimeout(() => {
+        content.innerHTML = `
+            <div class="alert alert-info">
+                <h6>記錄ID: ${logId}</h6>
+                <p>詳細資料載入功能開發中...</p>
+                <p>這裡將顯示被刪除記錄的完整資料，包括所有欄位值。</p>
+            </div>
+        `;
+    }, 500);
+}
+</script>
+{% endblock %}
+

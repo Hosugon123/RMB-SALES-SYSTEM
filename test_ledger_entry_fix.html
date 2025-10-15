@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LedgerEntry entry_type 修復測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>LedgerEntry entry_type 修復測試</h1>
+        
+        <div class="alert alert-success">
+            <h5>✅ 修復完成</h5>
+            <p>已修復「NOT NULL constraint failed: ledger_entries.entry_type」錯誤。</p>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>問題分析</h5>
+            </div>
+            <div class="card-body">
+                <h6>錯誤原因：</h6>
+                <ul>
+                    <li><code>LedgerEntry</code> 模型的 <code>entry_type</code> 欄位設定為 <code>nullable=False</code></li>
+                    <li>在創建待付款項銷帳的流水記錄時，沒有設置 <code>entry_type</code> 欄位</li>
+                    <li>資料庫嘗試插入 <code>NULL</code> 值到 <code>entry_type</code> 欄位，違反了 NOT NULL 約束</li>
+                </ul>
+                
+                <h6>錯誤詳情：</h6>
+                <pre class="bg-light p-3"><code>sqlite3.IntegrityError: NOT NULL constraint failed: ledger_entries.entry_type
+SQL: INSERT INTO ledger_entries (entry_type, account_id, amount, description, entry_date, operator_id) 
+VALUES (?, ?, ?, ?, ?, ?)
+parameters: (None, 1, -22500.0, '待付款項銷帳-買入記錄#12', '2025-10-10 17:12:19.781219', 1)</code></pre>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>修復方案</h5>
+            </div>
+            <div class="card-body">
+                <h6>修復前的代碼：</h6>
+                <pre class="bg-light p-3"><code>ledger_entry = LedgerEntry(
+    account_id=payment_account.id,
+    amount=-settlement_amount,
+    description=description,
+    operator_id=current_user.id
+    # ❌ 缺少 entry_type 欄位
+)</code></pre>
+                
+                <h6>修復後的代碼：</h6>
+                <pre class="bg-light p-3"><code>ledger_entry = LedgerEntry(
+    entry_type='PENDING_PAYMENT_SETTLEMENT',  # ✅ 添加 entry_type
+    account_id=payment_account.id,
+    amount=-settlement_amount,
+    description=description,
+    operator_id=current_user.id
+)</code></pre>
+                
+                <div class="alert alert-info">
+                    <h6>entry_type 值說明：</h6>
+                    <p>使用 <code>'PENDING_PAYMENT_SETTLEMENT'</code> 來標識這是一個待付款項銷帳操作，與其他操作類型區分：</p>
+                    <ul>
+                        <li><code>SETTLEMENT</code> - 一般銷帳</li>
+                        <li><code>DEPOSIT</code> - 存款</li>
+                        <li><code>WITHDRAW</code> - 提款</li>
+                        <li><code>TRANSFER_OUT</code> - 轉出</li>
+                        <li><code>TRANSFER_IN</code> - 轉入</li>
+                        <li><code>PENDING_PAYMENT_SETTLEMENT</code> - 待付款項銷帳</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>測試步驟</h5>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li>回到現金管理頁面</li>
+                    <li>找到待付款項列表</li>
+                    <li>點擊「付款」按鈕</li>
+                    <li>確認銷帳金額（應該預設為正確金額）</li>
+                    <li>選擇付款帳戶</li>
+                    <li>點擊「確認付款」</li>
+                </ol>
+                
+                <div class="alert alert-success">
+                    <h6>預期結果：</h6>
+                    <ul>
+                        <li>✅ 不再出現 entry_type NOT NULL 約束錯誤</li>
+                        <li>✅ 銷帳操作成功執行</li>
+                        <li>✅ 流水記錄正確創建，包含 entry_type='PENDING_PAYMENT_SETTLEMENT'</li>
+                        <li>✅ 顯示成功訊息</li>
+                        <li>✅ 帳戶餘額正確更新</li>
+                        <li>✅ 待付款項狀態正確更新</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>修復總結</h5>
+            </div>
+            <div class="card-body">
+                <p>這次修復解決了資料庫約束違反的問題，確保：</p>
+                <ul>
+                    <li>所有 <code>LedgerEntry</code> 記錄都有明確的操作類型</li>
+                    <li>便於後續的審計和報表生成</li>
+                    <li>符合資料庫設計規範</li>
+                    <li>提高系統的穩定性和可維護性</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+

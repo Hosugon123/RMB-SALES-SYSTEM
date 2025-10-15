@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>測試利潤 API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .record { border: 1px solid #ccc; margin: 10px 0; padding: 10px; }
+        .profit-detail { background: #f0f0f0; padding: 5px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>測試利潤提款 API 數據</h1>
+    <button onclick="testAPI()">測試 API</button>
+    <div id="results"></div>
+
+    <script>
+        async function testAPI() {
+            try {
+                const response = await fetch('/api/cash_management/transactions');
+                const data = await response.json();
+                
+                console.log('API 返回的完整數據:', data);
+                
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.innerHTML = '<h2>API 返回的數據:</h2>';
+                
+                if (data.success && data.transactions) {
+                    const profitRecords = data.transactions.filter(t => t.type === 'PROFIT_WITHDRAW');
+                    
+                    profitRecords.forEach((record, index) => {
+                        const recordDiv = document.createElement('div');
+                        recordDiv.className = 'record';
+                        recordDiv.innerHTML = `
+                            <h3>記錄 ${index + 1}</h3>
+                            <div class="profit-detail">
+                                <strong>類型:</strong> ${record.type}<br>
+                                <strong>金額:</strong> ${record.amount}<br>
+                                <strong>描述:</strong> ${record.description}<br>
+                                <strong>日期:</strong> ${record.date}<br>
+                                <strong>profit_before:</strong> ${record.profit_before}<br>
+                                <strong>profit_after:</strong> ${record.profit_after}<br>
+                                <strong>profit_change:</strong> ${record.profit_change}<br>
+                                <strong>profit:</strong> ${record.profit}<br>
+                            </div>
+                            <div style="background: #e8f4fd; padding: 10px; margin: 10px 0;">
+                                <strong>原始 JSON:</strong><br>
+                                <pre>${JSON.stringify(record, null, 2)}</pre>
+                            </div>
+                        `;
+                        resultsDiv.appendChild(recordDiv);
+                    });
+                } else {
+                    resultsDiv.innerHTML = '<p>沒有找到利潤提款記錄或 API 返回錯誤</p>';
+                }
+                
+            } catch (error) {
+                console.error('API 測試失敗:', error);
+                document.getElementById('results').innerHTML = `<p style="color: red;">API 測試失敗: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

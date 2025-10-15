@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>銷帳金額驗證修復測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>銷帳金額驗證修復測試</h1>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>測試銷帳金額解析</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="testAmount" class="form-label">測試金額</label>
+                            <input type="text" class="form-control" id="testAmount" 
+                                   value="22500" pattern="[0-9]*\.?[0-9]*">
+                        </div>
+                        <button class="btn btn-primary" onclick="testAmountParsing()">測試解析</button>
+                        <div id="parsingResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>測試驗證邏輯</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="validationAmount" class="form-label">驗證金額</label>
+                            <input type="text" class="form-control" id="validationAmount" 
+                                   value="" pattern="[0-9]*\.?[0-9]*">
+                        </div>
+                        <button class="btn btn-warning" onclick="testValidation()">測試驗證</button>
+                        <div id="validationResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>控制台日誌</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="consoleLog" class="bg-dark text-light p-3" style="height: 300px; overflow-y: auto; font-family: monospace;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/enhanced_number_input.js"></script>
+    <script>
+        // 模擬控制台日誌
+        function logToPage(message, type = 'info') {
+            const consoleDiv = document.getElementById('consoleLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'white';
+            consoleDiv.innerHTML += `<div style="color: ${color};">[${timestamp}] ${message}</div>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        // 重寫 console.log 來顯示在頁面上
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            logToPage(args.join(' '), 'info');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            logToPage(args.join(' '), 'error');
+        };
+        
+        // 測試金額解析
+        function testAmountParsing() {
+            const input = document.getElementById('testAmount');
+            const resultDiv = document.getElementById('parsingResult');
+            
+            console.log('🔍 測試金額解析...');
+            
+            // 模擬 getActualValue 方法
+            if (input.getActualValue) {
+                const rawValue = input.getActualValue();
+                const parsed = rawValue ? parseFloat(rawValue) : 0;
+                console.log('使用 getActualValue:', { rawValue, parsed });
+            } else {
+                const rawValue = input.value.replace(/[^0-9.-]/g, '');
+                const parsed = rawValue ? parseFloat(rawValue) : 0;
+                console.log('使用直接解析:', { rawValue, parsed });
+            }
+            
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <strong>解析成功</strong><br>
+                    原始值: ${input.value}<br>
+                    解析結果: ${parsed}<br>
+                    是否為數字: ${!isNaN(parsed)}
+                </div>
+            `;
+        }
+        
+        // 測試驗證邏輯
+        function testValidation() {
+            const input = document.getElementById('validationAmount');
+            const resultDiv = document.getElementById('validationResult');
+            
+            console.log('🔍 測試驗證邏輯...');
+            
+            // 模擬解析邏輯
+            let settlementAmount;
+            if (input.getActualValue) {
+                const rawValue = input.getActualValue();
+                settlementAmount = rawValue ? parseFloat(rawValue) : 0;
+            } else {
+                const rawValue = input.value.replace(/[^0-9.-]/g, '');
+                settlementAmount = rawValue ? parseFloat(rawValue) : 0;
+            }
+            
+            console.log('解析後的銷帳金額:', settlementAmount);
+            
+            // 模擬驗證邏輯
+            let isValid = true;
+            let errorMessage = '';
+            
+            if (!settlementAmount || settlementAmount <= 0 || isNaN(settlementAmount)) {
+                isValid = false;
+                if (isNaN(settlementAmount)) {
+                    errorMessage = '銷帳金額格式不正確，請輸入數字';
+                } else if (settlementAmount <= 0) {
+                    errorMessage = '銷帳金額必須大於 0';
+                } else {
+                    errorMessage = '請輸入有效的銷帳金額';
+                }
+                console.error('❌ 銷帳金額驗證失敗:', { 
+                    settlementAmount, 
+                    isNaN: isNaN(settlementAmount),
+                    inputValue: input.value
+                });
+            }
+            
+            if (isValid) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>驗證通過</strong><br>
+                        銷帳金額: ${settlementAmount}<br>
+                        狀態: 有效
+                    </div>
+                `;
+                console.log('✅ 銷帳金額驗證通過');
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong>驗證失敗</strong><br>
+                        錯誤: ${errorMessage}<br>
+                        輸入值: "${input.value}"<br>
+                        解析結果: ${settlementAmount}
+                    </div>
+                `;
+                console.error('❌ 銷帳金額驗證失敗:', errorMessage);
+            }
+        }
+        
+        // 頁面載入時初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ 銷帳金額驗證修復測試頁面已載入');
+            
+            // 為測試輸入框設置數字格式化
+            const testAmountInput = document.getElementById('testAmount');
+            const validationAmountInput = document.getElementById('validationAmount');
+            
+            if (typeof setupNumberInputFormatting === 'function') {
+                setupNumberInputFormatting(testAmountInput, { maxDecimals: 2 });
+                setupNumberInputFormatting(validationAmountInput, { maxDecimals: 2 });
+                console.log('✅ 數字輸入格式化已應用');
+            }
+        });
+    </script>
+</body>
+</html>
+

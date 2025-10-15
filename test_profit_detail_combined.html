@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利潤變動詳情合併顯示測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .running-balance {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 6px;
+            padding: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>利潤變動詳情合併顯示測試</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <h6><i class="bi bi-info-circle me-2"></i>顯示方式改進</h6>
+                            <p>將三個利潤欄位（變動前利潤、變動後利潤、變動之利潤數字）合併為一個欄位「利潤變動詳情」，模仿累積餘額的顯示方式。</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>新的顯示方式</h5>
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>時間</th>
+                                            <th>類型</th>
+                                            <th>描述</th>
+                                            <th>操作人員</th>
+                                            <th>TWD 變動</th>
+                                            <th>RMB 變動</th>
+                                            <th>累積餘額</th>
+                                            <th class="bg-info text-white">利潤變動詳情</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>2025/10/15 14:50:24</td>
+                                            <td><span class="badge bg-warning-subtle text-warning-emphasis">利潤扣除</span></td>
+                                            <td>利潤提款</td>
+                                            <td>admin</td>
+                                            <td class="text-danger">-20.00</td>
+                                            <td>-</td>
+                                            <td>
+                                                <div class="small running-balance">
+                                                    <div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ 4,420,100.00</div>
+                                                    <div class="text-success">¥ 23,000.00</div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="small running-balance">
+                                                    <div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: 19,951.00</div>
+                                                    <div class="text-info border-bottom border-info pb-1 mb-1">後: 19,931.00</div>
+                                                    <div class="text-danger fw-bold">變: -20.00</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>2025/10/15 14:50:07</td>
+                                            <td><span class="badge bg-warning-subtle text-warning-emphasis">利潤扣除</span></td>
+                                            <td>利潤提款</td>
+                                            <td>admin</td>
+                                            <td class="text-danger">-400.00</td>
+                                            <td>-</td>
+                                            <td>
+                                                <div class="small running-balance">
+                                                    <div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ 4,420,120.00</div>
+                                                    <div class="text-success">¥ 23,000.00</div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="small running-balance">
+                                                    <div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: 20,351.00</div>
+                                                    <div class="text-info border-bottom border-info pb-1 mb-1">後: 19,951.00</div>
+                                                    <div class="text-danger fw-bold">變: -400.00</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>2025/10/15 14:45:12</td>
+                                            <td><span class="badge bg-secondary-subtle text-secondary-emphasis">資產提款</span></td>
+                                            <td>資產提款</td>
+                                            <td>admin</td>
+                                            <td class="text-danger">-1000.00</td>
+                                            <td>-</td>
+                                            <td>
+                                                <div class="small running-balance">
+                                                    <div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ 4,421,120.00</div>
+                                                    <div class="text-success">¥ 23,000.00</div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="small">-</div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>2025/10/15 14:30:45</td>
+                                            <td><span class="badge bg-primary-subtle text-primary-emphasis">售出</span></td>
+                                            <td>售予 小曾</td>
+                                            <td>admin</td>
+                                            <td>-</td>
+                                            <td class="text-danger">-1000.00</td>
+                                            <td>
+                                                <div class="small running-balance">
+                                                    <div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ 4,421,120.00</div>
+                                                    <div class="text-success">¥ 24,000.00</div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="small">
+                                                    <div class="text-success">+150.00</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>顯示邏輯說明</h5>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="card border-info">
+                                        <div class="card-header bg-info text-white">
+                                            <h6 class="mb-0">利潤提款記錄</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="mb-2"><strong>顯示方式：</strong></p>
+                                            <div class="small running-balance">
+                                                <div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: 20,351.00</div>
+                                                <div class="text-info border-bottom border-info pb-1 mb-1">後: 19,951.00</div>
+                                                <div class="text-danger fw-bold">變: -400.00</div>
+                                            </div>
+                                            <p class="mt-2 mb-0"><small>顯示變動前、變動後、變動金額</small></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card border-secondary">
+                                        <div class="card-header bg-secondary text-white">
+                                            <h6 class="mb-0">資產提款記錄</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="mb-2"><strong>顯示方式：</strong></p>
+                                            <div class="small">-</div>
+                                            <p class="mt-2 mb-0"><small>不影響利潤，顯示 "-"</small></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card border-success">
+                                        <div class="card-header bg-success text-white">
+                                            <h6 class="mb-0">其他記錄</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="mb-2"><strong>顯示方式：</strong></p>
+                                            <div class="small">
+                                                <div class="text-success">+150.00</div>
+                                            </div>
+                                            <p class="mt-2 mb-0"><small>顯示傳統利潤數字</small></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>顏色說明</h5>
+                            <div class="alert alert-light">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>利潤變動詳情框內：</h6>
+                                        <ul>
+                                            <li><span class="text-info">前: 變動前利潤</span> - 藍色</li>
+                                            <li><span class="text-info">後: 變動後利潤</span> - 藍色</li>
+                                            <li><span class="text-danger">變: 變動金額</span> - 紅色（減少）或綠色（增加）</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>整體設計：</h6>
+                                        <ul>
+                                            <li>模仿累積餘額的顯示方式</li>
+                                            <li>使用相同的樣式和布局</li>
+                                            <li>保持視覺一致性</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-success">
+                            <h6><i class="bi bi-check-circle me-2"></i>改進效果</h6>
+                            <ul class="mb-0">
+                                <li>✅ 節省表格空間，從 13 列減少到 11 列</li>
+                                <li>✅ 保持詳細的利潤變動信息</li>
+                                <li>✅ 視覺上與累積餘額保持一致</li>
+                                <li>✅ 更清晰的數據展示</li>
+                                <li>✅ 支持不同類型的記錄顯示</li>
+                            </ul>
+                        </div>
+
+                        <div class="alert alert-warning">
+                            <h6><i class="bi bi-exclamation-triangle me-2"></i>注意事項</h6>
+                            <ul class="mb-0">
+                                <li>需要修復數據庫結構才能看到完整的利潤詳細信息</li>
+                                <li>舊記錄可能只顯示傳統利潤數字</li>
+                                <li>新的利潤提款記錄會顯示完整的變動詳情</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

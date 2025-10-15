@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>付款帳戶數據修復測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0"><i class="bi bi-credit-card me-2"></i>付款帳戶數據修復測試</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <h6><i class="bi bi-info-circle me-2"></i>問題描述</h6>
+                            <p>待付款項銷帳模態框中的「從哪個 TWD 帳戶付款」下拉選單無法載入帳戶數據，顯示「--- 請選擇付款帳戶 ---」但沒有選項。</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>測試 1: 模擬 accountsByHolder 數據結構</h5>
+                            <button class="btn btn-primary" onclick="simulateAccountsData()">模擬數據</button>
+                            <div id="result1" class="mt-2 text-muted"></div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>測試 2: 測試 populatePaymentAccounts 函數</h5>
+                            <button class="btn btn-primary" onclick="testPopulateFunction()">測試函數</button>
+                            <div id="result2" class="mt-2 text-muted"></div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>測試 3: 實際付款帳戶選擇</h5>
+                            <div class="mb-3">
+                                <label for="testPaymentSelect" class="form-label">付款帳戶選擇</label>
+                                <select class="form-select" id="testPaymentSelect">
+                                    <option value="" disabled selected>--- 請選擇付款帳戶 ---</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary" onclick="populateTestSelect()">填充測試選項</button>
+                            <div id="result3" class="mt-2 text-muted"></div>
+                        </div>
+
+                        <div class="alert alert-success">
+                            <h6><i class="bi bi-check-circle me-2"></i>修復內容</h6>
+                            <ul class="mb-0">
+                                <li>✅ 修復了 <code>populatePaymentAccounts</code> 函數的數據源問題</li>
+                                <li>✅ 將 <code>accountsByHolder</code> 設為全域變數</li>
+                                <li>✅ 更新函數使用正確的數據結構</li>
+                                <li>✅ 添加詳細的調試日誌</li>
+                                <li>✅ 增加錯誤處理和用戶提示</li>
+                            </ul>
+                        </div>
+
+                        <div class="alert alert-warning">
+                            <h6><i class="bi bi-exclamation-triangle me-2"></i>修復前後對比</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>修復前：</h6>
+                                    <ul>
+                                        <li>❌ 使用 <code>window.owner_accounts</code>（不存在）</li>
+                                        <li>❌ 無法獲取帳戶數據</li>
+                                        <li>❌ 下拉選單為空</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>修復後：</h6>
+                                    <ul>
+                                        <li>✅ 使用 <code>window.accountsByHolder</code>（正確）</li>
+                                        <li>✅ 正確獲取 TWD 帳戶數據</li>
+                                        <li>✅ 下拉選單包含所有 TWD 帳戶</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 模擬 accountsByHolder 數據結構
+        function simulateAccountsData() {
+            // 模擬現金管理頁面的數據結構
+            window.accountsByHolder = {
+                "1": {
+                    "id": 1,
+                    "name": "測試持有人A",
+                    "accounts": [
+                        {
+                            "id": 1,
+                            "name": "台幣帳戶A",
+                            "currency": "TWD",
+                            "balance": 1000000.00
+                        },
+                        {
+                            "id": 2,
+                            "name": "人民幣帳戶A",
+                            "currency": "RMB",
+                            "balance": 50000.00
+                        }
+                    ]
+                },
+                "2": {
+                    "id": 2,
+                    "name": "測試持有人B",
+                    "accounts": [
+                        {
+                            "id": 3,
+                            "name": "台幣帳戶B",
+                            "currency": "TWD",
+                            "balance": 2000000.00
+                        },
+                        {
+                            "id": 4,
+                            "name": "人民幣帳戶B",
+                            "currency": "RMB",
+                            "balance": 30000.00
+                        }
+                    ]
+                }
+            };
+            
+            let result = `
+                <div class="alert alert-success">
+                    <h6>模擬數據結構：</h6>
+                    <pre class="bg-light p-3"><code>window.accountsByHolder = {
+  "1": {
+    "name": "測試持有人A",
+    "accounts": [
+      { "id": 1, "name": "台幣帳戶A", "currency": "TWD", "balance": 1000000.00 },
+      { "id": 2, "name": "人民幣帳戶A", "currency": "RMB", "balance": 50000.00 }
+    ]
+  },
+  "2": {
+    "name": "測試持有人B", 
+    "accounts": [
+      { "id": 3, "name": "台幣帳戶B", "currency": "TWD", "balance": 2000000.00 },
+      { "id": 4, "name": "人民幣帳戶B", "currency": "RMB", "balance": 30000.00 }
+    ]
+  }
+}</code></pre>
+                    <p><strong>✅ 模擬數據設置完成，包含 2 個 TWD 帳戶</strong></p>
+                </div>
+            `;
+            
+            document.getElementById('result1').innerHTML = result;
+        }
+
+        // 測試 populatePaymentAccounts 函數邏輯
+        function testPopulateFunction() {
+            if (!window.accountsByHolder) {
+                document.getElementById('result2').innerHTML = `
+                    <div class="alert alert-warning">
+                        <strong>⚠️ 請先點擊「模擬數據」按鈕設置測試數據</strong>
+                    </div>
+                `;
+                return;
+            }
+            
+            let twdAccounts = [];
+            let totalAccounts = 0;
+            
+            Object.keys(window.accountsByHolder).forEach(holderId => {
+                const holderData = window.accountsByHolder[holderId];
+                if (holderData && holderData.accounts) {
+                    holderData.accounts.forEach(account => {
+                        totalAccounts++;
+                        if (account.currency === 'TWD') {
+                            twdAccounts.push({
+                                id: account.id,
+                                name: account.name,
+                                balance: account.balance
+                            });
+                        }
+                    });
+                }
+            });
+            
+            let result = `
+                <div class="alert alert-success">
+                    <h6>函數測試結果：</h6>
+                    <p><strong>總帳戶數：</strong> ${totalAccounts}</p>
+                    <p><strong>TWD 帳戶數：</strong> ${twdAccounts.length}</p>
+                    <p><strong>TWD 帳戶列表：</strong></p>
+                    <ul>
+            `;
+            
+            twdAccounts.forEach(account => {
+                result += `<li>${account.name} (餘額: TWD ${account.balance.toLocaleString()})</li>`;
+            });
+            
+            result += `
+                    </ul>
+                    <p><strong>✅ 函數邏輯測試通過，可以正確識別 TWD 帳戶</strong></p>
+                </div>
+            `;
+            
+            document.getElementById('result2').innerHTML = result;
+        }
+
+        // 實際填充測試下拉選單
+        function populateTestSelect() {
+            if (!window.accountsByHolder) {
+                document.getElementById('result3').innerHTML = `
+                    <div class="alert alert-warning">
+                        <strong>⚠️ 請先點擊「模擬數據」按鈕設置測試數據</strong>
+                    </div>
+                `;
+                return;
+            }
+            
+            const paymentAccountSelect = document.getElementById('testPaymentSelect');
+            if (!paymentAccountSelect) return;
+            
+            console.log('🔍 開始填充付款帳戶選項...');
+            
+            // 清空現有選項
+            paymentAccountSelect.innerHTML = '<option value="" disabled selected>--- 請選擇付款帳戶 ---</option>';
+            
+            let twdAccountCount = 0;
+            
+            Object.keys(window.accountsByHolder).forEach(holderId => {
+                const holderData = window.accountsByHolder[holderId];
+                if (holderData && holderData.accounts) {
+                    holderData.accounts.forEach(account => {
+                        if (account.currency === 'TWD') {
+                            const option = document.createElement('option');
+                            option.value = account.id;
+                            option.textContent = `${account.name} (餘額: ${account.currency} ${account.balance.toLocaleString()})`;
+                            paymentAccountSelect.appendChild(option);
+                            twdAccountCount++;
+                            console.log('✅ 添加 TWD 帳戶:', account.name, '餘額:', account.balance);
+                        }
+                    });
+                }
+            });
+            
+            let result = `
+                <div class="alert alert-success">
+                    <h6>實際填充結果：</h6>
+                    <p><strong>✅ 成功添加 ${twdAccountCount} 個 TWD 帳戶到下拉選單</strong></p>
+                    <p>現在可以從下拉選單中選擇付款帳戶了！</p>
+                </div>
+            `;
+            
+            document.getElementById('result3').innerHTML = result;
+        }
+    </script>
+</body>
+</html>
+

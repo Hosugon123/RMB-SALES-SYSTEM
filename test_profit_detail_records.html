@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利潤詳細記錄功能測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>利潤詳細記錄功能測試</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <h6><i class="bi bi-info-circle me-2"></i>功能說明</h6>
+                            <p>現在近期交易記錄中的利潤欄位會顯示更詳細的信息，包括：</p>
+                            <ul>
+                                <li><strong>變動前利潤</strong> - 交易發生前的總利潤</li>
+                                <li><strong>變動後利潤</strong> - 交易發生後的總利潤</li>
+                                <li><strong>變動之利潤數字</strong> - 此次交易對利潤的影響</li>
+                            </ul>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>實現的功能</h5>
+                            <div class="alert alert-success">
+                                <h6>✅ 完成的功能：</h6>
+                                <ul class="mb-0">
+                                    <li>為 <code>LedgerEntry</code> 模型添加三個新欄位</li>
+                                    <li>創建數據庫遷移文件</li>
+                                    <li>修改後端邏輯計算和記錄利潤信息</li>
+                                    <li>更新前端顯示邏輯</li>
+                                    <li>新增利潤提款類型處理</li>
+                                    <li>API 返回詳細利潤信息</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>數據庫結構變更</h5>
+                            <div class="bg-light p-3 rounded">
+                                <h6>新增欄位到 <code>ledger_entries</code> 表：</h6>
+                                <pre><code>profit_before   FLOAT  -- 變動前利潤
+profit_after    FLOAT  -- 變動後利潤  
+profit_change   FLOAT  -- 變動之利潤數字</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>表格結構變更</h5>
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>時間</th>
+                                            <th>類型</th>
+                                            <th>描述</th>
+                                            <th>操作人員</th>
+                                            <th>出款帳戶</th>
+                                            <th>入款帳戶</th>
+                                            <th>備註</th>
+                                            <th>TWD 變動</th>
+                                            <th>RMB 變動</th>
+                                            <th>累積餘額</th>
+                                            <th class="bg-info text-white">變動前利潤</th>
+                                            <th class="bg-info text-white">變動後利潤</th>
+                                            <th class="bg-info text-white">變動之利潤數字</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>2025/10/15 下午 2:50:24</td>
+                                            <td><span class="badge bg-warning-subtle text-warning-emphasis">利潤扣除</span></td>
+                                            <td>利潤提款</td>
+                                            <td>admin</td>
+                                            <td>N/A</td>
+                                            <td>N/A</td>
+                                            <td>-</td>
+                                            <td class="text-danger">-20.00</td>
+                                            <td>-</td>
+                                            <td>NT$ 4,420,100.00<br>¥ 23,000.00</td>
+                                            <td class="text-info">19,951.00</td>
+                                            <td class="text-info">19,931.00</td>
+                                            <td class="text-danger">-20.00</td>
+                                        </tr>
+                                        <tr>
+                                            <td>2025/10/15 下午 2:50:07</td>
+                                            <td><span class="badge bg-warning-subtle text-warning-emphasis">利潤扣除</span></td>
+                                            <td>利潤提款</td>
+                                            <td>admin</td>
+                                            <td>N/A</td>
+                                            <td>N/A</td>
+                                            <td>薑母鴨</td>
+                                            <td class="text-danger">-400.00</td>
+                                            <td>-</td>
+                                            <td>NT$ 4,420,120.00<br>¥ 23,000.00</td>
+                                            <td class="text-info">20,351.00</td>
+                                            <td class="text-info">19,951.00</td>
+                                            <td class="text-danger">-400.00</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>後端邏輯變更</h5>
+                            <div class="bg-light p-3 rounded">
+                                <h6>利潤提款記錄創建邏輯：</h6>
+                                <pre><code># 計算當前總利潤
+current_total_profit = 銷售利潤總和 - 之前利潤提款總額
+
+# 創建記錄
+entry = LedgerEntry(
+    entry_type="PROFIT_WITHDRAW",
+    amount=提款金額,
+    profit_before=current_total_profit,      # 變動前利潤
+    profit_after=current_total_profit - amount,  # 變動後利潤
+    profit_change=-amount                    # 變動之利潤數字
+)</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>前端顯示邏輯</h5>
+                            <div class="alert alert-info">
+                                <h6>JavaScript 渲染邏輯：</h6>
+                                <ul>
+                                    <li>從 API 獲取 <code>profit_before</code>、<code>profit_after</code>、<code>profit_change</code></li>
+                                    <li>格式化顯示金額</li>
+                                    <li>設置適當的顏色（變動為負數時顯示紅色）</li>
+                                    <li>只有利潤提款記錄會顯示詳細信息，其他記錄顯示 "-"</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h5>API 數據結構</h5>
+                            <div class="bg-light p-3 rounded">
+                                <h6>API 返回的利潤提款記錄：</h6>
+                                <pre><code>{
+  "type": "PROFIT_WITHDRAW",
+  "date": "2025-10-15T06:50:24",
+  "description": "利潤提款",
+  "twd_change": -20.00,
+  "profit_before": 19951.00,    // 新增
+  "profit_after": 19931.00,     // 新增
+  "profit_change": -20.00,      // 新增
+  "operator": "admin"
+}</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-warning">
+                            <h6><i class="bi bi-exclamation-triangle me-2"></i>部署步驟</h6>
+                            <ol>
+                                <li><strong>執行數據庫遷移：</strong> <code>flask db upgrade</code></li>
+                                <li><strong>重啟應用程序</strong></li>
+                                <li><strong>進行利潤提款測試</strong></li>
+                                <li><strong>檢查近期交易記錄</strong> - 應該看到新的利潤詳細欄位</li>
+                            </ol>
+                        </div>
+
+                        <div class="alert alert-success">
+                            <h6><i class="bi bi-check-circle me-2"></i>測試要點</h6>
+                            <ul class="mb-0">
+                                <li>✅ 利潤提款記錄顯示變動前、變動後、變動金額</li>
+                                <li>✅ 資產提款記錄不顯示利潤詳細信息（顯示 "-"）</li>
+                                <li>✅ 其他類型記錄不顯示利潤詳細信息</li>
+                                <li>✅ 表格列數正確（從 11 列增加到 13 列）</li>
+                                <li>✅ 顏色顯示正確（負數為紅色）</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
