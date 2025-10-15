@@ -2257,10 +2257,18 @@ def cash_management_operator():
                 db.selectinload(SalesRecord.rmb_account)
             )
         ).scalars().all()
-        misc_entries = db.session.execute(
-            db.select(LedgerEntry)
-            .options(db.selectinload(LedgerEntry.account))
-        ).scalars().all()
+        # 安全地查詢 LedgerEntry，處理可能缺少的欄位
+        try:
+            misc_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .options(db.selectinload(LedgerEntry.account))
+            ).scalars().all()
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                misc_entries = []
+            else:
+                raise e
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         unified_stream = []
@@ -2572,10 +2580,18 @@ def cash_management():
                 db.selectinload(SalesRecord.rmb_account)
             )
         ).scalars().all()
-        misc_entries = db.session.execute(
-            db.select(LedgerEntry)
-            .options(db.selectinload(LedgerEntry.account))
-        ).scalars().all()
+        # 安全地查詢 LedgerEntry，處理可能缺少的欄位
+        try:
+            misc_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .options(db.selectinload(LedgerEntry.account))
+            ).scalars().all()
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                misc_entries = []
+            else:
+                raise e
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         unified_stream = []
@@ -6166,10 +6182,18 @@ def get_cash_management_transactions():
             )
         ).scalars().all()
         
-        misc_entries = db.session.execute(
-            db.select(LedgerEntry)
-            .options(db.selectinload(LedgerEntry.account))
-        ).scalars().all()
+        # 安全地查詢 LedgerEntry，處理可能缺少的欄位
+        try:
+            misc_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .options(db.selectinload(LedgerEntry.account))
+            ).scalars().all()
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                misc_entries = []
+            else:
+                raise e
         
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
@@ -6388,10 +6412,18 @@ def get_cash_management_totals():
                 db.selectinload(SalesRecord.rmb_account)
             )
         ).scalars().all()
-        misc_entries = db.session.execute(
-            db.select(LedgerEntry)
-            .options(db.selectinload(LedgerEntry.account))
-        ).scalars().all()
+        # 安全地查詢 LedgerEntry，處理可能缺少的欄位
+        try:
+            misc_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .options(db.selectinload(LedgerEntry.account))
+            ).scalars().all()
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                misc_entries = []
+            else:
+                raise e
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         # 構建統一的交易流
@@ -6733,10 +6765,18 @@ def get_account_balances_for_dropdowns():
                 db.selectinload(SalesRecord.rmb_account)
             )
         ).scalars().all()
-        misc_entries = db.session.execute(
-            db.select(LedgerEntry)
-            .options(db.selectinload(LedgerEntry.account))
-        ).scalars().all()
+        # 安全地查詢 LedgerEntry，處理可能缺少的欄位
+        try:
+            misc_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .options(db.selectinload(LedgerEntry.account))
+            ).scalars().all()
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                misc_entries = []
+            else:
+                raise e
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         # 構建統一的交易流
@@ -6946,10 +6986,18 @@ def get_accurate_account_balances():
                 db.selectinload(SalesRecord.rmb_account)
             )
         ).scalars().all()
-        misc_entries = db.session.execute(
-            db.select(LedgerEntry)
-            .options(db.selectinload(LedgerEntry.account))
-        ).scalars().all()
+        # 安全地查詢 LedgerEntry，處理可能缺少的欄位
+        try:
+            misc_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .options(db.selectinload(LedgerEntry.account))
+            ).scalars().all()
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+                misc_entries = []
+            else:
+                raise e
         cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
 
         # 構建統一的交易流，使用帳戶ID而不是名稱
