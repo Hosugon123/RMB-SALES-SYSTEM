@@ -540,8 +540,14 @@ class DeleteAuditService:
             return [log.to_dict() for log in logs]
             
         except Exception as e:
-            print(f"獲取刪除記錄失敗: {e}")
-            return []
+            if "does not exist" in str(e) and "delete_audit_logs" in str(e):
+                print("警告: delete_audit_logs 表格不存在，返回空結果")
+                db.session.rollback()
+                return []
+            else:
+                print(f"獲取刪除記錄失敗: {e}")
+                db.session.rollback()
+                return []
     
     @staticmethod
     def get_deletion_log_by_id(log_id):
@@ -550,8 +556,14 @@ class DeleteAuditService:
             log = db.session.get(DeleteAuditLog, log_id)
             return log.to_dict() if log else None
         except Exception as e:
-            print(f"獲取刪除記錄失敗: {e}")
-            return None
+            if "does not exist" in str(e) and "delete_audit_logs" in str(e):
+                print("警告: delete_audit_logs 表格不存在，返回空結果")
+                db.session.rollback()
+                return None
+            else:
+                print(f"獲取刪除記錄失敗: {e}")
+                db.session.rollback()
+                return None
 
 
 # ===================================================================
@@ -1655,12 +1667,31 @@ def admin_delete_audit_logs():
         query = query.order_by(DeleteAuditLog.deleted_at.desc())
         
         # 獲取總數
-        total_logs = db.session.execute(db.select(db.func.count(DeleteAuditLog.id))).scalar()
-        
-        # 重新執行查詢以獲取分頁結果
-        audit_logs = db.session.execute(
-            query.offset((page - 1) * per_page).limit(per_page)
-        ).scalars().all()
+        try:
+            total_logs = db.session.execute(db.select(db.func.count(DeleteAuditLog.id))).scalar()
+        except Exception as e:
+            if "does not exist" in str(e) and "delete_audit_logs" in str(e):
+                print("警告: delete_audit_logs 表格不存在，返回空結果")
+                db.session.rollback()
+                total_logs = 0
+                audit_logs = []
+            else:
+                db.session.rollback()
+                raise e
+        else:
+            # 重新執行查詢以獲取分頁結果
+            try:
+                audit_logs = db.session.execute(
+                    query.offset((page - 1) * per_page).limit(per_page)
+                ).scalars().all()
+            except Exception as e:
+                if "does not exist" in str(e) and "delete_audit_logs" in str(e):
+                    print("警告: delete_audit_logs 表格不存在，返回空結果")
+                    db.session.rollback()
+                    audit_logs = []
+                else:
+                    db.session.rollback()
+                    raise e
         
         # 轉換為字典格式
         logs_data = []
@@ -2191,6 +2222,12 @@ def cash_management_operator():
     try:
         page = request.args.get("page", 1, type=int)
 
+        # 保險回滾：若上一個查詢在同一連線中失敗，確保事務恢復乾淨狀態
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
         # 暫時移除過濾，直接查詢所有持有人
         holders_obj = (
             db.session.execute(db.select(Holder).filter_by(is_active=True))
@@ -2532,6 +2569,12 @@ def cash_management_operator():
 def cash_management():
     try:
         page = request.args.get("page", 1, type=int)
+
+        # 保險回滾，避免 InFailedSqlTransaction 影響後續查詢
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
         # 暫時移除過濾，直接查詢所有持有人
         holders_obj = (
@@ -4898,7 +4941,16 @@ def api_delete_audit_logs():
         query = query.order_by(DeleteAuditLog.deleted_at.desc()).limit(limit)
         
         # 執行查詢
-        audit_logs = db.session.execute(query).scalars().all()
+        try:
+            audit_logs = db.session.execute(query).scalars().all()
+        except Exception as e:
+            if "does not exist" in str(e) and "delete_audit_logs" in str(e):
+                print("警告: delete_audit_logs 表格不存在，返回空結果")
+                db.session.rollback()
+                audit_logs = []
+            else:
+                db.session.rollback()
+                raise e
         
         # 轉換為字典格式
         logs_data = []
@@ -4929,7 +4981,16 @@ def api_delete_audit_logs():
             logs_data.append(log_dict)
         
         # 獲取總數（用於計數）
-        total_count = db.session.execute(db.select(func.count(DeleteAuditLog.id))).scalar()
+        try:
+            total_count = db.session.execute(db.select(func.count(DeleteAuditLog.id))).scalar()
+        except Exception as e:
+            if "does not exist" in str(e) and "delete_audit_logs" in str(e):
+                print("警告: delete_audit_logs 表格不存在，總數設為0")
+                db.session.rollback()
+                total_count = 0
+            else:
+                db.session.rollback()
+                raise e
         
         return jsonify({
             'status': 'success',
