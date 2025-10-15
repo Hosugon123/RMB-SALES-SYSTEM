@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登入測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; }
+        input { padding: 8px; width: 200px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+        .error { color: red; margin: 10px 0; }
+        .success { color: green; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>登入測試</h1>
+    
+    <div id="status"></div>
+    
+    <form id="loginForm">
+        <div class="form-group">
+            <label for="username">用戶名:</label>
+            <input type="text" id="username" name="username" value="admin" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">密碼:</label>
+            <input type="password" id="password" name="password" value="admin123" required>
+        </div>
+        
+        <button type="submit">登入</button>
+    </form>
+    
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const statusDiv = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            
+            statusDiv.innerHTML = '<div>正在登入...</div>';
+            resultDiv.innerHTML = '';
+            
+            try {
+                // 首先獲取登入頁面以獲取 CSRF token（如果需要）
+                const loginPageResponse = await fetch('/login');
+                const loginPageHtml = await loginPageResponse.text();
+                
+                // 嘗試登入
+                const formData = new FormData();
+                formData.append('username', username);
+                formData.append('password', password);
+                
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                console.log('登入響應狀態:', response.status);
+                console.log('登入響應 URL:', response.url);
+                
+                if (response.ok) {
+                    const responseText = await response.text();
+                    
+                    if (responseText.includes('現金管理') || responseText.includes('dashboard')) {
+                        statusDiv.innerHTML = '<div class="success">✅ 登入成功！</div>';
+                        resultDiv.innerHTML = '<p>您已成功登入系統。</p>';
+                    } else if (responseText.includes('登入')) {
+                        statusDiv.innerHTML = '<div class="error">❌ 登入失敗：用戶名或密碼錯誤</div>';
+                        resultDiv.innerHTML = '<p>請檢查用戶名和密碼是否正確。</p>';
+                    } else {
+                        statusDiv.innerHTML = '<div>⚠️ 登入響應異常</div>';
+                        resultDiv.innerHTML = '<p>響應內容：' + responseText.substring(0, 500) + '...</p>';
+                    }
+                } else {
+                    statusDiv.innerHTML = '<div class="error">❌ 登入請求失敗</div>';
+                    resultDiv.innerHTML = '<p>狀態碼：' + response.status + '</p>';
+                }
+                
+            } catch (error) {
+                statusDiv.innerHTML = '<div class="error">❌ 登入測試失敗</div>';
+                resultDiv.innerHTML = '<p>錯誤：' + error.message + '</p>';
+            }
+        });
+        
+        // 測試系統狀態
+        async function testSystem() {
+            try {
+                const response = await fetch('/');
+                if (response.ok) {
+                    document.getElementById('status').innerHTML = '<div class="success">✅ 系統正在運行</div>';
+                } else {
+                    document.getElementById('status').innerHTML = '<div class="error">❌ 系統無法連接</div>';
+                }
+            } catch (error) {
+                document.getElementById('status').innerHTML = '<div class="error">❌ 系統連接失敗</div>';
+            }
+        }
+        
+        // 頁面載入時測試系統狀態
+        window.onload = testSystem;
+    </script>
+</body>
+</html>
