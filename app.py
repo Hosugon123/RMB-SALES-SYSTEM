@@ -734,9 +734,72 @@ class FIFOService:
     # ===================================================================
     
     @staticmethod
+    def simple_reverse_sale_allocation(sales_record_id):
+        """簡化的回滾銷售記錄方法，用於診斷問題"""
+        try:
+            print(f"開始簡化回滾銷售記錄 {sales_record_id}")
+            
+            # 查找該銷售記錄
+            sales_record = db.session.get(SalesRecord, sales_record_id)
+            if not sales_record:
+                print(f"找不到銷售記錄 {sales_record_id}")
+                return False
+            
+            print(f"找到銷售記錄: 客戶ID={sales_record.customer_id}, RMB={sales_record.rmb_amount}")
+            
+            # 查找該銷售記錄的所有FIFO分配
+            allocations = db.session.execute(
+                db.select(FIFOSalesAllocation)
+                .filter(FIFOSalesAllocation.sales_record_id == sales_record_id)
+            ).scalars().all()
+            
+            print(f"找到 {len(allocations)} 個FIFO分配記錄")
+            
+            # 簡化的回滾邏輯
+            for allocation in allocations:
+                # 恢復庫存數量
+                if allocation.fifo_inventory:
+                    allocation.fifo_inventory.remaining_rmb += allocation.allocated_rmb
+                    print(f"恢復庫存批次 {allocation.fifo_inventory.id} 的數量: +{allocation.allocated_rmb} RMB")
+                
+                # 刪除分配記錄
+                db.session.delete(allocation)
+                print(f"刪除FIFO分配記錄 {allocation.id}")
+            
+            # 更新客戶應收帳款
+            if sales_record.customer:
+                customer = sales_record.customer
+                customer.total_receivables_twd -= sales_record.twd_amount
+                if customer.total_receivables_twd < 0:
+                    customer.total_receivables_twd = 0
+                print(f"更新客戶 {customer.name} 的應收帳款: -{sales_record.twd_amount} TWD")
+            
+            # 恢復RMB帳戶餘額
+            if sales_record.rmb_account:
+                sales_record.rmb_account.balance += sales_record.rmb_amount
+                print(f"恢復RMB帳戶 {sales_record.rmb_account.name} 的餘額: +{sales_record.rmb_amount} RMB")
+            
+            # 刪除銷售記錄本身
+            db.session.delete(sales_record)
+            print(f"刪除銷售記錄 {sales_record_id}")
+            
+            db.session.commit()
+            print(f"簡化回滾銷售記錄 {sales_record_id} 成功")
+            return True
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"簡化回滾銷售記錄失敗: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    @staticmethod
     def reverse_sale_allocation(sales_record_id):
         """完全回滾銷售記錄（包括FIFO分配和銷售記錄本身）"""
         try:
+            print(f"開始回滾銷售記錄 {sales_record_id}")
+            
             # 查找該銷售記錄
             sales_record = (
                 db.session.execute(
@@ -751,6 +814,8 @@ class FIFOService:
                 print(f"找不到銷售記錄 {sales_record_id}")
                 return False
             
+            print(f"找到銷售記錄: 客戶ID={sales_record.customer_id}, RMB={sales_record.rmb_amount}, TWD={sales_record.twd_amount}")
+            
             # 查找該銷售記錄的所有FIFO分配
             allocations = (
                 db.session.execute(
@@ -760,6 +825,8 @@ class FIFOService:
                 .scalars()
                 .all()
             )
+            
+            print(f"找到 {len(allocations)} 個FIFO分配記錄")
             
             # --- 關鍵修正：更新客戶的應收帳款 ---
             # 在刪除銷售記錄之前，先更新客戶的應收帳款
@@ -851,6 +918,7 @@ class FIFOService:
                 # 獲取操作者ID
                 operator_id = None
                 try:
+                    from flask_login import current_user
                     operator_id = current_user.id if current_user and hasattr(current_user, 'id') else 1
                 except:
                     operator_id = 1
@@ -871,6 +939,7 @@ class FIFOService:
                 )
             except Exception as audit_error:
                 print(f"記錄審計日誌失敗: {audit_error}")
+                # 不讓審計日誌失敗影響主要操作
             
             # 刪除銷售記錄本身
             db.session.delete(sales_record)
@@ -886,6 +955,7 @@ class FIFOService:
                 print(f"全局數據同步完成，帳戶餘額和庫存已重新整理")
             except Exception as sync_error:
                 print(f"全局數據同步失敗: {sync_error}")
+                # 不讓全局同步失敗影響主要操作
             
             return True
             
@@ -2222,12 +2292,6 @@ def cash_management_operator():
     try:
         page = request.args.get("page", 1, type=int)
 
-        # 保險回滾：若上一個查詢在同一連線中失敗，確保事務恢復乾淨狀態
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-
         # 暫時移除過濾，直接查詢所有持有人
         holders_obj = (
             db.session.execute(db.select(Holder).filter_by(is_active=True))
@@ -2569,12 +2633,6 @@ def cash_management_operator():
 def cash_management():
     try:
         page = request.args.get("page", 1, type=int)
-
-        # 保險回滾，避免 InFailedSqlTransaction 影響後續查詢
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
 
         # 暫時移除過濾，直接查詢所有持有人
         holders_obj = (
@@ -3090,7 +3148,12 @@ def buy_in():
                     for acc in rmb_accounts
                 ]
 
-        recent_purchases = (
+        # 實現分頁功能 - 每頁顯示10筆買入紀錄
+        page = request.args.get('page', 1, type=int)
+        per_page = 10
+        
+        # 查詢所有買入紀錄並實現分頁
+        purchases_pagination = (
             db.session.execute(
                 db.select(PurchaseRecord)
                 .options(
@@ -3100,15 +3163,35 @@ def buy_in():
                     db.selectinload(PurchaseRecord.operator)
                 )
                 .order_by(PurchaseRecord.purchase_date.desc())
-                .limit(10)
+                .offset((page - 1) * per_page)
+                .limit(per_page)
             )
             .scalars()
             .all()
         )
         
+        # 計算總筆數和總頁數
+        total_purchases = db.session.execute(
+            db.select(db.func.count(PurchaseRecord.id))
+        ).scalar()
+        
+        total_pages = (total_purchases + per_page - 1) // per_page
+        
+        # 建立分頁資訊
+        pagination = {
+            'page': page,
+            'per_page': per_page,
+            'total': total_purchases,
+            'pages': total_pages,
+            'has_prev': page > 1,
+            'has_next': page < total_pages,
+            'prev_num': page - 1,
+            'next_num': page + 1,
+        }
+        
         # 轉換為可序列化的格式
         recent_purchases_serializable = []
-        for record in recent_purchases:
+        for record in purchases_pagination:
             recent_purchases_serializable.append({
                 "id": record.id,
                 "purchase_date": record.purchase_date,
@@ -3139,6 +3222,7 @@ def buy_in():
             owner_twd_accounts_grouped=owner_twd_accounts_grouped,
             owner_rmb_accounts_grouped=owner_rmb_accounts_grouped,
             recent_purchases=recent_purchases_serializable,
+            pagination=pagination,
         )
 
     except Exception as e:
@@ -3147,9 +3231,19 @@ def buy_in():
         return render_template(
             "buy_in.html",
             channels=[],
-            owner_twd_accounts_grouped=[],
-            owner_rmb_accounts_grouped=[],
+            owner_twd_accounts_grouped={},
+            owner_rmb_accounts_grouped={},
             recent_purchases=[],
+            pagination={
+                'page': 1,
+                'per_page': 10,
+                'total': 0,
+                'pages': 0,
+                'has_prev': False,
+                'has_next': False,
+                'prev_num': 0,
+                'next_num': 0,
+            },
         )
 
 
@@ -3915,35 +4009,71 @@ def api_reverse_sale_allocation(sales_record_id):
 def api_user_reverse_sale(sales_record_id):
     """API端點：普通用戶取消自己的銷售記錄"""
     try:
+        print(f"收到取消銷售記錄請求: {sales_record_id}")
+        
         # 檢查銷售記錄是否存在
         sales_record = db.session.get(SalesRecord, sales_record_id)
         if not sales_record:
+            print(f"找不到銷售記錄 {sales_record_id}")
             return jsonify({
                 'status': 'error',
                 'message': f'找不到銷售記錄 {sales_record_id}'
             }), 404
         
+        print(f"找到銷售記錄: 客戶ID={sales_record.customer_id}, RMB={sales_record.rmb_amount}")
+        
         # 檢查用戶權限（只能取消自己的記錄或管理員可以取消所有記錄）
         if not current_user.is_admin and sales_record.operator_id != current_user.id:
+            print(f"權限檢查失敗: 用戶ID={current_user.id}, 記錄操作者ID={sales_record.operator_id}")
             return jsonify({
                 'status': 'error',
                 'message': '您只能取消自己的銷售記錄'
             }), 403
         
-        # 執行取消操作
-        success = FIFOService.reverse_sale_allocation(sales_record_id)
-        if success:
-            return jsonify({
-                'status': 'success',
-                'message': f'成功取消銷售記錄 {sales_record_id}，已完全刪除相關數據'
-            })
-        else:
+        # 檢查是否有FIFO分配記錄
+        allocations = db.session.execute(
+            db.select(FIFOSalesAllocation)
+            .filter(FIFOSalesAllocation.sales_record_id == sales_record_id)
+        ).scalars().all()
+        
+        print(f"找到 {len(allocations)} 個FIFO分配記錄")
+        
+        # 執行簡化的取消操作
+        try:
+            # 先嘗試簡化的取消邏輯
+            success = FIFOService.simple_reverse_sale_allocation(sales_record_id)
+            if success:
+                print(f"簡化取消成功")
+                return jsonify({
+                    'status': 'success',
+                    'message': f'成功取消銷售記錄 {sales_record_id}，已完全刪除相關數據'
+                })
+            else:
+                print(f"簡化取消失敗，嘗試完整取消")
+                # 如果簡化取消失敗，嘗試完整的取消邏輯
+                success = FIFOService.reverse_sale_allocation(sales_record_id)
+                if success:
+                    return jsonify({
+                        'status': 'success',
+                        'message': f'成功取消銷售記錄 {sales_record_id}，已完全刪除相關數據'
+                    })
+                else:
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'取消銷售記錄 {sales_record_id} 失敗，可能是因為該記錄已有相關分配或無法回滾'
+                    }), 400
+        except Exception as reverse_error:
+            print(f"取消銷售記錄時發生錯誤: {reverse_error}")
+            import traceback
+            traceback.print_exc()
             return jsonify({
                 'status': 'error',
-                'message': f'取消銷售記錄 {sales_record_id} 失敗'
+                'message': f'取消銷售記錄時發生錯誤: {str(reverse_error)}'
             }), 400
     except Exception as e:
         print(f"用戶取消銷售記錄失敗: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
             'message': f'取消失敗: {e}'

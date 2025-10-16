@@ -2,3 +2,5 @@
 ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT;
 ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT;
 ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT;
+
+

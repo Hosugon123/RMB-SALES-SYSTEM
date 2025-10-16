@@ -30,3 +30,5 @@ def downgrade():
     op.drop_column('ledger_entries', 'profit_after')
     op.drop_column('ledger_entries', 'profit_before')
     # ### end Alembic commands ###
+
+

@@ -26,3 +26,5 @@ except:
 conn.commit()
 conn.close()
 print('Database schema fixed successfully!')
+
+
