@@ -243,9 +243,9 @@
                             <th style="min-width: 70px;">出款戶</th>
                             <th style="min-width: 70px;">入款戶</th>
                             <th>備註</th>
-                            <th class="text-end" id="twd-header">TWD 變動</th>
-                            <th class="text-end" id="rmb-header">RMB 變動</th>
-                            <th class="text-end">累積餘額</th>
+                            <th class="text-end">TWD/RMB 變動</th>
+                            <th class="text-end">出款戶餘額變化</th>
+                            <th class="text-end">入款戶餘額變化</th>
                             <th class="text-end pe-3">利潤變動</th>
                         </tr>
                     </thead>
@@ -281,12 +281,68 @@
 
 {% block scripts %}
 <style>
-/* 累積餘額列的樣式 */
-.running-balance {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-radius: 6px;
-    padding: 8px;
-}
+        /* 帳戶餘額變化列的樣式 */
+        .account-balance-change {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 6px;
+            padding: 10px;
+            border-left: 3px solid #6c757d;
+            min-width: 140px;
+        }
+
+        .account-balance-change .fw-bold {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .account-balance-change .small {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin-bottom: 3px;
+            font-weight: 500;
+        }
+
+        /* 利潤變動詳細信息列的樣式 */
+        .profit-change-detail {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            border-radius: 6px;
+            padding: 10px;
+            border-left: 3px solid #ffc107;
+            min-width: 140px;
+        }
+
+        .profit-change-detail .small {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin-bottom: 3px;
+            font-weight: 500;
+        }
+
+        /* 幣別變動合併顯示的樣式 */
+        .currency-change-combined {
+            background: linear-gradient(135deg, #e8f4fd 0%, #d1ecf1 100%);
+            border-radius: 6px;
+            padding: 8px;
+            border-left: 3px solid #17a2b8;
+            min-width: 120px;
+        }
+
+        .currency-change-single {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 6px;
+            padding: 8px;
+            border-left: 3px solid #6c757d;
+            min-width: 120px;
+        }
+
+        .currency-change-combined .small,
+        .currency-change-single .small {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin-bottom: 3px;
+            font-weight: 500;
+        }
 
 /* 交易行的樣式 */
 .transaction-row {
@@ -1051,9 +1107,9 @@ document.addEventListener('DOMContentLoaded', function () {
         // 設置模態框數據
         document.getElementById('settlementCustomerName').value = customerName;
         document.getElementById('settlementTotalReceivable').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        document.getElementById('settlementAmount').value = totalReceivable;
-        document.getElementById('settlementAmountDisplay').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        document.getElementById('settlementRemainingReceivable').value = `NT$ 0.00`;
+        document.getElementById('settlementAmount').value = ''; // 移除默認值，讓用戶手動填寫
+        document.getElementById('settlementAmountDisplay').value = `NT$ 0.00`; // 顯示為0，直到用戶輸入
+        document.getElementById('settlementRemainingReceivable').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`; // 初始顯示為總應收金額
         document.getElementById('settlementNote').value = '';
         
         // 添加銷帳金額變更事件監聽器，即時計算剩餘應收
@@ -1375,7 +1431,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         let tableHtml = '';
         data.transactions.forEach(tx => {
-            const date = tx.date ? new Date(tx.date).toLocaleString('zh-TW') : '-';
+            const date = tx.date ? new Date(tx.date + 'Z').toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) : '-';
             const type = tx.type || 'N/A';
             const desc = tx.description || '-';
             const rmbDelta = (tx.rmb_amount !== undefined ? tx.rmb_amount : (tx.rmbChange !== undefined ? tx.rmbChange : tx.rmb_change));
@@ -1412,7 +1468,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         
         // 顯示載入中
-        movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
+        movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
         
         // 發送API請求
         fetch(`/api/cash_management/transactions?page=${page}`)
@@ -1425,12 +1481,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     renderPagination(result.data.pagination);
                 } else {
                     console.error('❌ 載入流水記錄失敗:', result.message);
-                    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+                    movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
                 }
             })
             .catch(error => {
                 console.error('❌ 網路錯誤:', error);
-                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+                movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
             });
     }
 
@@ -1447,7 +1503,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         if (!transactions || transactions.length === 0) {
             console.log('⚠️ 沒有資金流水數據');
-            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
         
@@ -1458,10 +1514,24 @@ document.addEventListener('DOMContentLoaded', function () {
             const rmbChange = parseFloat(m.rmb_change ?? m.rmbChange) || 0;
             let profit = parseFloat(m.profit ?? 0) || 0;
             
-            // 處理利潤顯示格式
+            // 處理利潤顯示格式 - 支援完整的變動前後信息
             let profitDisplay = '';
-            if (m.type === 'PROFIT_WITHDRAW' || (m.description && m.description.includes('利潤扣除'))) {
-                // 從description中解析原利潤和新利潤信息
+            const profitChange = parseFloat(m.profit_change ?? m.profit ?? 0) || 0;
+            const profitBefore = parseFloat(m.profit_before ?? 0) || 0;
+            const profitAfter = parseFloat(m.profit_after ?? 0) || 0;
+            
+            if (profitChange !== 0 && profitBefore !== undefined && profitAfter !== undefined) {
+                // 有完整的變動前後信息，顯示詳細格式
+                const profitChangeClass = profitChange > 0 ? 'text-success' : 'text-danger';
+                const changeSymbol = profitChange > 0 ? '+' : '';
+                
+                profitDisplay = '<div class="small profit-change-detail">' +
+                    '<div class="text-secondary small">前: ' + profitBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="' + profitChangeClass + ' small">變動: ' + changeSymbol + profitChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="text-dark small">後: ' + profitAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '</div>';
+            } else if (m.type === 'PROFIT_WITHDRAW' || (m.description && m.description.includes('利潤扣除'))) {
+                // 從description中解析原利潤和新利潤信息（向後兼容）
                 const description = m.description || '';
                 const originalMatch = description.match(/原利潤: ([\d,]+\.?\d*)/);
                 const newMatch = description.match(/新利潤: ([\d,]+\.?\d*)/);
@@ -1538,22 +1608,87 @@ document.addEventListener('DOMContentLoaded', function () {
                     typeClass = 'badge bg-info-subtle text-info-emphasis';
             }
             
-            // 格式化金額顯示
-            const twdDisplay = twdChange !== 0 ? (twdChange > 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-            const rmbDisplay = rmbChange !== 0 ? (rmbChange > 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+            // 格式化金額顯示 - 合併TWD和RMB變動到一欄，包含累積總金額
+            let currencyChangeDisplay = '';
             
-            // 設置金額顏色
-            const twdClass = twdChange > 0 ? 'text-success' : (twdChange < 0 ? 'text-danger' : 'text-muted');
-            const rmbClass = rmbChange > 0 ? 'text-success' : (rmbChange < 0 ? 'text-danger' : 'text-muted');
+            // 獲取累積總金額信息
+            const twdTotalBefore = parseFloat(m.twd_total_before ?? 0) || 0;
+            const twdTotalAfter = parseFloat(m.twd_total_after ?? 0) || 0;
+            const rmbTotalBefore = parseFloat(m.rmb_total_before ?? 0) || 0;
+            const rmbTotalAfter = parseFloat(m.rmb_total_after ?? 0) || 0;
+            
+            if (twdChange !== 0 && rmbChange !== 0) {
+                // 兩種幣別都有變動
+                const twdClass = twdChange > 0 ? 'text-success' : 'text-danger';
+                const rmbClass = rmbChange > 0 ? 'text-success' : 'text-danger';
+                const twdSymbol = twdChange > 0 ? '+' : '';
+                const rmbSymbol = rmbChange > 0 ? '+' : '';
+                
+                currencyChangeDisplay = '<div class="small currency-change-combined">' +
+                    '<div class="' + twdClass + ' fw-bold">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="text-secondary small">總額: ' + twdTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="' + rmbClass + ' fw-bold">RMB: ' + rmbSymbol + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="text-secondary small">總額: ' + rmbTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '</div>';
+            } else if (twdChange !== 0) {
+                // 只有TWD變動
+                const twdClass = twdChange > 0 ? 'text-success' : 'text-danger';
+                const twdSymbol = twdChange > 0 ? '+' : '';
+                
+                currencyChangeDisplay = '<div class="small currency-change-single">' +
+                    '<div class="' + twdClass + ' fw-bold">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="text-secondary small">總額: ' + twdTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '</div>';
+            } else if (rmbChange !== 0) {
+                // 只有RMB變動
+                const rmbClass = rmbChange > 0 ? 'text-success' : 'text-danger';
+                const rmbSymbol = rmbChange > 0 ? '+' : '';
+                
+                currencyChangeDisplay = '<div class="small currency-change-single">' +
+                    '<div class="' + rmbClass + ' fw-bold">RMB: ' + rmbSymbol + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="text-secondary small">總額: ' + rmbTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '</div>';
+            } else {
+                // 沒有變動
+                currencyChangeDisplay = '-';
+            }
+            
+            // 設置利潤顏色
             const profitClass = profit > 0 ? 'text-success' : (profit < 0 ? 'text-danger' : 'text-muted');
             
-            // 累積餘額顯示
-            const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
-            const runningRmb = m.running_rmb_balance ?? m.runningRmbBalance ?? 0;
-            const runningBalanceHtml = '<div class="small running-balance">' +
-                '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + (runningTwd || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
-                '<div class="text-success">¥ ' + (runningRmb || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
-                '</div>';
+            // 出款戶餘額變化顯示
+            let paymentAccountBalanceHtml = '-';
+            if (m.account_balance_changes && m.payment_account_id && m.account_balance_changes[m.payment_account_id]) {
+                const paymentAccount = m.account_balance_changes[m.payment_account_id];
+                const changeAmount = paymentAccount.change || 0;
+                const balanceBefore = paymentAccount.balance_before || 0;
+                const balanceAfter = paymentAccount.balance_after || 0;
+                const changeClass = changeAmount > 0 ? 'text-success' : (changeAmount < 0 ? 'text-danger' : 'text-muted');
+                
+                paymentAccountBalanceHtml = '<div class="small account-balance-change">' +
+                    '<div class="fw-bold text-primary border-bottom border-primary pb-1 mb-1">' + paymentAccount.account_name + '</div>' +
+                    '<div class="text-secondary small">前: ' + balanceBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="' + changeClass + ' small">變動: ' + (changeAmount > 0 ? '+' : '') + changeAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="text-dark small">後: ' + balanceAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '</div>';
+            }
+            
+            // 入款戶餘額變化顯示
+            let depositAccountBalanceHtml = '-';
+            if (m.account_balance_changes && m.deposit_account_id && m.account_balance_changes[m.deposit_account_id]) {
+                const depositAccount = m.account_balance_changes[m.deposit_account_id];
+                const changeAmount = depositAccount.change || 0;
+                const balanceBefore = depositAccount.balance_before || 0;
+                const balanceAfter = depositAccount.balance_after || 0;
+                const changeClass = changeAmount > 0 ? 'text-success' : (changeAmount < 0 ? 'text-danger' : 'text-muted');
+                
+                depositAccountBalanceHtml = '<div class="small account-balance-change">' +
+                    '<div class="fw-bold text-success border-bottom border-success pb-1 mb-1">' + depositAccount.account_name + '</div>' +
+                    '<div class="text-secondary small">前: ' + balanceBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="' + changeClass + ' small">變動: ' + (changeAmount > 0 ? '+' : '') + changeAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '<div class="text-dark small">後: ' + balanceAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                    '</div>';
+            }
             
             const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
             const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
@@ -1572,10 +1707,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<td><small>' + paymentAccount + '</small></td>' +
                 '<td><small>' + depositAccount + '</small></td>' +
                 '<td><small>' + note + '</small></td>' +
-                '<td class="text-end"><span class="' + twdClass + '">' + twdDisplay + '</span></td>' +
-                '<td class="text-end"><span class="' + rmbClass + '">' + rmbDisplay + '</span></td>' +
-                '<td class="text-end">' + runningBalanceHtml + '</td>' +
-                '<td class="text-end pe-3"><span class="' + profitClass + '">' + profitDisplay + '</span></td>' +
+                '<td class="text-end">' + currencyChangeDisplay + '</td>' +
+                '<td class="text-end">' + paymentAccountBalanceHtml + '</td>' +
+                '<td class="text-end">' + depositAccountBalanceHtml + '</td>' +
+                '<td class="text-end pe-3">' + profitDisplay + '</td>' +
                 '</tr>';
             
             movementsTbody.innerHTML += row;
@@ -2133,7 +2268,7 @@ window.loadMovements = function(page = 1) {
     }
     
     // 顯示載入中
-    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
+    movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
     
     // 發送API請求
     fetch(`/api/cash_management/transactions?page=${page}`)
@@ -2151,12 +2286,12 @@ window.loadMovements = function(page = 1) {
                 window.renderPagination(result.data.pagination);
             } else {
                 console.error('❌ 載入流水記錄失敗:', result.message);
-                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+                movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
             }
         })
         .catch(error => {
             console.error('❌ 網路錯誤:', error);
-            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
         });
 };
 
@@ -2174,7 +2309,7 @@ window.renderMovements = function(transactions) {
     
     if (!transactions || transactions.length === 0) {
         console.log('⚠️ 沒有資金流水數據');
-        movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+        movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
         return;
     }
     
@@ -2275,29 +2410,109 @@ window.renderMovements = function(transactions) {
                 typeClass = 'badge bg-info-subtle text-info-emphasis';
         }
         
-        // 格式化金額顯示
-        const twdDisplay = twdChange !== 0 ? (twdChange > 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-        const rmbDisplay = rmbChange !== 0 ? (rmbChange > 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-        const profitDisplay = profit !== 0 ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        // 格式化金額顯示 - 合併TWD和RMB變動到一欄，包含累積總金額
+        let currencyChangeDisplay = '';
         
-        // 格式化詳細利潤信息
-        const profitBeforeDisplay = profitBefore !== null ? profitBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-        const profitAfterDisplay = profitAfter !== null ? profitAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-        const profitChangeDisplay = profitChange !== null ? (profitChange > 0 ? '+' : '') + profitChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        // 獲取累積總金額信息
+        const twdTotalBefore = parseFloat(m.twd_total_before ?? 0) || 0;
+        const twdTotalAfter = parseFloat(m.twd_total_after ?? 0) || 0;
+        const rmbTotalBefore = parseFloat(m.rmb_total_before ?? 0) || 0;
+        const rmbTotalAfter = parseFloat(m.rmb_total_after ?? 0) || 0;
+        
+        if (twdChange !== 0 && rmbChange !== 0) {
+            // 兩種幣別都有變動
+            const twdClass = twdChange > 0 ? 'text-success' : 'text-danger';
+            const rmbClass = rmbChange > 0 ? 'text-success' : 'text-danger';
+            const twdSymbol = twdChange > 0 ? '+' : '';
+            const rmbSymbol = rmbChange > 0 ? '+' : '';
+            
+            currencyChangeDisplay = '<div class="small currency-change-combined">' +
+                '<div class="' + twdClass + ' fw-bold">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-secondary small">總額: ' + twdTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="' + rmbClass + ' fw-bold">RMB: ' + rmbSymbol + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-secondary small">總額: ' + rmbTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '</div>';
+        } else if (twdChange !== 0) {
+            // 只有TWD變動
+            const twdClass = twdChange > 0 ? 'text-success' : 'text-danger';
+            const twdSymbol = twdChange > 0 ? '+' : '';
+            
+            currencyChangeDisplay = '<div class="small currency-change-single">' +
+                '<div class="' + twdClass + ' fw-bold">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-secondary small">總額: ' + twdTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '</div>';
+        } else if (rmbChange !== 0) {
+            // 只有RMB變動
+            const rmbClass = rmbChange > 0 ? 'text-success' : 'text-danger';
+            const rmbSymbol = rmbChange > 0 ? '+' : '';
+            
+            currencyChangeDisplay = '<div class="small currency-change-single">' +
+                '<div class="' + rmbClass + ' fw-bold">RMB: ' + rmbSymbol + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-secondary small">總額: ' + rmbTotalAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '</div>';
+        } else {
+            // 沒有變動
+            currencyChangeDisplay = '-';
+        }
+        // 處理利潤顯示格式 - 支援完整的變動前後信息
+        let profitDisplay = '';
+        const profitChangeValue = parseFloat(m.profit_change ?? m.profit ?? 0) || 0;
+        const profitBeforeValue = parseFloat(m.profit_before ?? 0) || 0;
+        const profitAfterValue = parseFloat(m.profit_after ?? 0) || 0;
+        
+        if (profitChangeValue !== 0 && profitBeforeValue !== undefined && profitAfterValue !== undefined) {
+            // 有完整的變動前後信息，顯示詳細格式
+            const profitChangeClass = profitChangeValue > 0 ? 'text-success' : 'text-danger';
+            const changeSymbol = profitChangeValue > 0 ? '+' : '';
+            
+            profitDisplay = '<div class="small profit-change-detail">' +
+                '<div class="text-secondary small">前: ' + profitBeforeValue.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="' + profitChangeClass + ' small">變動: ' + changeSymbol + profitChangeValue.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-dark small">後: ' + profitAfterValue.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '</div>';
+        } else {
+            // 其他情況：顯示簡單的數字
+            profitDisplay = profit !== 0 ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+        }
         
         // 根據變化類型設置顏色
         const twdColorClass = twdChange > 0 ? 'text-success' : twdChange < 0 ? 'text-danger' : 'text-muted';
         const rmbColorClass = rmbChange > 0 ? 'text-success' : rmbChange < 0 ? 'text-danger' : 'text-muted';
         const profitColorClass = profit > 0 ? 'text-success' : profit < 0 ? 'text-danger' : 'text-muted';
-        const profitChangeColorClass = profitChange !== null ? (profitChange > 0 ? 'text-success' : 'text-danger') : 'text-muted';
         
-        // 累積餘額（同上方渲染保持一致）
-        const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
-        const runningRmb = m.running_rmb_balance ?? m.runningRmbBalance ?? 0;
-        const runningBalanceHtml = '<div class="small running-balance">' +
-            '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + (runningTwd || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
-            '<div class="text-success">¥ ' + (runningRmb || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
-            '</div>';
+        // 出款戶餘額變化顯示
+        let paymentAccountBalanceHtml = '-';
+        if (m.account_balance_changes && m.payment_account_id && m.account_balance_changes[m.payment_account_id]) {
+            const paymentAccount = m.account_balance_changes[m.payment_account_id];
+            const changeAmount = paymentAccount.change || 0;
+            const balanceBefore = paymentAccount.balance_before || 0;
+            const balanceAfter = paymentAccount.balance_after || 0;
+            const changeClass = changeAmount > 0 ? 'text-success' : (changeAmount < 0 ? 'text-danger' : 'text-muted');
+            
+            paymentAccountBalanceHtml = '<div class="small account-balance-change">' +
+                '<div class="fw-bold text-primary border-bottom border-primary pb-1 mb-1">' + paymentAccount.account_name + '</div>' +
+                '<div class="text-secondary small">前: ' + balanceBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="' + changeClass + ' small">變動: ' + (changeAmount > 0 ? '+' : '') + changeAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-dark small">後: ' + balanceAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '</div>';
+        }
+        
+        // 入款戶餘額變化顯示
+        let depositAccountBalanceHtml = '-';
+        if (m.account_balance_changes && m.deposit_account_id && m.account_balance_changes[m.deposit_account_id]) {
+            const depositAccount = m.account_balance_changes[m.deposit_account_id];
+            const changeAmount = depositAccount.change || 0;
+            const balanceBefore = depositAccount.balance_before || 0;
+            const balanceAfter = depositAccount.balance_after || 0;
+            const changeClass = changeAmount > 0 ? 'text-success' : (changeAmount < 0 ? 'text-danger' : 'text-muted');
+            
+            depositAccountBalanceHtml = '<div class="small account-balance-change">' +
+                '<div class="fw-bold text-success border-bottom border-success pb-1 mb-1">' + depositAccount.account_name + '</div>' +
+                '<div class="text-secondary small">前: ' + balanceBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="' + changeClass + ' small">變動: ' + (changeAmount > 0 ? '+' : '') + changeAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '<div class="text-dark small">後: ' + balanceAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                '</div>';
+        }
 
         // 利潤變動詳情（模仿累積餘額的顯示方式）
         let profitDetailHtml = '-';
@@ -2315,31 +2530,7 @@ window.renderMovements = function(transactions) {
             });
         }
         
-        if (profitBefore !== null && profitAfter !== null && profitChange !== null) {
-            // 有利潤變動記錄，顯示詳細信息
-            const changeColorClass = profitChange > 0 ? 'text-success' : 'text-danger';
-            const changeSymbol = profitChange > 0 ? '+' : '';
-            
-            console.log('✅ 渲染詳細利潤信息:', {
-                id: m.id,
-                before: profitBeforeDisplay,
-                after: profitAfterDisplay,
-                change: changeSymbol + profitChangeDisplay
-            });
-            
-            profitDetailHtml = '<div class="small running-balance">' +
-                '<div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: ' + profitBeforeDisplay + '</div>' +
-                '<div class="text-info border-bottom border-info pb-1 mb-1">後: ' + profitAfterDisplay + '</div>' +
-                '<div class="' + changeColorClass + ' fw-bold">變: ' + changeSymbol + profitChangeDisplay + '</div>' +
-                '</div>';
-        } else if (profit !== 0) {
-            // 有傳統利潤記錄，顯示簡單信息（數據庫尚未更新時的臨時顯示）
-            profitDetailHtml = '<div class="small running-balance">' +
-                '<div class="text-muted">前: 計算中...</div>' +
-                '<div class="text-muted">後: 計算中...</div>' +
-                '<div class="' + profitColorClass + ' fw-bold">變: ' + profitDisplay + '</div>' +
-                '</div>';
-        }
+        // 利潤顯示已經在profitDisplay中處理完成，不需要額外的profitDetailHtml
 
         const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
         const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
@@ -2352,10 +2543,10 @@ window.renderMovements = function(transactions) {
             '<td><small>' + paymentAccount + '</small></td>' +
             '<td><small>' + depositAccount + '</small></td>' +
             '<td><small>' + (m.note || '-') + '</small></td>' +
-            '<td class="text-end"><small class="' + twdColorClass + '">' + twdDisplay + '</small></td>' +
-            '<td class="text-end"><small class="' + rmbColorClass + '">' + rmbDisplay + '</small></td>' +
-            '<td class="text-end">' + runningBalanceHtml + '</td>' +
-            '<td class="text-end pe-3">' + profitDetailHtml + '</td>' +
+            '<td class="text-end">' + currencyChangeDisplay + '</td>' +
+            '<td class="text-end">' + paymentAccountBalanceHtml + '</td>' +
+            '<td class="text-end">' + depositAccountBalanceHtml + '</td>' +
+            '<td class="text-end pe-3">' + profitDisplay + '</td>' +
             '</tr>';
         
         movementsTbody.innerHTML += row;

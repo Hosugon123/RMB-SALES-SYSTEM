@@ -13,12 +13,21 @@ from flask_login import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from sqlalchemy import func, and_
 
 # ===================================================================
 # 2. App、資料庫、遷移與登入管理器的初始化
 # ===================================================================
+
+# 時區處理函數
+def get_taiwan_time():
+    """獲取台灣時間 (UTC+8)"""
+    return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
+
+def get_utc_time():
+    """獲取UTC時間"""
+    return datetime.now(timezone.utc)
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get(
     "SECRET_KEY", "a_very_very_secret_key_that_is_long_and_secure"
@@ -209,7 +218,7 @@ class PurchaseRecord(db.Model):
     exchange_rate = db.Column(db.Float, nullable=False)
     twd_cost = db.Column(db.Float, nullable=False)
     payment_status = db.Column(db.String(20), nullable=False, default='paid')  # 'paid' 或 'unpaid'
-    purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+    purchase_date = db.Column(db.DateTime, default=get_utc_time)
     operator_id = db.Column(
         db.Integer, db.ForeignKey("user.id"), nullable=False
     )  # <---【修正】統一外鍵目標
@@ -236,7 +245,7 @@ class PendingPayment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     purchase_record_id = db.Column(db.Integer, db.ForeignKey("purchase_records.id"), nullable=False)
     amount_twd = db.Column(db.Float, nullable=False)  # 待付金額（台幣）
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
     paid_at = db.Column(db.DateTime, nullable=True)  # 付款時間
     is_settled = db.Column(db.Boolean, nullable=False, default=False)  # 是否已結清
     
@@ -258,7 +267,7 @@ class FIFOInventory(db.Model):
     
     # 時間信息
     purchase_date = db.Column(db.DateTime, nullable=False)  # 買入日期
-    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_updated = db.Column(db.DateTime, default=get_utc_time, onupdate=get_utc_time)
     
     # 關聯
     purchase_record = db.relationship("PurchaseRecord", back_populates="fifo_inventory")
@@ -280,7 +289,7 @@ class FIFOSalesAllocation(db.Model):
     # 分配信息
     allocated_rmb = db.Column(db.Float, nullable=False)  # 分配的RMB數量
     allocated_cost_twd = db.Column(db.Float, nullable=False)  # 分配的台幣成本
-    allocation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    allocation_date = db.Column(db.DateTime, default=get_utc_time)
     
     # 關聯
     fifo_inventory = db.relationship("FIFOInventory", back_populates="sales_allocations")
@@ -305,7 +314,7 @@ class SalesRecord(db.Model):
     is_settled = db.Column(
         db.Boolean, nullable=False, default=False
     )  # <---【修正】使用 is_settled
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
     operator_id = db.Column(
         db.Integer, db.ForeignKey("user.id"), nullable=False
     )  # <---【修正】統一外鍵目標
@@ -327,7 +336,7 @@ class Transaction(db.Model):
         db.Integer, db.ForeignKey("cash_accounts.id"), nullable=False
     )
     amount = db.Column(db.Float, nullable=False)
-    transaction_date = db.Column(db.DateTime, default=datetime.utcnow)
+    transaction_date = db.Column(db.DateTime, default=get_utc_time)
     note = db.Column(db.String(200))
     sales_record = db.relationship("SalesRecord", back_populates="transactions")
     twd_account = db.relationship("CashAccount")
@@ -342,7 +351,7 @@ class LedgerEntry(db.Model):
     )  # <---【修正】允許為空
     amount = db.Column(db.Float, nullable=False, default=0)
     description = db.Column(db.String(200))
-    entry_date = db.Column(db.DateTime, default=datetime.utcnow)
+    entry_date = db.Column(db.DateTime, default=get_utc_time)
     operator_id = db.Column(
         db.Integer, db.ForeignKey("user.id"), nullable=False
     )  # <---【修正】統一外鍵目標
@@ -359,7 +368,7 @@ class LedgerEntry(db.Model):
 class CashLog(db.Model):
     __tablename__ = "cash_logs"
     id = db.Column(db.Integer, primary_key=True)
-    time = db.Column(db.DateTime, default=datetime.utcnow)
+    time = db.Column(db.DateTime, default=get_utc_time)
     type = db.Column(db.String(50))
     description = db.Column(db.String(200))
     amount = db.Column(db.Float)
@@ -377,14 +386,14 @@ class CashLog(db.Model):
 class CardPurchase(db.Model):
     __tablename__ = "card_purchases"
     id = db.Column(db.Integer, primary_key=True)
-    purchase_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    purchase_date = db.Column(db.DateTime, nullable=False, default=get_utc_time)
     supplier = db.Column(db.String(200), nullable=False)  # 刷卡對象/供應商
     rmb_amount = db.Column(db.Float, nullable=False)  # 原始刷卡金額
     twd_equivalent = db.Column(db.Float, nullable=False)  # 信用卡帳單金額
     calculated_rate = db.Column(db.Float, nullable=False)  # 計算出的成本匯率
     rmb_with_fee = db.Column(db.Float, nullable=False)  # 含3%手續費的RMB金額
     operator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_utc_time)
     
     # 關聯關係
     operator = db.relationship("User", backref="card_purchases")
@@ -421,7 +430,7 @@ class DeleteAuditLog(db.Model):
     operator_name = db.Column(db.String(100), nullable=True)  # 操作者名稱（備用）
     
     # 時間資訊
-    deleted_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    deleted_at = db.Column(db.DateTime, nullable=False, default=get_utc_time)
     
     # IP和用戶代理（用於安全審計）
     ip_address = db.Column(db.String(45), nullable=True)
@@ -3588,7 +3597,7 @@ def settle_pending_payment_api():
         
         # 2. 更新待付款項狀態
         pending_payment.amount_twd -= settlement_amount
-        pending_payment.paid_at = datetime.utcnow()
+        pending_payment.paid_at = get_utc_time()
         
         # 如果完全結清，標記為已結清
         if pending_payment.amount_twd <= 0:
@@ -3627,7 +3636,7 @@ def settle_pending_payment_api():
                 'payment_account_id': payment_account.id,
                 'payment_account_name': payment_account.name,
                 'note': note,
-                'settled_at': datetime.utcnow().isoformat()
+                'settled_at': get_utc_time().isoformat()
             }
             
             # 記錄帳戶餘額變化
@@ -4117,6 +4126,38 @@ def api_reverse_card_purchase(card_purchase_id):
                 'message': f'找不到刷卡記錄 {card_purchase_id}'
             }), 404
         
+        # 記錄刪除審計日誌
+        try:
+            import json
+            from flask import request
+            
+            # 準備被刪除記錄的資料
+            card_data = {
+                'id': card_purchase.id,
+                'purchase_date': card_purchase.purchase_date.isoformat() if card_purchase.purchase_date else None,
+                'supplier': card_purchase.supplier,
+                'rmb_amount': float(card_purchase.rmb_amount),
+                'twd_equivalent': float(card_purchase.twd_equivalent),
+                'calculated_rate': float(card_purchase.calculated_rate),
+                'rmb_with_fee': float(card_purchase.rmb_with_fee),
+                'operator_id': card_purchase.operator_id
+            }
+            
+            # 記錄刪除審計
+            DeleteAuditService.record_deletion(
+                table_name='card_purchases',
+                record_id=card_purchase.id,
+                deleted_data=json.dumps(card_data, ensure_ascii=False),
+                operation_type='DELETE',
+                description=f'刪除刷卡記錄「{card_purchase.supplier} - {card_purchase.rmb_amount} RMB」',
+                operator_id=current_user.id,
+                operator_name=current_user.username,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.headers.get('User-Agent', '')[:500] if request else None
+            )
+        except Exception as audit_error:
+            print(f"記錄審計日誌失敗: {audit_error}")
+        
         # 刪除刷卡記錄
         db.session.delete(card_purchase)
         db.session.commit()
@@ -4172,6 +4213,34 @@ def admin_update_cash_account():
                     )
                     return redirect(url_for('cash_management'))
                 
+                # 記錄刪除審計日誌
+                try:
+                    import json
+                    from flask import request
+                    
+                    # 準備被刪除記錄的資料
+                    holder_data = {
+                        'id': holder.id,
+                        'name': holder.name,
+                        'holder_type': holder.holder_type,
+                        'is_active': holder.is_active
+                    }
+                    
+                    # 記錄刪除審計
+                    DeleteAuditService.record_deletion(
+                        table_name='holders',
+                        record_id=holder.id,
+                        deleted_data=json.dumps(holder_data, ensure_ascii=False),
+                        operation_type='DELETE',
+                        description=f'刪除持有人「{holder.name}」',
+                        operator_id=current_user.id,
+                        operator_name=current_user.username,
+                        ip_address=request.remote_addr if request else None,
+                        user_agent=request.headers.get('User-Agent', '')[:500] if request else None
+                    )
+                except Exception as audit_error:
+                    print(f"記錄審計日誌失敗: {audit_error}")
+                
                 db.session.delete(holder)
                 db.session.commit()
                 flash(f'持有人 "{holder.name}" 已被刪除。', "success")
@@ -4207,6 +4276,35 @@ def admin_update_cash_account():
                         "danger",
                     )
                     return redirect(url_for('cash_management'))
+                
+                # 記錄刪除審計日誌
+                try:
+                    import json
+                    from flask import request
+                    
+                    # 準備被刪除記錄的資料
+                    account_data = {
+                        'id': account.id,
+                        'name': account.name,
+                        'currency': account.currency,
+                        'balance': float(account.balance),
+                        'holder_id': account.holder_id
+                    }
+                    
+                    # 記錄刪除審計
+                    DeleteAuditService.record_deletion(
+                        table_name='cash_accounts',
+                        record_id=account.id,
+                        deleted_data=json.dumps(account_data, ensure_ascii=False),
+                        operation_type='DELETE',
+                        description=f'刪除現金帳戶「{account.name}」',
+                        operator_id=current_user.id,
+                        operator_name=current_user.username,
+                        ip_address=request.remote_addr if request else None,
+                        user_agent=request.headers.get('User-Agent', '')[:500] if request else None
+                    )
+                except Exception as audit_error:
+                    print(f"記錄審計日誌失敗: {audit_error}")
                 
                 db.session.delete(account)
                 db.session.commit()
@@ -5202,6 +5300,36 @@ def api_delete_account():
         # 所有檢查通過，開始刪除帳戶
         try:
             account_name = account.name
+            
+            # 記錄刪除審計日誌
+            try:
+                import json
+                from flask import request
+                
+                # 準備被刪除記錄的資料
+                account_data = {
+                    'id': account.id,
+                    'name': account.name,
+                    'currency': account.currency,
+                    'balance': float(account.balance),
+                    'holder_id': account.holder_id
+                }
+                
+                # 記錄刪除審計
+                DeleteAuditService.record_deletion(
+                    table_name='cash_accounts',
+                    record_id=account.id,
+                    deleted_data=json.dumps(account_data, ensure_ascii=False),
+                    operation_type='DELETE',
+                    description=f'刪除現金帳戶「{account.name}」',
+                    operator_id=current_user.id,
+                    operator_name=current_user.username,
+                    ip_address=request.remote_addr if request else None,
+                    user_agent=request.headers.get('User-Agent', '')[:500] if request else None
+                )
+            except Exception as audit_error:
+                print(f"記錄審計日誌失敗: {audit_error}")
+            
             db.session.delete(account)
             db.session.commit()
             
@@ -5283,7 +5411,7 @@ def api_settlement():
             account_id=account.id,
             entry_type="SETTLEMENT",
             amount=amount,
-            entry_date=datetime.utcnow(),
+            entry_date=get_utc_time(),
             description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
             operator_id=current_user.id
         )
@@ -5293,7 +5421,7 @@ def api_settlement():
         settlement_cash_log = CashLog(
             type="SETTLEMENT",
             amount=amount,
-            time=datetime.utcnow(),
+            time=get_utc_time(),
             description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
             operator_id=current_user.id
         )
@@ -5640,6 +5768,39 @@ def sales_action():
                     # 刪除分配記錄
                     db.session.delete(allocation)
                 
+                # 記錄刪除審計日誌
+                try:
+                    import json
+                    from flask import request
+                    
+                    # 準備被刪除記錄的資料
+                    sale_data = {
+                        'id': sale_to_delete.id,
+                        'customer_id': sale_to_delete.customer_id,
+                        'customer_name': sale_to_delete.customer.name if sale_to_delete.customer else 'N/A',
+                        'rmb_amount': float(sale_to_delete.rmb_amount),
+                        'twd_amount': float(sale_to_delete.twd_amount),
+                        'exchange_rate': float(sale_to_delete.exchange_rate),
+                        'sale_date': sale_to_delete.sale_date.isoformat() if sale_to_delete.sale_date else None,
+                        'status': sale_to_delete.status,
+                        'created_at': sale_to_delete.created_at.isoformat() if sale_to_delete.created_at else None
+                    }
+                    
+                    # 記錄刪除審計
+                    DeleteAuditService.record_deletion(
+                        table_name='sales_records',
+                        record_id=sale_to_delete.id,
+                        deleted_data=json.dumps(sale_data, ensure_ascii=False),
+                        operation_type='DELETE',
+                        description=f'刪除銷售記錄「客戶: {sale_data["customer_name"]}, RMB: {sale_data["rmb_amount"]}」',
+                        operator_id=current_user.id,
+                        operator_name=current_user.username,
+                        ip_address=request.remote_addr if request else None,
+                        user_agent=request.headers.get('User-Agent', '')[:500] if request else None
+                    )
+                except Exception as audit_error:
+                    print(f"記錄審計日誌失敗: {audit_error}")
+                
                 # 3. 刪除銷售記錄
                 db.session.delete(sale_to_delete)
                 db.session.commit()
@@ -5810,7 +5971,7 @@ def export_database_api():
     """通過API導出數據庫數據"""
     try:
         export_data = {
-            "export_time": datetime.utcnow().isoformat(),
+            "export_time": get_utc_time().isoformat(),
             "users": [],
             "holders": [],
             "cash_accounts": [],
@@ -6451,7 +6612,8 @@ def get_cash_management_transactions():
             db.session.rollback()
             cash_logs = []
 
-        unified_stream = []
+        # 先收集所有記錄，然後計算累積總金額
+        all_records = []
         
         # 處理買入記錄
         for p in purchases:
@@ -6462,7 +6624,7 @@ def get_cash_management_transactions():
                 elif hasattr(p, 'channel_name_manual') and p.channel_name_manual:
                     channel_name = p.channel_name_manual
                 
-                unified_stream.append({
+                all_records.append({
                     "type": "買入",
                     "date": p.purchase_date.isoformat(),
                     "description": f"向 {channel_name} 買入",
@@ -6471,6 +6633,8 @@ def get_cash_management_transactions():
                     "operator": p.operator.username if p.operator else "未知",
                     "payment_account": p.payment_account.name if p.payment_account else "N/A",
                     "deposit_account": p.deposit_account.name if p.deposit_account else "N/A",
+                    "payment_account_id": p.payment_account.id if p.payment_account else None,
+                    "deposit_account_id": p.deposit_account.id if p.deposit_account else None,
                     "note": p.note if hasattr(p, 'note') and p.note else None,
                 })
 
@@ -6480,7 +6644,19 @@ def get_cash_management_transactions():
                 profit_info = FIFOService.calculate_profit_for_sale(s)
                 profit = profit_info['profit_twd'] if profit_info else 0
                 
-                unified_stream.append({
+                # 計算利潤變動前後的狀態
+                # 變動前：計算到這筆銷售之前的所有利潤總和
+                profit_before = 0.0
+                for prev_sale in sales:
+                    if prev_sale.created_at < s.created_at:
+                        prev_profit_info = FIFOService.calculate_profit_for_sale(prev_sale)
+                        if prev_profit_info:
+                            profit_before += prev_profit_info.get('profit_twd', 0.0)
+                
+                # 變動後：變動前 + 當下變動
+                profit_after = profit_before + profit
+                
+                all_records.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
                     "description": f"售予 {s.customer.name}",
@@ -6488,12 +6664,17 @@ def get_cash_management_transactions():
                     "rmb_change": -s.rmb_amount,
                     "operator": s.operator.username if s.operator else "未知",
                     "profit": profit,
+                    "profit_before": profit_before,
+                    "profit_after": profit_after,
+                    "profit_change": profit,
                     "payment_account": s.rmb_account.name if s.rmb_account else "N/A",
                     "deposit_account": "應收帳款",
+                    "payment_account_id": s.rmb_account.id if s.rmb_account else None,
+                    "deposit_account_id": None,  # 應收帳款不是具體帳戶
                     "note": s.note if hasattr(s, 'note') and s.note else None,
                 })
 
-        # 處理其他記帳記錄（排除銷帳）
+        # 處理其他記帳記錄（排除買入相關記錄和銷帳，因為銷帳已經在CashLog中處理）
         for entry in misc_entries:
             if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT"]:
                 twd_change = 0
@@ -6533,6 +6714,10 @@ def get_cash_management_transactions():
                         payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
                     else:
                         payment_account = "N/A"
+                elif entry.entry_type in ["SETTLEMENT"]:
+                    # 銷帳：客戶 -> 帳戶
+                    payment_account = "客戶付款"
+                    deposit_account = entry.account.name if entry.account else "N/A"
 
                 # 構建基本記錄
                 record = {
@@ -6544,6 +6729,8 @@ def get_cash_management_transactions():
                     "operator": entry.operator.username if entry.operator else "未知",
                     "payment_account": payment_account,
                     "deposit_account": deposit_account,
+                    "payment_account_id": entry.account.id if entry.account and entry.entry_type in ["WITHDRAW", "TRANSFER_OUT"] else None,
+                    "deposit_account_id": entry.account.id if entry.account and entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"] else None,
                     "note": getattr(entry, 'note', None),
                 }
                 
@@ -6554,8 +6741,15 @@ def get_cash_management_transactions():
                     record["profit_after"] = getattr(entry, 'profit_after', None)
                     record["profit_change"] = getattr(entry, 'profit_change', None)
                     record["profit"] = getattr(entry, 'profit_change', None)  # 保持向後兼容
+                    
+                    # 確保所有利潤變動記錄都有完整的變動前後信息
+                    if record["profit_before"] is None or record["profit_after"] is None or record["profit_change"] is None:
+                        # 如果缺少信息，嘗試從描述或其他方式獲取
+                        record["profit_before"] = record["profit_before"] or 0.0
+                        record["profit_after"] = record["profit_after"] or (record["profit_before"] + (record["profit_change"] or 0))
+                        record["profit_change"] = record["profit_change"] or (record["profit_after"] - record["profit_before"])
                 
-                unified_stream.append(record)
+                all_records.append(record)
 
         # 處理現金日誌記錄
         for log in cash_logs:
@@ -6571,6 +6765,7 @@ def get_cash_management_transactions():
                     twd_change = log.amount
                     payment_account = "客戶付款"
                     deposit_account = "N/A"
+                    deposit_account_id = None
                     
                     # 查找對應的LedgerEntry來獲取帳戶信息
                     matching_entry = None
@@ -6583,13 +6778,14 @@ def get_cash_management_transactions():
                     
                     if matching_entry and matching_entry.account:
                         deposit_account = matching_entry.account.name
+                        deposit_account_id = matching_entry.account.id
                     else:
                         deposit_account = "現金帳戶"
                 else:
                     payment_account = "N/A"
                     deposit_account = "N/A"
 
-                unified_stream.append({
+                all_records.append({
                     "type": log.type,
                     "date": log.time.isoformat(),
                     "description": log.description,
@@ -6598,22 +6794,168 @@ def get_cash_management_transactions():
                     "operator": log.operator.username if log.operator else "未知",
                     "payment_account": payment_account,
                     "deposit_account": deposit_account,
+                    "payment_account_id": None,  # 現金日誌通常不涉及具體帳戶
+                    "deposit_account_id": deposit_account_id if 'deposit_account_id' in locals() else None,
                     "note": getattr(log, 'note', None),
                 })
 
+        # 計算每個記錄的累積總金額變化
+        # 按時間順序排序（最早的在前）
+        chronological_records = sorted(all_records, key=lambda x: x["date"])
+        
+        # 計算累積總金額
+        running_twd_total = 0.0
+        running_rmb_total = 0.0
+        
+        for record in chronological_records:
+            # 記錄當前的累積總金額（變動前）
+            record["twd_total_before"] = running_twd_total
+            record["rmb_total_before"] = running_rmb_total
+            
+            # 更新累積總金額
+            running_twd_total += record.get("twd_change", 0)
+            running_rmb_total += record.get("rmb_change", 0)
+            
+            # 記錄變動後的累積總金額
+            record["twd_total_after"] = running_twd_total
+            record["rmb_total_after"] = running_rmb_total
+        
         # 按日期排序（新的在前）
-        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        unified_stream = sorted(all_records, key=lambda x: x["date"], reverse=True)
         
-        # 計算累積餘額
-        running_twd_balance = 0
-        running_rmb_balance = 0
+        # 計算每個帳戶的餘額變化追蹤
+        # 建立帳戶餘額追蹤字典，使用實際資料庫餘額作為基準
+        account_balances = {}
         
-        # 從最早的記錄開始計算累積餘額（因為我們已經按日期倒序排列，所以需要反轉）
-        for record in reversed(unified_stream):
-            running_twd_balance += record.get("twd_change", 0)
-            running_rmb_balance += record.get("rmb_change", 0)
-            record["running_twd_balance"] = running_twd_balance
-            record["running_rmb_balance"] = running_rmb_balance
+        # 獲取所有帳戶的當前實際餘額
+        all_accounts = db.session.execute(db.select(CashAccount)).scalars().all()
+        for account in all_accounts:
+            account_balances[account.id] = {
+                'name': account.name,
+                'currency': account.currency,
+                'current_balance': account.balance  # 使用實際資料庫餘額
+            }
+        
+        # 從最早的記錄開始計算每個帳戶的餘額變化（因為我們已經按日期倒序排列，所以需要反轉）
+        chronological_stream = sorted(unified_stream, key=lambda x: x["date"])
+        
+        # 先計算每個帳戶在最早交易前的初始餘額（當前餘額 - 所有交易變動的總和）
+        for account_id in account_balances:
+            total_change = 0
+            for record in chronological_stream:
+                payment_account_id = record.get("payment_account_id")
+                deposit_account_id = record.get("deposit_account_id")
+                twd_change = record.get("twd_change", 0)
+                rmb_change = record.get("rmb_change", 0)
+                
+                if payment_account_id == account_id:
+                    if account_balances[account_id]['currency'] == 'TWD':
+                        total_change -= twd_change
+                    elif account_balances[account_id]['currency'] == 'RMB':
+                        total_change -= rmb_change
+                elif deposit_account_id == account_id:
+                    if account_balances[account_id]['currency'] == 'TWD':
+                        total_change += twd_change
+                    elif account_balances[account_id]['currency'] == 'RMB':
+                        total_change += rmb_change
+            
+            # 計算初始餘額（當前餘額 - 所有變動）
+            account_balances[account_id]['initial_balance'] = account_balances[account_id]['current_balance'] - total_change
+        
+        # 現在從最早記錄開始，正確計算每筆交易的前後餘額
+        for record in chronological_stream:
+            # 初始化出帳前後餘額記錄
+            record["account_balance_changes"] = {}
+            
+            # 根據交易類型確定影響的帳戶
+            payment_account_id = record.get("payment_account_id")
+            deposit_account_id = record.get("deposit_account_id")
+            
+            # 計算變動
+            twd_change = record.get("twd_change", 0)
+            rmb_change = record.get("rmb_change", 0)
+            
+            # 處理出款帳戶
+            if payment_account_id and payment_account_id in account_balances:
+                account_info = account_balances[payment_account_id]
+                current_balance = account_info['initial_balance']
+                
+                # 計算到這筆交易前的餘額
+                for prev_record in chronological_stream:
+                    if prev_record == record:
+                        break
+                    prev_payment_id = prev_record.get("payment_account_id")
+                    prev_deposit_id = prev_record.get("deposit_account_id")
+                    prev_twd = prev_record.get("twd_change", 0)
+                    prev_rmb = prev_record.get("rmb_change", 0)
+                    
+                    if prev_payment_id == payment_account_id:
+                        if account_info['currency'] == 'TWD':
+                            current_balance -= prev_twd
+                        elif account_info['currency'] == 'RMB':
+                            current_balance -= prev_rmb
+                    elif prev_deposit_id == payment_account_id:
+                        if account_info['currency'] == 'TWD':
+                            current_balance += prev_twd
+                        elif account_info['currency'] == 'RMB':
+                            current_balance += prev_rmb
+                
+                balance_before = current_balance
+                balance_after = balance_before
+                
+                if account_info['currency'] == 'TWD':
+                    balance_after -= twd_change
+                elif account_info['currency'] == 'RMB':
+                    balance_after -= rmb_change
+                
+                record["account_balance_changes"][payment_account_id] = {
+                    "account_name": account_info['name'],
+                    "currency": account_info['currency'],
+                    "balance_before": balance_before,
+                    "balance_after": balance_after,
+                    "change": balance_after - balance_before
+                }
+            
+            # 處理入款帳戶
+            if deposit_account_id and deposit_account_id in account_balances:
+                account_info = account_balances[deposit_account_id]
+                current_balance = account_info['initial_balance']
+                
+                # 計算到這筆交易前的餘額
+                for prev_record in chronological_stream:
+                    if prev_record == record:
+                        break
+                    prev_payment_id = prev_record.get("payment_account_id")
+                    prev_deposit_id = prev_record.get("deposit_account_id")
+                    prev_twd = prev_record.get("twd_change", 0)
+                    prev_rmb = prev_record.get("rmb_change", 0)
+                    
+                    if prev_payment_id == deposit_account_id:
+                        if account_info['currency'] == 'TWD':
+                            current_balance -= prev_twd
+                        elif account_info['currency'] == 'RMB':
+                            current_balance -= prev_rmb
+                    elif prev_deposit_id == deposit_account_id:
+                        if account_info['currency'] == 'TWD':
+                            current_balance += prev_twd
+                        elif account_info['currency'] == 'RMB':
+                            current_balance += prev_rmb
+                
+                balance_before = current_balance
+                balance_after = balance_before
+                
+                if account_info['currency'] == 'TWD':
+                    balance_after += twd_change
+                elif account_info['currency'] == 'RMB':
+                    balance_after += rmb_change
+                
+                record["account_balance_changes"][deposit_account_id] = {
+                    "account_name": account_info['name'],
+                    "currency": account_info['currency'],
+                    "balance_before": balance_before,
+                    "balance_after": balance_after,
+                    "change": balance_after - balance_before
+                }
         
         # 重新按日期倒序排列（新的在前）
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
@@ -6888,6 +7230,34 @@ def api_delete_user(user_id):
         # 記錄刪除操作
         username = user_to_delete.username
         print(f"管理員 {current_user.username} 正在刪除使用者 {username}")
+        
+        # 記錄刪除審計日誌
+        try:
+            import json
+            from flask import request
+            
+            # 準備被刪除記錄的資料
+            user_data = {
+                'id': user_to_delete.id,
+                'username': user_to_delete.username,
+                'role': user_to_delete.role,
+                'is_active': user_to_delete.is_active
+            }
+            
+            # 記錄刪除審計
+            DeleteAuditService.record_deletion(
+                table_name='user',
+                record_id=user_to_delete.id,
+                deleted_data=json.dumps(user_data, ensure_ascii=False),
+                operation_type='DELETE',
+                description=f'刪除使用者「{user_to_delete.username}」',
+                operator_id=current_user.id,
+                operator_name=current_user.username,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.headers.get('User-Agent', '')[:500] if request else None
+            )
+        except Exception as audit_error:
+            print(f"記錄審計日誌失敗: {audit_error}")
         
         # 執行刪除
         db.session.delete(user_to_delete)

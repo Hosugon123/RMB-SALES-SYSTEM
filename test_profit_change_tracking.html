@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利潤變動追蹤測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        /* 利潤變動詳細信息列的樣式 */
+        .profit-change-detail {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            border-radius: 6px;
+            padding: 8px;
+            border-left: 3px solid #ffc107;
+            min-width: 120px;
+        }
+
+        .profit-change-detail .small {
+            font-size: 0.75rem;
+            line-height: 1.2;
+            margin-bottom: 2px;
+        }
+
+        /* 交易行的樣式 */
+        .transaction-row {
+            transition: all 0.2s ease;
+        }
+
+        .transaction-row:hover {
+            background-color: #f8f9fa !important;
+            transform: translateX(2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="text-center mb-4">
+                    <h2 class="fw-light text-dark mb-1"><i class="bi bi-graph-up-arrow me-2"></i>利潤變動追蹤測試</h2>
+                    <p class="text-muted small">測試交易紀錄中利潤變動前後的完整記錄功能</p>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h5 class="mb-0 fw-light"><i class="bi bi-graph-up-arrow me-2"></i>利潤變動交易記錄測試</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">時間</th>
+                                        <th>類型</th>
+                                        <th>描述</th>
+                                        <th style="min-width: 60px;">操作人</th>
+                                        <th style="min-width: 70px;">出款戶</th>
+                                        <th style="min-width: 70px;">入款戶</th>
+                                        <th>備註</th>
+                                        <th class="text-end" id="twd-header">TWD 變動</th>
+                                        <th class="text-end" id="rmb-header">RMB 變動</th>
+                                        <th class="text-end">出款戶餘額變化</th>
+                                        <th class="text-end">入款戶餘額變化</th>
+                                        <th class="text-end pe-3">利潤變動</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="test-transactions">
+                                    <!-- 測試數據將在這裡顯示 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-4">
+                    <h6><i class="bi bi-info-circle me-2"></i>預期結果</h6>
+                    <p class="mb-0">
+                        對於有利潤變動的交易記錄，應該顯示：
+                    </p>
+                    <ul class="mb-0">
+                        <li><strong>變動前利潤</strong>：該交易執行前的累積利潤</li>
+                        <li><strong>當下變動</strong>：本次交易產生的利潤變化</li>
+                        <li><strong>變動後利潤</strong>：該交易執行後的累積利潤</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 模擬有利潤變動的交易記錄測試數據
+        const testTransactions = [
+            {
+                date: "2025-10-18T15:30:00",
+                type: "售出",
+                description: "售予 客戶A",
+                operator: "admin",
+                payment_account: "RMB帳戶",
+                deposit_account: "應收帳款",
+                note: "-",
+                twd_change: 0,
+                rmb_change: -1000,
+                profit: 5000,
+                profit_before: 0,
+                profit_after: 5000,
+                profit_change: 5000,
+                payment_account_id: 2,
+                deposit_account_id: null,
+                account_balance_changes: {
+                    2: {
+                        account_name: "RMB帳戶",
+                        currency: "RMB",
+                        balance_before: 10000,
+                        balance_after: 9000,
+                        change: -1000
+                    }
+                }
+            },
+            {
+                date: "2025-10-18T16:00:00",
+                type: "售出",
+                description: "售予 客戶B",
+                operator: "admin",
+                payment_account: "RMB帳戶",
+                deposit_account: "應收帳款",
+                note: "-",
+                twd_change: 0,
+                rmb_change: -2000,
+                profit: 8000,
+                profit_before: 5000,
+                profit_after: 13000,
+                profit_change: 8000,
+                payment_account_id: 2,
+                deposit_account_id: null,
+                account_balance_changes: {
+                    2: {
+                        account_name: "RMB帳戶",
+                        currency: "RMB",
+                        balance_before: 9000,
+                        balance_after: 7000,
+                        change: -2000
+                    }
+                }
+            },
+            {
+                date: "2025-10-18T17:00:00",
+                type: "利潤扣除",
+                description: "利潤提款",
+                operator: "admin",
+                payment_account: "TWD現金",
+                deposit_account: "N/A",
+                note: "提取部分利潤",
+                twd_change: -3000,
+                rmb_change: 0,
+                profit: -3000,
+                profit_before: 13000,
+                profit_after: 10000,
+                profit_change: -3000,
+                payment_account_id: 1,
+                deposit_account_id: null,
+                account_balance_changes: {
+                    1: {
+                        account_name: "TWD現金",
+                        currency: "TWD",
+                        balance_before: 100000,
+                        balance_after: 97000,
+                        change: -3000
+                    }
+                }
+            }
+        ];
+
+        function renderTestTransactions() {
+            const tbody = document.getElementById('test-transactions');
+            tbody.innerHTML = '';
+
+            testTransactions.forEach((m, index) => {
+                // 設置類型樣式
+                let typeClass = 'badge bg-info-subtle text-info-emphasis';
+                let typeDisplay = m.type;
+
+                switch (m.type) {
+                    case '售出':
+                        typeClass = 'badge bg-success-subtle text-success-emphasis';
+                        break;
+                    case '利潤扣除':
+                        typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+                        break;
+                }
+
+                // 設置金額顏色和顯示
+                const twdChange = m.twd_change || 0;
+                const rmbChange = m.rmb_change || 0;
+                const profit = m.profit || 0;
+
+                const twdClass = twdChange > 0 ? 'text-success' : (twdChange < 0 ? 'text-danger' : 'text-muted');
+                const rmbClass = rmbChange > 0 ? 'text-success' : (rmbChange < 0 ? 'text-danger' : 'text-muted');
+
+                const twdDisplay = twdChange !== 0 ? (twdChange > 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+                const rmbDisplay = rmbChange !== 0 ? (rmbChange > 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+
+                // 出款戶餘額變化顯示
+                let paymentAccountBalanceHtml = '-';
+                if (m.account_balance_changes && m.payment_account_id && m.account_balance_changes[m.payment_account_id]) {
+                    const paymentAccount = m.account_balance_changes[m.payment_account_id];
+                    const changeAmount = paymentAccount.change || 0;
+                    const balanceBefore = paymentAccount.balance_before || 0;
+                    const balanceAfter = paymentAccount.balance_after || 0;
+                    const changeClass = changeAmount > 0 ? 'text-success' : (changeAmount < 0 ? 'text-danger' : 'text-muted');
+                    
+                    paymentAccountBalanceHtml = '<div class="small account-balance-change">' +
+                        '<div class="fw-bold text-primary border-bottom border-primary pb-1 mb-1">' + paymentAccount.account_name + '</div>' +
+                        '<div class="text-secondary small">前: ' + balanceBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '<div class="' + changeClass + ' small">變動: ' + (changeAmount > 0 ? '+' : '') + changeAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '<div class="text-dark small">後: ' + balanceAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '</div>';
+                }
+                
+                // 入款戶餘額變化顯示
+                let depositAccountBalanceHtml = '-';
+                if (m.account_balance_changes && m.deposit_account_id && m.account_balance_changes[m.deposit_account_id]) {
+                    const depositAccount = m.account_balance_changes[m.deposit_account_id];
+                    const changeAmount = depositAccount.change || 0;
+                    const balanceBefore = depositAccount.balance_before || 0;
+                    const balanceAfter = depositAccount.balance_after || 0;
+                    const changeClass = changeAmount > 0 ? 'text-success' : (changeAmount < 0 ? 'text-danger' : 'text-muted');
+                    
+                    depositAccountBalanceHtml = '<div class="small account-balance-change">' +
+                        '<div class="fw-bold text-success border-bottom border-success pb-1 mb-1">' + depositAccount.account_name + '</div>' +
+                        '<div class="text-secondary small">前: ' + balanceBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '<div class="' + changeClass + ' small">變動: ' + (changeAmount > 0 ? '+' : '') + changeAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '<div class="text-dark small">後: ' + balanceAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '</div>';
+                }
+
+                // 利潤變動顯示 - 支援完整的變動前後信息
+                let profitDisplay = '';
+                const profitChange = parseFloat(m.profit_change ?? m.profit ?? 0) || 0;
+                const profitBefore = parseFloat(m.profit_before ?? 0) || 0;
+                const profitAfter = parseFloat(m.profit_after ?? 0) || 0;
+                
+                if (profitChange !== 0 && profitBefore !== undefined && profitAfter !== undefined) {
+                    // 有完整的變動前後信息，顯示詳細格式
+                    const profitChangeClass = profitChange > 0 ? 'text-success' : 'text-danger';
+                    const changeSymbol = profitChange > 0 ? '+' : '';
+                    
+                    profitDisplay = '<div class="small profit-change-detail">' +
+                        '<div class="text-secondary small">前: ' + profitBefore.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '<div class="' + profitChangeClass + ' small">變動: ' + changeSymbol + profitChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '<div class="text-dark small">後: ' + profitAfter.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
+                        '</div>';
+                } else {
+                    // 其他情況：顯示簡單的數字
+                    profitDisplay = profit !== 0 ? profit.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+                }
+
+                const row = '<tr class="transaction-row">' +
+                    '<td class="ps-3"><small>' + new Date(m.date).toLocaleString('zh-TW') + '</small></td>' +
+                    '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
+                    '<td><small>' + m.description + '</small></td>' +
+                    '<td><small>' + m.operator + '</small></td>' +
+                    '<td><small>' + m.payment_account + '</small></td>' +
+                    '<td><small>' + m.deposit_account + '</small></td>' +
+                    '<td><small>' + (m.note || '-') + '</small></td>' +
+                    '<td class="text-end"><span class="' + twdClass + '">' + twdDisplay + '</span></td>' +
+                    '<td class="text-end"><span class="' + rmbClass + '">' + rmbDisplay + '</span></td>' +
+                    '<td class="text-end">' + paymentAccountBalanceHtml + '</td>' +
+                    '<td class="text-end">' + depositAccountBalanceHtml + '</td>' +
+                    '<td class="text-end pe-3">' + profitDisplay + '</td>' +
+                    '</tr>';
+
+                tbody.innerHTML += row;
+            });
+        }
+
+        // 頁面載入時渲染測試數據
+        document.addEventListener('DOMContentLoaded', function() {
+            renderTestTransactions();
+        });
+    </script>
+</body>
+</html>
