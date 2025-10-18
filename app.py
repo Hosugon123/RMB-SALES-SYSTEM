@@ -81,6 +81,15 @@ def init_database():
             else:
                 print("資料庫表格已存在")
                 
+                # 檢查是否需要創建新表（如 DeleteAuditLog）
+                if 'delete_audit_logs' not in existing_tables:
+                    print("檢測到新表結構，創建缺失的表格...")
+                    try:
+                        db.create_all()
+                        print("新表格已創建")
+                    except Exception as e:
+                        print(f"創建新表格時出錯: {e}")
+                
                 # 檢查現有數據
                 try:
                     user_count = User.query.count()
@@ -518,6 +527,34 @@ class DeleteAuditService:
                 ip_address=ip_address,
                 user_agent=user_agent,
                 balance_changes=balance_changes
+            )
+            
+            db.session.add(audit_log)
+            db.session.commit()
+            
+            print(f"刪除記錄已記錄到審計日誌: {table_name}.{record_id}")
+            return True
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"記錄刪除審計日誌失敗: {e}")
+            return False
+    
+    @staticmethod
+    def record_deletion(table_name, record_id, deleted_data, operation_type, description=None, operator_id=None, operator_name=None, ip_address=None, user_agent=None):
+        """記錄刪除操作（新版本）"""
+        try:
+            # 創建審計記錄
+            audit_log = DeleteAuditLog(
+                table_name=table_name,
+                record_id=record_id,
+                deleted_data=deleted_data,
+                operation_type=operation_type,
+                description=description,
+                operator_id=operator_id,
+                operator_name=operator_name,
+                ip_address=ip_address,
+                user_agent=user_agent
             )
             
             db.session.add(audit_log)
@@ -6984,6 +7021,16 @@ def get_cash_management_transactions():
 
     except Exception as e:
         print(f"獲取分頁流水記錄時出錯: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # 檢查是否是資料庫表不存在的問題
+        if "does not exist" in str(e) or "no such table" in str(e):
+            return jsonify({
+                "status": "error", 
+                "message": "資料庫結構不匹配，請聯繫管理員更新資料庫結構"
+            }), 500
+        
         return jsonify({"status": "error", "message": f"系統錯誤: {str(e)}"}), 500
 
 
