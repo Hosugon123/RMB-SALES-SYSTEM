@@ -179,3 +179,4 @@ if (m.account_balance_changes && m.payment_account_id && m.account_balance_chang
 | 信息詳度 | 累積餘額 | 帳戶名稱 + 前後餘額 + 變動金額 |
 | 視覺區分 | 單一顏色 | 出款戶(藍色) vs 入款戶(綠色) |
 | 實用性 | 總體概覽 | 具體帳戶明細追蹤 |
+

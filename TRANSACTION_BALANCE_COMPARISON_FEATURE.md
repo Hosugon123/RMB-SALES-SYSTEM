@@ -139,3 +139,4 @@ const balanceAfterHtml = '<div class="small balance-after">' +
 - 前端顯示順序：最新的交易顯示在最上方
 - 金額格式化：使用千分位分隔符，保留兩位小數
 - 響應式設計：表格支援橫向滾動，適應不同螢幕尺寸
+

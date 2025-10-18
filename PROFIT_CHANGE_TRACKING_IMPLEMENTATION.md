@@ -179,3 +179,4 @@ if (profitChange !== 0 && profitBefore !== undefined && profitAfter !== undefine
 - ✅ **變動後利潤**：記錄交易執行後的累積利潤
 
 系統現在能夠提供完整的利潤變動追蹤，讓用戶清楚了解每筆交易對總體利潤的影響。
+
