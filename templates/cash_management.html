@@ -1566,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', function () {
             
             // 利潤變動顯示（按照截圖格式）
             let profitChangeHtml = '-';
-            if (m.profit_change_detail) {
+            if (m.profit_change_detail && typeof m.profit_change_detail === 'object') {
                 const profitDetail = m.profit_change_detail;
                 const before = (profitDetail.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const after = (profitDetail.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
@@ -1596,6 +1596,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 const profitDisplay = profit.toLocaleString('en-US', {minimumFractionDigits: 2});
                 const profitColor = profit > 0 ? 'text-success' : 'text-danger';
                 profitChangeHtml = '<div class="text-dark" style="font-size: 0.85rem;">' + profitDisplay + '</div>';
+            } else {
+                // 如果 profit_change_detail 是字符串或其他類型，顯示為文本
+                if (m.profit_change_detail && typeof m.profit_change_detail === 'string') {
+                    profitChangeHtml = '<div class="text-dark" style="font-size: 0.85rem;">' + m.profit_change_detail + '</div>';
+                }
             }
             
             // 設置利潤顏色（用於向後兼容）
@@ -1647,7 +1652,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const note = parts.slice(1).join(' | ') || '-';
 
             const row = '<tr>' +
-                '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : '-') + '</small></td>' +
+                '<td class="ps-3"><small>' + (m.date ? new Date(m.date + 'Z').toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) : '-') + '</small></td>' +
                 '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
                 '<td><small>' + description + '</small></td>' +
                 '<td><small>' + (m.operator || '-') + '</small></td>' +
@@ -2527,7 +2532,7 @@ window.renderMovements = function(transactions) {
         }
 
         const row = '<tr class="transaction-row">' +
-            '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : '-') + '</small></td>' +
+            '<td class="ps-3"><small>' + (m.date ? new Date(m.date + 'Z').toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) : '-') + '</small></td>' +
             '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
             '<td><small>' + (m.description || '-') + '</small></td>' +
             '<td><small>' + (m.operator || '-') + '</small></td>' +
