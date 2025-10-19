@@ -1,4 +1,4 @@
-import os
+﻿import os
 import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
@@ -6462,6 +6462,16 @@ def get_cash_management_transactions():
                 elif hasattr(p, 'channel_name_manual') and p.channel_name_manual:
                     channel_name = p.channel_name_manual
                 
+                # 計算出款戶餘額變化
+                payment_balance_before = p.payment_account.balance + p.twd_cost
+                payment_balance_after = p.payment_account.balance
+                payment_balance_change = -p.twd_cost
+                
+                # 計算入款戶餘額變化
+                deposit_balance_before = p.deposit_account.balance - p.rmb_amount
+                deposit_balance_after = p.deposit_account.balance
+                deposit_balance_change = p.rmb_amount
+                
                 unified_stream.append({
                     "type": "買入",
                     "date": p.purchase_date.isoformat(),
@@ -6472,6 +6482,18 @@ def get_cash_management_transactions():
                     "payment_account": p.payment_account.name if p.payment_account else "N/A",
                     "deposit_account": p.deposit_account.name if p.deposit_account else "N/A",
                     "note": p.note if hasattr(p, 'note') and p.note else None,
+                    # 新增：出款戶餘額變化
+                    "payment_account_balance": {
+                        "before": payment_balance_before,
+                        "change": payment_balance_change,
+                        "after": payment_balance_after
+                    },
+                    # 新增：入款戶餘額變化
+                    "deposit_account_balance": {
+                        "before": deposit_balance_before,
+                        "change": deposit_balance_change,
+                        "after": deposit_balance_after
+                    }
                 })
 
         # 處理售出記錄
@@ -6479,6 +6501,11 @@ def get_cash_management_transactions():
             if s.customer:
                 profit_info = FIFOService.calculate_profit_for_sale(s)
                 profit = profit_info['profit_twd'] if profit_info else 0
+                
+                # 計算RMB帳戶餘額變化
+                rmb_balance_before = s.rmb_account.balance + s.rmb_amount if s.rmb_account else 0
+                rmb_balance_after = s.rmb_account.balance if s.rmb_account else 0
+                rmb_balance_change = -s.rmb_amount
                 
                 unified_stream.append({
                     "type": "售出",
@@ -6491,6 +6518,17 @@ def get_cash_management_transactions():
                     "payment_account": s.rmb_account.name if s.rmb_account else "N/A",
                     "deposit_account": "應收帳款",
                     "note": s.note if hasattr(s, 'note') and s.note else None,
+                    # 新增：RMB帳戶餘額變化
+                    "rmb_account_balance": {
+                        "before": rmb_balance_before,
+                        "change": rmb_balance_change,
+                        "after": rmb_balance_after
+                    },
+                    # 新增：利潤變動記錄
+                    "profit_change": {
+                        "amount": profit,
+                        "description": "售出利潤"
+                    }
                 })
 
         # 處理其他記帳記錄（排除銷帳）
@@ -6547,13 +6585,44 @@ def get_cash_management_transactions():
                     "note": getattr(entry, 'note', None),
                 }
                 
+                # 添加帳戶餘額變化信息
+                if entry.account:
+                    if entry.account.currency == "TWD":
+                        account_balance_before = entry.account.balance - twd_change
+                        account_balance_after = entry.account.balance
+                        record["account_balance"] = {
+                            "before": account_balance_before,
+                            "change": twd_change,
+                            "after": account_balance_after
+                        }
+                    elif entry.account.currency == "RMB":
+                        account_balance_before = entry.account.balance - rmb_change
+                        account_balance_after = entry.account.balance
+                        record["account_balance"] = {
+                            "before": account_balance_before,
+                            "change": rmb_change,
+                            "after": account_balance_after
+                        }
+                
                 # 如果是利潤提款，添加詳細利潤信息
                 if entry.entry_type == "PROFIT_WITHDRAW":
                     # 安全地獲取利潤詳細信息（處理欄位可能不存在的情況）
-                    record["profit_before"] = getattr(entry, 'profit_before', None)
-                    record["profit_after"] = getattr(entry, 'profit_after', None)
-                    record["profit_change"] = getattr(entry, 'profit_change', None)
-                    record["profit"] = getattr(entry, 'profit_change', None)  # 保持向後兼容
+                    profit_before = getattr(entry, 'profit_before', None)
+                    profit_after = getattr(entry, 'profit_after', None)
+                    profit_change = getattr(entry, 'profit_change', None)
+                    
+                    record["profit_before"] = profit_before
+                    record["profit_after"] = profit_after
+                    record["profit_change"] = profit_change
+                    record["profit"] = profit_change  # 保持向後兼容
+                    
+                    # 新增：詳細的利潤變動記錄
+                    record["profit_change_detail"] = {
+                        "before": profit_before,
+                        "change": profit_change,
+                        "after": profit_after,
+                        "description": "利潤提款"
+                    }
                 
                 unified_stream.append(record)
 
@@ -6589,7 +6658,8 @@ def get_cash_management_transactions():
                     payment_account = "N/A"
                     deposit_account = "N/A"
 
-                unified_stream.append({
+                # 構建基本記錄
+                record = {
                     "type": log.type,
                     "date": log.time.isoformat(),
                     "description": log.description,
@@ -6599,7 +6669,19 @@ def get_cash_management_transactions():
                     "payment_account": payment_account,
                     "deposit_account": deposit_account,
                     "note": getattr(log, 'note', None),
-                })
+                }
+                
+                # 添加帳戶餘額變化信息（針對SETTLEMENT類型）
+                if log.type == "SETTLEMENT" and matching_entry and matching_entry.account:
+                    account_balance_before = matching_entry.account.balance - twd_change
+                    account_balance_after = matching_entry.account.balance
+                    record["account_balance"] = {
+                        "before": account_balance_before,
+                        "change": twd_change,
+                        "after": account_balance_after
+                    }
+                
+                unified_stream.append(record)
 
         # 按日期排序（新的在前）
         unified_stream.sort(key=lambda x: x["date"], reverse=True)

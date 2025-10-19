@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>增強版交易記錄格式測試</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .transaction-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #fafafa;
+        }
+        .transaction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .transaction-type {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+        }
+        .type-buy { background-color: #007bff; }
+        .type-sell { background-color: #28a745; }
+        .type-profit { background-color: #ffc107; color: #333; }
+        .type-settlement { background-color: #e83e8c; }
+        .transaction-date {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .transaction-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        .detail-section {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #eee;
+        }
+        .detail-section h4 {
+            margin: 0 0 8px 0;
+            color: #333;
+            font-size: 0.9em;
+        }
+        .balance-info {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0;
+            font-size: 0.85em;
+        }
+        .balance-before { color: #666; }
+        .balance-change { color: #007bff; font-weight: bold; }
+        .balance-after { color: #28a745; font-weight: bold; }
+        .profit-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>增強版交易記錄格式測試</h1>
+        <div id="loading" class="loading">正在載入交易記錄...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="transactions"></div>
+    </div>
+
+    <script>
+        async function loadTransactions() {
+            try {
+                const response = await fetch('/api/cash_management/transactions');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status !== 'success') {
+                    throw new Error(data.message || 'API 返回錯誤');
+                }
+                
+                displayTransactions(data.data.transactions);
+                
+            } catch (error) {
+                console.error('載入交易記錄失敗:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = `載入失敗: ${error.message}`;
+            }
+        }
+        
+        function displayTransactions(transactions) {
+            const container = document.getElementById('transactions');
+            const loading = document.getElementById('loading');
+            
+            loading.style.display = 'none';
+            
+            if (!transactions || transactions.length === 0) {
+                container.innerHTML = '<p>沒有交易記錄</p>';
+                return;
+            }
+            
+            container.innerHTML = transactions.map(tx => createTransactionCard(tx)).join('');
+        }
+        
+        function createTransactionCard(tx) {
+            const typeClass = getTypeClass(tx.type);
+            const date = new Date(tx.date).toLocaleString('zh-TW');
+            
+            return `
+                <div class="transaction-card">
+                    <div class="transaction-header">
+                        <span class="transaction-type ${typeClass}">${tx.type}</span>
+                        <span class="transaction-date">${date}</span>
+                    </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <strong>${tx.description}</strong>
+                        <br>
+                        <small>操作人: ${tx.operator} | 出款戶: ${tx.payment_account} | 入款戶: ${tx.deposit_account}</small>
+                    </div>
+                    
+                    <div class="transaction-details">
+                        ${createBalanceSection('出款戶餘額變化', tx.payment_account_balance)}
+                        ${createBalanceSection('入款戶餘額變化', tx.deposit_account_balance)}
+                        ${createBalanceSection('RMB帳戶餘額變化', tx.rmb_account_balance)}
+                        ${createBalanceSection('帳戶餘額變化', tx.account_balance)}
+                    </div>
+                    
+                    ${createProfitSection(tx)}
+                </div>
+            `;
+        }
+        
+        function createBalanceSection(title, balance) {
+            if (!balance) return '';
+            
+            return `
+                <div class="detail-section">
+                    <h4>${title}</h4>
+                    <div class="balance-info">
+                        <span class="balance-before">前: ${formatNumber(balance.before)}</span>
+                        <span class="balance-change">變動: ${formatNumber(balance.change)}</span>
+                        <span class="balance-after">後: ${formatNumber(balance.after)}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function createProfitSection(tx) {
+            if (tx.profit_change_detail) {
+                const profit = tx.profit_change_detail;
+                return `
+                    <div class="profit-info">
+                        <h4>利潤變動詳細</h4>
+                        <div class="balance-info">
+                            <span class="balance-before">前: ${formatNumber(profit.before)}</span>
+                            <span class="balance-change">變動: ${formatNumber(profit.change)}</span>
+                            <span class="balance-after">後: ${formatNumber(profit.after)}</span>
+                        </div>
+                        <small>${profit.description}</small>
+                    </div>
+                `;
+            } else if (tx.profit_change) {
+                return `
+                    <div class="profit-info">
+                        <h4>利潤變動</h4>
+                        <div>${formatNumber(tx.profit_change.amount)} - ${tx.profit_change.description}</div>
+                    </div>
+                `;
+            }
+            return '';
+        }
+        
+        function getTypeClass(type) {
+            switch(type) {
+                case '買入': return 'type-buy';
+                case '售出': return 'type-sell';
+                case '利潤提款': return 'type-profit';
+                case '銷帳': return 'type-settlement';
+                default: return 'type-settlement';
+            }
+        }
+        
+        function formatNumber(num) {
+            if (num === null || num === undefined) return 'N/A';
+            return new Intl.NumberFormat('zh-TW').format(num);
+        }
+        
+        // 載入交易記錄
+        loadTransactions();
+    </script>
+</body>
+</html>
