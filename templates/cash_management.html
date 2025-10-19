@@ -1538,25 +1538,107 @@ document.addEventListener('DOMContentLoaded', function () {
                     typeClass = 'badge bg-info-subtle text-info-emphasis';
             }
             
-            // 格式化金額顯示
-            const twdDisplay = twdChange !== 0 ? (twdChange > 0 ? '+' : '') + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
-            const rmbDisplay = rmbChange !== 0 ? (rmbChange > 0 ? '+' : '') + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+            // TWD/RMB 變動合併顯示（按照截圖2格式）
+            let twdRmbChangeHtml = '-';
+            if (twdChange !== 0 || rmbChange !== 0) {
+                // 計算總額（使用累積餘額）
+                const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
+                const runningRmb = m.running_rmb_balance ?? m.runningRmbBalance ?? 0;
+                
+                twdRmbChangeHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">';
+                
+                if (twdChange !== 0) {
+                    const twdColorClass = twdChange > 0 ? 'text-success' : 'text-danger';
+                    const twdSymbol = twdChange > 0 ? '+' : '';
+                    twdRmbChangeHtml += '<div class="' + twdColorClass + ' fw-bold" style="font-size: 0.85rem;">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                    twdRmbChangeHtml += '<div class="text-dark" style="font-size: 0.75rem; margin-top: 2px;">總額: ' + runningTwd.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                }
+                
+                if (rmbChange !== 0) {
+                    const rmbColorClass = rmbChange > 0 ? 'text-success' : 'text-danger';
+                    const rmbSymbol = rmbChange > 0 ? '+' : '';
+                    twdRmbChangeHtml += '<div class="' + rmbColorClass + ' fw-bold" style="font-size: 0.85rem; margin-top: 4px;">RMB: ' + rmbSymbol + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                    twdRmbChangeHtml += '<div class="text-dark" style="font-size: 0.75rem; margin-top: 2px;">總額: ' + runningRmb.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                }
+                
+                twdRmbChangeHtml += '</div>';
+            }
             
-            // 設置金額顏色
-            const twdClass = twdChange > 0 ? 'text-success' : (twdChange < 0 ? 'text-danger' : 'text-muted');
-            const rmbClass = rmbChange > 0 ? 'text-success' : (rmbChange < 0 ? 'text-danger' : 'text-muted');
+            // 利潤變動顯示（按照截圖格式）
+            let profitChangeHtml = '-';
+            if (m.profit_change_detail) {
+                const profitDetail = m.profit_change_detail;
+                const before = (profitDetail.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const after = (profitDetail.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const change = (profitDetail.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const changeColor = (profitDetail.change || 0) > 0 ? 'text-success' : 'text-danger';
+                const changeSymbol = (profitDetail.change || 0) > 0 ? '+' : '';
+                
+                profitChangeHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #ffeaa7;">' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '</div>';
+            } else if (m.profit_before !== null && m.profit_after !== null && m.profit_change !== null) {
+                const before = (m.profit_before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const after = (m.profit_after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const change = (m.profit_change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const changeColor = (m.profit_change || 0) > 0 ? 'text-success' : 'text-danger';
+                const changeSymbol = (m.profit_change || 0) > 0 ? '+' : '';
+                
+                profitChangeHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #ffeaa7;">' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '</div>';
+            } else if (profit !== 0) {
+                // 有傳統利潤記錄，顯示簡單信息
+                const profitDisplay = profit.toLocaleString('en-US', {minimumFractionDigits: 2});
+                const profitColor = profit > 0 ? 'text-success' : 'text-danger';
+                profitChangeHtml = '<div class="text-dark" style="font-size: 0.85rem;">' + profitDisplay + '</div>';
+            }
+            
+            // 設置利潤顏色（用於向後兼容）
             const profitClass = profit > 0 ? 'text-success' : (profit < 0 ? 'text-danger' : 'text-muted');
-            
-            // 累積餘額顯示
-            const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
-            const runningRmb = m.running_rmb_balance ?? m.runningRmbBalance ?? 0;
-            const runningBalanceHtml = '<div class="small running-balance">' +
-                '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">NT$ ' + (runningTwd || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
-                '<div class="text-success">¥ ' + (runningRmb || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>' +
-                '</div>';
             
             const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
             const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
+            
+            // 出款戶餘額變化顯示（按照截圖格式）
+            let paymentAccountBalanceHtml = '-';
+            if (m.payment_account_balance) {
+                const balance = m.payment_account_balance;
+                const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+                const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
+                
+                paymentAccountBalanceHtml = '<div class="card" style="background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #e0e0e0;">' +
+                    '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #007bff; padding-bottom: 4px; margin-bottom: 4px;">' + paymentAccount + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '</div>';
+            }
+            
+            // 入款戶餘額變化顯示（按照截圖格式）
+            let depositAccountBalanceHtml = '-';
+            if (m.deposit_account_balance) {
+                const balance = m.deposit_account_balance;
+                const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+                const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
+                
+                depositAccountBalanceHtml = '<div class="card" style="background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #e0e0e0;">' +
+                    '<div class="text-success fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #28a745; padding-bottom: 4px; margin-bottom: 4px;">' + depositAccount + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '</div>';
+            }
             
             // 描述和備註現在都在description中，用 | 分隔
             const fullDescription = m.description || '-';
@@ -1572,10 +1654,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<td><small>' + paymentAccount + '</small></td>' +
                 '<td><small>' + depositAccount + '</small></td>' +
                 '<td><small>' + note + '</small></td>' +
-                '<td class="text-end"><span class="' + twdClass + '">' + twdDisplay + '</span></td>' +
-                '<td class="text-end"><span class="' + rmbClass + '">' + rmbDisplay + '</span></td>' +
-                '<td class="text-end">' + runningBalanceHtml + '</td>' +
-                '<td class="text-end pe-3"><span class="' + profitClass + '">' + profitDisplay + '</span></td>' +
+                '<td class="text-end">' + twdRmbChangeHtml + '</td>' +
+                '<td class="text-end">' + paymentAccountBalanceHtml + '</td>' +
+                '<td class="text-end">' + depositAccountBalanceHtml + '</td>' +
+                '<td class="text-end pe-3">' + profitChangeHtml + '</td>' +
                 '</tr>';
             
             movementsTbody.innerHTML += row;
@@ -2291,21 +2373,27 @@ window.renderMovements = function(transactions) {
         const profitColorClass = profit > 0 ? 'text-success' : profit < 0 ? 'text-danger' : 'text-muted';
         const profitChangeColorClass = profitChange !== null ? (profitChange > 0 ? 'text-success' : 'text-danger') : 'text-muted';
         
-        // TWD/RMB 變動合併顯示（按照圖片格式）
+        // TWD/RMB 變動合併顯示（按照截圖2格式）
         let twdRmbChangeHtml = '-';
         if (twdChange !== 0 || rmbChange !== 0) {
-            twdRmbChangeHtml = '<div class="small running-balance">';
+            // 計算總額（使用累積餘額）
+            const runningTwd = m.running_twd_balance ?? m.runningTwdBalance ?? 0;
+            const runningRmb = m.running_rmb_balance ?? m.runningRmbBalance ?? 0;
+            
+            twdRmbChangeHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">';
             
             if (twdChange !== 0) {
-                const twdColorClass = twdChange > 0 ? 'text-primary' : 'text-danger';
+                const twdColorClass = twdChange > 0 ? 'text-success' : 'text-danger';
                 const twdSymbol = twdChange > 0 ? '+' : '';
-                twdRmbChangeHtml += '<div class="' + twdColorClass + ' fw-bold border-bottom border-primary pb-1 mb-1">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                twdRmbChangeHtml += '<div class="' + twdColorClass + ' fw-bold" style="font-size: 0.85rem;">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                twdRmbChangeHtml += '<div class="text-dark" style="font-size: 0.75rem; margin-top: 2px;">總額: ' + runningTwd.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
             }
             
             if (rmbChange !== 0) {
                 const rmbColorClass = rmbChange > 0 ? 'text-success' : 'text-danger';
                 const rmbSymbol = rmbChange > 0 ? '+' : '';
-                twdRmbChangeHtml += '<div class="' + rmbColorClass + ' fw-bold">RMB: ' + rmbSymbol + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                twdRmbChangeHtml += '<div class="' + rmbColorClass + ' fw-bold" style="font-size: 0.85rem; margin-top: 4px;">RMB: ' + rmbSymbol + rmbChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                twdRmbChangeHtml += '<div class="text-dark" style="font-size: 0.75rem; margin-top: 2px;">總額: ' + runningRmb.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
             }
             
             twdRmbChangeHtml += '</div>';
@@ -2336,10 +2424,10 @@ window.renderMovements = function(transactions) {
             const changeColor = (profitDetail.change || 0) > 0 ? 'text-success' : (profitDetail.change || 0) < 0 ? 'text-danger' : 'text-muted';
             const changeSymbol = (profitDetail.change || 0) > 0 ? '+' : '';
             
-            profitDetailHtml = '<div class="small running-balance">' +
-                '<div class="text-warning fw-bold border-bottom border-warning pb-1 mb-1">前: ' + before + '</div>' +
-                '<div class="' + changeColor + ' fw-bold border-bottom border-warning pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
-                '<div class="text-warning fw-bold">後: ' + after + '</div>' +
+            profitDetailHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                 '</div>';
         } else if (profitBefore !== null && profitAfter !== null && profitChange !== null) {
             // 有利潤變動記錄，顯示詳細信息
@@ -2353,18 +2441,14 @@ window.renderMovements = function(transactions) {
                 change: changeSymbol + profitChangeDisplay
             });
             
-            profitDetailHtml = '<div class="small running-balance">' +
-                '<div class="text-warning fw-bold border-bottom border-warning pb-1 mb-1">前: ' + profitBeforeDisplay + '</div>' +
-                '<div class="' + changeColorClass + ' fw-bold border-bottom border-warning pb-1 mb-1">變: ' + changeSymbol + profitChangeDisplay + '</div>' +
-                '<div class="text-warning fw-bold">後: ' + profitAfterDisplay + '</div>' +
+            profitDetailHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + profitBeforeDisplay + '</div>' +
+                '<div class="' + changeColorClass + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + profitChangeDisplay + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + profitAfterDisplay + '</div>' +
                 '</div>';
         } else if (profit !== 0) {
             // 有傳統利潤記錄，顯示簡單信息（數據庫尚未更新時的臨時顯示）
-            profitDetailHtml = '<div class="small running-balance">' +
-                '<div class="text-muted">前: 計算中...</div>' +
-                '<div class="text-muted">後: 計算中...</div>' +
-                '<div class="' + profitColorClass + ' fw-bold">變: ' + profitDisplay + '</div>' +
-                '</div>';
+            profitDetailHtml = '<div class="text-dark" style="font-size: 0.85rem;">' + profitDisplay + '</div>';
         }
 
         const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
@@ -2380,10 +2464,11 @@ window.renderMovements = function(transactions) {
             const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
             const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
             
-            paymentAccountBalanceHtml = '<div class="small running-balance">' +
-                '<div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: ' + before + '</div>' +
-                '<div class="' + changeColor + ' fw-bold border-bottom border-info pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
-                '<div class="text-info fw-bold">後: ' + after + '</div>' +
+            paymentAccountBalanceHtml = '<div class="card" style="background-color: #f5f5f5; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+                '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #007bff; padding-bottom: 4px; margin-bottom: 4px;">' + paymentAccount + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                 '</div>';
         }
 
@@ -2397,10 +2482,11 @@ window.renderMovements = function(transactions) {
             const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
             const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
             
-            depositAccountBalanceHtml = '<div class="small running-balance">' +
-                '<div class="text-success fw-bold border-bottom border-success pb-1 mb-1">前: ' + before + '</div>' +
-                '<div class="' + changeColor + ' fw-bold border-bottom border-success pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
-                '<div class="text-success fw-bold">後: ' + after + '</div>' +
+            depositAccountBalanceHtml = '<div class="card" style="background-color: #f5f5f5; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+                '<div class="text-success fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #28a745; padding-bottom: 4px; margin-bottom: 4px;">' + depositAccount + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                 '</div>';
         }
 
@@ -2414,10 +2500,11 @@ window.renderMovements = function(transactions) {
             const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
             const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
             
-            rmbAccountBalanceHtml = '<div class="small running-balance">' +
-                '<div class="text-success fw-bold border-bottom border-success pb-1 mb-1">前: ' + before + '</div>' +
-                '<div class="' + changeColor + ' fw-bold border-bottom border-success pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
-                '<div class="text-success fw-bold">後: ' + after + '</div>' +
+            rmbAccountBalanceHtml = '<div class="card" style="background-color: #f5f5f5; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+                '<div class="text-success fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #28a745; padding-bottom: 4px; margin-bottom: 4px;">RMB帳戶</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                 '</div>';
         }
 
@@ -2431,10 +2518,11 @@ window.renderMovements = function(transactions) {
             const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
             const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
             
-            accountBalanceHtml = '<div class="small running-balance">' +
-                '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">前: ' + before + '</div>' +
-                '<div class="' + changeColor + ' fw-bold border-bottom border-primary pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
-                '<div class="text-primary fw-bold">後: ' + after + '</div>' +
+            accountBalanceHtml = '<div class="card" style="background-color: #f5f5f5; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+                '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #007bff; padding-bottom: 4px; margin-bottom: 4px;">帳戶</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                 '</div>';
         }
 
