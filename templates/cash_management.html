@@ -246,6 +246,8 @@
                             <th class="text-end" id="twd-header">TWD 變動</th>
                             <th class="text-end" id="rmb-header">RMB 變動</th>
                             <th class="text-end">累積餘額</th>
+                            <th class="text-end">出款戶餘額變化</th>
+                            <th class="text-end">入款戶餘額變化</th>
                             <th class="text-end pe-3">利潤變動</th>
                         </tr>
                     </thead>
@@ -1425,12 +1427,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     renderPagination(result.data.pagination);
                 } else {
                     console.error('❌ 載入流水記錄失敗:', result.message);
-                    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+                    movementsTbody.innerHTML = '<tr><td colspan="13" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
                 }
             })
             .catch(error => {
                 console.error('❌ 網路錯誤:', error);
-                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+                movementsTbody.innerHTML = '<tr><td colspan="13" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
             });
     }
 
@@ -1447,7 +1449,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         if (!transactions || transactions.length === 0) {
             console.log('⚠️ 沒有資金流水數據');
-            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="13" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
         
@@ -2133,7 +2135,7 @@ window.loadMovements = function(page = 1) {
     }
     
     // 顯示載入中
-    movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
+    movementsTbody.innerHTML = '<tr><td colspan="13" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
     
     // 發送API請求
     fetch(`/api/cash_management/transactions?page=${page}`)
@@ -2151,12 +2153,12 @@ window.loadMovements = function(page = 1) {
                 window.renderPagination(result.data.pagination);
             } else {
                 console.error('❌ 載入流水記錄失敗:', result.message);
-                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
+                movementsTbody.innerHTML = '<tr><td colspan="13" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
             }
         })
         .catch(error => {
             console.error('❌ 網路錯誤:', error);
-            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="13" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
         });
 };
 
@@ -2174,7 +2176,7 @@ window.renderMovements = function(transactions) {
     
     if (!transactions || transactions.length === 0) {
         console.log('⚠️ 沒有資金流水數據');
-        movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+        movementsTbody.innerHTML = '<tr><td colspan="13" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
         return;
     }
     
@@ -2344,6 +2346,74 @@ window.renderMovements = function(transactions) {
         const paymentAccount = m.payment_account ?? m.outgoing_account ?? '-';
         const depositAccount = m.deposit_account ?? m.incoming_account ?? '-';
 
+        // 新增：出款戶餘額變化顯示
+        let paymentAccountBalanceHtml = '-';
+        if (m.payment_account_balance) {
+            const balance = m.payment_account_balance;
+            const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+            const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
+            
+            paymentAccountBalanceHtml = '<div class="small running-balance">' +
+                '<div class="text-info fw-bold border-bottom border-info pb-1 mb-1">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold border-bottom border-info pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
+                '<div class="text-info fw-bold">後: ' + after + '</div>' +
+                '</div>';
+        }
+
+        // 新增：入款戶餘額變化顯示
+        let depositAccountBalanceHtml = '-';
+        if (m.deposit_account_balance) {
+            const balance = m.deposit_account_balance;
+            const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+            const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
+            
+            depositAccountBalanceHtml = '<div class="small running-balance">' +
+                '<div class="text-success fw-bold border-bottom border-success pb-1 mb-1">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold border-bottom border-success pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
+                '<div class="text-success fw-bold">後: ' + after + '</div>' +
+                '</div>';
+        }
+
+        // 新增：RMB帳戶餘額變化顯示
+        let rmbAccountBalanceHtml = '-';
+        if (m.rmb_account_balance) {
+            const balance = m.rmb_account_balance;
+            const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+            const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
+            
+            rmbAccountBalanceHtml = '<div class="small running-balance">' +
+                '<div class="text-success fw-bold border-bottom border-success pb-1 mb-1">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold border-bottom border-success pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
+                '<div class="text-success fw-bold">後: ' + after + '</div>' +
+                '</div>';
+        }
+
+        // 新增：帳戶餘額變化顯示（用於其他記帳記錄）
+        let accountBalanceHtml = '-';
+        if (m.account_balance) {
+            const balance = m.account_balance;
+            const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+            const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
+            
+            accountBalanceHtml = '<div class="small running-balance">' +
+                '<div class="text-primary fw-bold border-bottom border-primary pb-1 mb-1">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold border-bottom border-primary pb-1 mb-1">變: ' + changeSymbol + change + '</div>' +
+                '<div class="text-primary fw-bold">後: ' + after + '</div>' +
+                '</div>';
+        }
+
         const row = '<tr class="transaction-row">' +
             '<td class="ps-3"><small>' + (m.date ? new Date(m.date).toLocaleString('zh-TW') : '-') + '</small></td>' +
             '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
@@ -2355,6 +2425,8 @@ window.renderMovements = function(transactions) {
             '<td class="text-end"><small class="' + twdColorClass + '">' + twdDisplay + '</small></td>' +
             '<td class="text-end"><small class="' + rmbColorClass + '">' + rmbDisplay + '</small></td>' +
             '<td class="text-end">' + runningBalanceHtml + '</td>' +
+            '<td class="text-end">' + paymentAccountBalanceHtml + '</td>' +
+            '<td class="text-end">' + depositAccountBalanceHtml + '</td>' +
             '<td class="text-end pe-3">' + profitDetailHtml + '</td>' +
             '</tr>';
         
