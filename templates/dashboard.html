@@ -98,7 +98,7 @@
                 </div>
                 <div>
                     <p class="text-muted mb-1 small">應收帳款 (TWD)</p>
-                    <h3 class="fw-bold mb-0">NT$ {{ "{:,.0f}".format(total_receivables or 0) }}</h3>
+                    <h3 class="fw-bold mb-0 text-danger">NT$ {{ "{:,.0f}".format(total_receivables or 0) }}</h3>
                 </div>
             </div>
             <a href="{{ url_for('cash_management_operator') }}" class="card-footer text-decoration-none text-muted d-block">
