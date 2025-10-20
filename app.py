@@ -5254,9 +5254,9 @@ def api_profit_withdraw():
         if amount <= 0:
             return jsonify({"status": "error", "message": "無效的提款金額"}), 400
         
-        # 計算當前總利潤
+        # 計算當前總利潤（與總利潤API保持一致的邏輯）
         total_profit = 0.0
-        all_sales = db.session.execute(db.select(SalesRecord).filter_by(is_settled=True)).scalars().all()
+        all_sales = db.session.execute(db.select(SalesRecord)).scalars().all()
         
         for sale in all_sales:
             profit_info = FIFOService.calculate_profit_for_sale(sale)
@@ -5264,13 +5264,24 @@ def api_profit_withdraw():
                 total_profit += profit_info.get('profit_twd', 0.0)
         
         # 扣除之前的利潤提款
-        previous_withdrawals = db.session.execute(
-            db.select(LedgerEntry)
-            .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
-        ).scalars().all()
+        try:
+            previous_withdrawals = db.session.execute(
+                db.select(LedgerEntry)
+                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+            ).scalars().all()
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: 利潤提款API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
+                db.session.rollback()
+                previous_withdrawals = []
+            else:
+                db.session.rollback()
+                raise e
         
         total_withdrawals = sum(entry.amount for entry in previous_withdrawals)
         current_profit = total_profit - total_withdrawals
+        
+        print(f"DEBUG: 利潤提款檢查 - 總銷售利潤: {total_profit:.2f}, 已提款: {total_withdrawals:.2f}, 可用利潤: {current_profit:.2f}, 提款金額: {amount:.2f}")
         
         if current_profit < amount:
             return jsonify({"status": "error", "message": f"利潤餘額不足，當前可用利潤: NT$ {current_profit:.2f}"}), 400

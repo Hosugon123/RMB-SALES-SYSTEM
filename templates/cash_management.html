@@ -3287,42 +3287,7 @@ document.getElementById('addProfitFormData').addEventListener('submit', async fu
     }
 });
 
-// 提取利潤表單提交
-document.getElementById('withdrawProfitFormData').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const amount = parseFloat(document.getElementById('withdrawProfitAmount').value);
-    const description = document.getElementById('withdrawProfitDescription').value;
-    const note = document.getElementById('withdrawProfitNote').value;
-    
-    try {
-        const response = await fetch('/api/profit/withdraw', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                account_id: currentProfitAccountId,
-                amount: amount,
-                description: description,
-                note: note
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            Swal.fire('成功', result.data.message, 'success');
-            hideAllProfitForms();
-            loadProfitHistory();
-            // 重新載入頁面以更新顯示
-            location.reload();
-        } else {
-            Swal.fire('錯誤', result.message, 'error');
-        }
-    } catch (error) {
-        console.error('提取利潤失敗:', error);
-        Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
-    }
-});
+// 舊的提款表單處理器已移除，使用新的簡化版本
 
 // 調整利潤表單提交
 document.getElementById('adjustProfitFormData').addEventListener('submit', async function(e) {
