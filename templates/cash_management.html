@@ -3186,68 +3186,99 @@ async function loadProfitHistory() {
     }
 }
 
-// 新的提款表單提交處理
-document.getElementById('withdrawProfitForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const amount = parseFloat(document.getElementById('withdrawAmount').value);
-    const note = document.getElementById('withdrawNote').value;
-    
-    if (!amount || amount <= 0) {
-        Swal.fire('錯誤', '請輸入有效的提款金額', 'error');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/profit/withdraw', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                amount: amount,
-                description: `利潤提款`,
-                note: note || '利潤提款'
-            }),
+// 新的提款表單提交處理 - 確保DOM載入後執行
+document.addEventListener('DOMContentLoaded', function() {
+    const withdrawForm = document.getElementById('withdrawProfitForm');
+    if (withdrawForm) {
+        withdrawForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const amount = parseFloat(document.getElementById('withdrawAmount').value);
+            const note = document.getElementById('withdrawNote').value;
+            
+            if (!amount || amount <= 0) {
+                Swal.fire('錯誤', '請輸入有效的提款金額', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/profit/withdraw', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        amount: amount,
+                        description: `利潤提款`,
+                        note: note || '利潤提款'
+                    }),
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    Swal.fire('成功', '利潤提款成功！', 'success');
+                    // 刷新數據
+                    document.getElementById('withdrawProfitForm').reset();
+                    // 重新載入頁面數據
+                    location.reload();
+                } else {
+                    Swal.fire('錯誤', result.message || '提款失敗', 'error');
+                }
+            } catch (error) {
+                console.error('提款過程中發生錯誤:', error);
+                Swal.fire('錯誤', '提款過程中發生錯誤', 'error');
+            }
         });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            Swal.fire('成功', '利潤提款成功！', 'success');
-            // 刷新數據
-            document.getElementById('withdrawProfitForm').reset();
-            // 重新載入頁面數據
-            location.reload();
-        } else {
-            Swal.fire('錯誤', result.message || '提款失敗', 'error');
-        }
-    } catch (error) {
-        console.error('提款過程中發生錯誤:', error);
-        Swal.fire('錯誤', '提款過程中發生錯誤', 'error');
+    } else {
+        console.error('找不到 withdrawProfitForm 元素');
     }
 });
 
-// 利潤操作按鈕事件 (舊的，暫時保留)
-document.getElementById('btnAddProfit').addEventListener('click', function() {
-    hideAllProfitForms();
-    document.getElementById('addProfitForm').style.display = 'block';
+// 利潤操作按鈕事件 - 確保DOM載入後執行
+document.addEventListener('DOMContentLoaded', function() {
+    const btnAddProfit = document.getElementById('btnAddProfit');
+    if (btnAddProfit) {
+        btnAddProfit.addEventListener('click', function() {
+            hideAllProfitForms();
+            document.getElementById('addProfitForm').style.display = 'block';
+        });
+    }
+
+    const btnWithdrawProfit = document.getElementById('btnWithdrawProfit');
+    if (btnWithdrawProfit) {
+        btnWithdrawProfit.addEventListener('click', function() {
+            hideAllProfitForms();
+            document.getElementById('withdrawProfitForm').style.display = 'block';
+        });
+    }
+
+    const btnAdjustProfit = document.getElementById('btnAdjustProfit');
+    if (btnAdjustProfit) {
+        btnAdjustProfit.addEventListener('click', function() {
+            hideAllProfitForms();
+            document.getElementById('adjustProfitForm').style.display = 'block';
+        });
+    }
 });
 
-document.getElementById('btnWithdrawProfit').addEventListener('click', function() {
-    hideAllProfitForms();
-    document.getElementById('withdrawProfitForm').style.display = 'block';
-});
+// 取消按鈕事件 - 確保DOM載入後執行
+document.addEventListener('DOMContentLoaded', function() {
+    const cancelAddProfit = document.getElementById('cancelAddProfit');
+    if (cancelAddProfit) {
+        cancelAddProfit.addEventListener('click', hideAllProfitForms);
+    }
 
-document.getElementById('btnAdjustProfit').addEventListener('click', function() {
-    hideAllProfitForms();
-    document.getElementById('adjustProfitForm').style.display = 'block';
-});
+    const cancelWithdrawProfit = document.getElementById('cancelWithdrawProfit');
+    if (cancelWithdrawProfit) {
+        cancelWithdrawProfit.addEventListener('click', hideAllProfitForms);
+    }
 
-// 取消按鈕事件
-document.getElementById('cancelAddProfit').addEventListener('click', hideAllProfitForms);
-document.getElementById('cancelWithdrawProfit').addEventListener('click', hideAllProfitForms);
-document.getElementById('cancelAdjustProfit').addEventListener('click', hideAllProfitForms);
+    const cancelAdjustProfit = document.getElementById('cancelAdjustProfit');
+    if (cancelAdjustProfit) {
+        cancelAdjustProfit.addEventListener('click', hideAllProfitForms);
+    }
+});
 
 // 增加利潤表單提交
 document.getElementById('addProfitFormData').addEventListener('submit', async function(e) {
