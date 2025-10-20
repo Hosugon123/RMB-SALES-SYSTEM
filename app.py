@@ -5355,12 +5355,17 @@ def api_profit_history():
     try:
         limit = request.args.get("limit", 50, type=int)
         
-        # 查詢利潤提款記錄
+        # 查詢所有利潤相關記錄（包含利潤提款和利潤扣除）
         try:
             profit_entries = (
                 db.session.execute(
                     db.select(LedgerEntry)
-                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                    .filter(
+                        (LedgerEntry.entry_type == "PROFIT_WITHDRAW") |
+                        (LedgerEntry.entry_type == "PROFIT_DEDUCT") |
+                        (LedgerEntry.description.like("%利潤提款%")) |
+                        (LedgerEntry.description.like("%利潤扣除%"))
+                    )
                     .order_by(LedgerEntry.entry_date.desc())
                     .limit(limit)
                 )
@@ -5379,10 +5384,23 @@ def api_profit_history():
         # 構建返回數據
         transactions = []
         for entry in profit_entries:
+            # 判斷是否為提款或扣除（應該顯示為負數）
+            is_withdrawal = (
+                entry.entry_type == "PROFIT_WITHDRAW" or
+                entry.entry_type == "PROFIT_DEDUCT" or
+                "利潤提款" in (entry.description or "") or
+                "利潤扣除" in (entry.description or "")
+            )
+            
+            # 根據記錄類型確定金額正負
+            display_amount = entry.amount
+            if is_withdrawal and entry.amount > 0:
+                display_amount = -entry.amount  # 提款和扣除應該顯示為負數
+            
             transactions.append({
                 "id": entry.id,
-                "transaction_type": "PROFIT_WITHDRAW",
-                "amount": entry.amount,  # 保持原始值（負數表示提款）
+                "transaction_type": entry.entry_type or "利潤變動",
+                "amount": display_amount,  # 根據類型調整正負
                 "balance_before": getattr(entry, 'profit_before', None),
                 "balance_after": getattr(entry, 'profit_after', None),
                 "description": entry.description,
@@ -7087,14 +7105,14 @@ def get_cash_management_transactions():
                     "payment_account": s.rmb_account.name if s.rmb_account else "N/A",
                     "deposit_account": "應收帳款",
                     "note": s.note if hasattr(s, 'note') and s.note else None,
-                    # 新增：RMB帳戶餘額變化
-                    "rmb_account_balance": {
+                    # 新增：出款戶餘額變化（RMB帳戶）
+                    "payment_account_balance": {
                         "before": rmb_balance_before,
                         "change": rmb_balance_change,
                         "after": rmb_balance_after
                     },
-                    # 新增：TWD帳戶餘額變化（應收帳款）
-                    "twd_account_balance": {
+                    # 新增：入款戶餘額變化（應收帳款）
+                    "deposit_account_balance": {
                         "before": 0,  # 應收帳款在售出前為0
                         "change": s.twd_amount,  # 售出後增加應收帳款
                         "after": s.twd_amount
