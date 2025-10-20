@@ -5084,6 +5084,224 @@ def get_frequent_customers():
         }), 500
 
 
+# ===================================================================
+# 利潤管理 API 端點
+# ===================================================================
+
+@app.route("/api/total-profit", methods=["GET"])
+@login_required
+def api_total_profit():
+    """計算系統總利潤的API，所有登入使用者都可以存取"""
+    try:
+        # 查詢所有已結清的銷售記錄
+        settled_sales = (
+            db.session.execute(
+                db.select(SalesRecord)
+                .filter_by(is_settled=True)
+                .order_by(SalesRecord.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        total_profit_twd = 0.0
+        total_revenue_twd = 0.0
+        total_cost_twd = 0.0
+        profit_breakdown = []
+        
+        for sale in settled_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                sale_profit = profit_info.get('profit_twd', 0.0)
+                sale_cost = profit_info.get('total_cost_twd', 0.0)
+                
+                total_profit_twd += sale_profit
+                total_cost_twd += sale_cost
+                total_revenue_twd += sale.twd_amount
+                
+                profit_breakdown.append({
+                    'sale_id': sale.id,
+                    'customer_name': sale.customer.name,
+                    'rmb_amount': sale.rmb_amount,
+                    'twd_amount': sale.twd_amount,
+                    'profit_twd': sale_profit,
+                    'cost_twd': sale_cost,
+                    'date': sale.created_at.strftime('%Y-%m-%d')
+                })
+        
+        # 計算整體利潤率
+        overall_profit_margin = (total_profit_twd / total_revenue_twd * 100) if total_revenue_twd > 0 else 0
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'total_profit_twd': round(total_profit_twd, 2),
+                'total_revenue_twd': round(total_revenue_twd, 2),
+                'total_cost_twd': round(total_cost_twd, 2),
+                'overall_profit_margin': round(overall_profit_margin, 2),
+                'settled_sales_count': len(settled_sales),
+                'profit_breakdown': profit_breakdown
+            }
+        })
+        
+    except Exception as e:
+        print(f"計算總利潤失敗: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'計算總利潤時發生錯誤: {str(e)}'
+        }), 500
+
+
+@app.route("/api/profit/add", methods=["POST"])
+@login_required
+def api_profit_add():
+    """API: 增加利潤"""
+    try:
+        data = request.get_json()
+        account_id = data.get("account_id")
+        amount = float(data.get("amount", 0))
+        transaction_type = data.get("transaction_type", "PROFIT_EARNED")
+        description = data.get("description")
+        note = data.get("note")
+        related_transaction_id = data.get("related_transaction_id")
+        related_transaction_type = data.get("related_transaction_type")
+        
+        if not account_id or amount <= 0:
+            return jsonify({"status": "error", "message": "無效的帳戶ID或金額"}), 400
+        
+        result = ProfitService.add_profit(
+            account_id=account_id,
+            amount=amount,
+            transaction_type=transaction_type,
+            description=description,
+            note=note,
+            related_transaction_id=related_transaction_id,
+            related_transaction_type=related_transaction_type,
+            operator_id=current_user.id
+        )
+        
+        if result["success"]:
+            return jsonify({"status": "success", "data": result})
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"增加利潤失敗: {str(e)}"}), 500
+
+
+@app.route("/api/profit/withdraw", methods=["POST"])
+@login_required
+def api_profit_withdraw():
+    """API: 提取利潤 - 從系統總利潤中扣除"""
+    try:
+        data = request.get_json()
+        amount = float(data.get("amount", 0))
+        description = data.get("description", "利潤提款")
+        note = data.get("note", "")
+        
+        if amount <= 0:
+            return jsonify({"status": "error", "message": "無效的提款金額"}), 400
+        
+        # 計算當前總利潤
+        total_profit = 0.0
+        all_sales = db.session.execute(db.select(SalesRecord).filter_by(is_settled=True)).scalars().all()
+        
+        for sale in all_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                total_profit += profit_info.get('profit_twd', 0.0)
+        
+        # 扣除之前的利潤提款
+        previous_withdrawals = db.session.execute(
+            db.select(LedgerEntry)
+            .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+        ).scalars().all()
+        
+        total_withdrawals = sum(entry.amount for entry in previous_withdrawals)
+        current_profit = total_profit - total_withdrawals
+        
+        if current_profit < amount:
+            return jsonify({"status": "error", "message": f"利潤餘額不足，當前可用利潤: NT$ {current_profit:.2f}"}), 400
+        
+        # 創建利潤提款記錄
+        entry = LedgerEntry(
+            entry_type="PROFIT_WITHDRAW",
+            amount=-amount,  # 負數表示扣除
+            description=f"{description} - {note}" if note else description,
+            operator_id=current_user.id,
+            profit_before=current_profit,
+            profit_after=current_profit - amount,
+            profit_change=-amount
+        )
+        
+        db.session.add(entry)
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"利潤提款成功: NT$ {amount:.2f}",
+            "data": {
+                "amount": amount,
+                "profit_before": current_profit,
+                "profit_after": current_profit - amount,
+                "transaction_id": entry.id
+            }
+        })
+            
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": f"提取利潤失敗: {str(e)}"}), 500
+
+
+@app.route("/api/profit/adjust", methods=["POST"])
+@login_required
+def api_profit_adjust():
+    """API: 調整利潤餘額"""
+    try:
+        data = request.get_json()
+        account_id = data.get("account_id")
+        new_balance = float(data.get("new_balance", 0))
+        description = data.get("description")
+        note = data.get("note")
+        
+        if not account_id:
+            return jsonify({"status": "error", "message": "無效的帳戶ID"}), 400
+        
+        result = ProfitService.adjust_profit(
+            account_id=account_id,
+            new_balance=new_balance,
+            description=description,
+            note=note,
+            operator_id=current_user.id
+        )
+        
+        if result["success"]:
+            return jsonify({"status": "success", "data": result})
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"調整利潤失敗: {str(e)}"}), 500
+
+
+@app.route("/api/profit/history", methods=["GET"])
+@login_required
+def api_profit_history():
+    """API: 獲取利潤變動歷史"""
+    try:
+        account_id = request.args.get("account_id", type=int)
+        limit = request.args.get("limit", 50, type=int)
+        
+        result = ProfitService.get_profit_history(account_id=account_id, limit=limit)
+        
+        if result["success"]:
+            return jsonify({"status": "success", "data": result})
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"獲取利潤歷史失敗: {str(e)}"}), 500
+
 
 @app.route("/api/calculate_profit", methods=["POST"])
 @login_required
@@ -8173,221 +8391,3 @@ def independent_balance():
 # ===================================================================
 if __name__ == "__main__":
     app.run(debug=True)
-
-@app.route("/api/total-profit", methods=["GET"])
-@login_required
-def api_total_profit():
-    """計算系統總利潤的API，所有登入使用者都可以存取"""
-    try:
-        # 查詢所有已結清的銷售記錄
-        settled_sales = (
-            db.session.execute(
-                db.select(SalesRecord)
-                .filter_by(is_settled=True)
-                .order_by(SalesRecord.created_at.desc())
-            )
-            .scalars()
-            .all()
-        )
-        
-        total_profit_twd = 0.0
-        total_revenue_twd = 0.0
-        total_cost_twd = 0.0
-        profit_breakdown = []
-        
-        for sale in settled_sales:
-            profit_info = FIFOService.calculate_profit_for_sale(sale)
-            if profit_info:
-                sale_profit = profit_info.get('profit_twd', 0.0)
-                sale_cost = profit_info.get('total_cost_twd', 0.0)
-                
-                total_profit_twd += sale_profit
-                total_cost_twd += sale_cost
-                total_revenue_twd += sale.twd_amount
-                
-                profit_breakdown.append({
-                    'sale_id': sale.id,
-                    'customer_name': sale.customer.name,
-                    'rmb_amount': sale.rmb_amount,
-                    'twd_amount': sale.twd_amount,
-                    'profit_twd': sale_profit,
-                    'cost_twd': sale_cost,
-                    'date': sale.created_at.strftime('%Y-%m-%d')
-                })
-        
-        # 計算整體利潤率
-        overall_profit_margin = (total_profit_twd / total_revenue_twd * 100) if total_revenue_twd > 0 else 0
-        
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'total_profit_twd': round(total_profit_twd, 2),
-                'total_revenue_twd': round(total_revenue_twd, 2),
-                'total_cost_twd': round(total_cost_twd, 2),
-                'overall_profit_margin': round(overall_profit_margin, 2),
-                'settled_sales_count': len(settled_sales),
-                'profit_breakdown': profit_breakdown
-            }
-        })
-        
-    except Exception as e:
-        print(f"計算總利潤失敗: {e}")
-        return jsonify({
-            'status': 'error',
-            'message': f'計算總利潤時發生錯誤: {str(e)}'
-        }), 500
-
-
-# ===================================================================
-# 利潤管理 API 端點
-# ===================================================================
-
-@app.route("/api/profit/add", methods=["POST"])
-@login_required
-def api_profit_add():
-    """API: 增加利潤"""
-    try:
-        data = request.get_json()
-        account_id = data.get("account_id")
-        amount = float(data.get("amount", 0))
-        transaction_type = data.get("transaction_type", "PROFIT_EARNED")
-        description = data.get("description")
-        note = data.get("note")
-        related_transaction_id = data.get("related_transaction_id")
-        related_transaction_type = data.get("related_transaction_type")
-        
-        if not account_id or amount <= 0:
-            return jsonify({"status": "error", "message": "無效的帳戶ID或金額"}), 400
-        
-        result = ProfitService.add_profit(
-            account_id=account_id,
-            amount=amount,
-            transaction_type=transaction_type,
-            description=description,
-            note=note,
-            related_transaction_id=related_transaction_id,
-            related_transaction_type=related_transaction_type,
-            operator_id=current_user.id
-        )
-        
-        if result["success"]:
-            return jsonify({"status": "success", "data": result})
-        else:
-            return jsonify({"status": "error", "message": result["message"]}), 400
-            
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"增加利潤失敗: {str(e)}"}), 500
-
-
-@app.route("/api/profit/withdraw", methods=["POST"])
-@login_required
-def api_profit_withdraw():
-    """API: 提取利潤 - 從系統總利潤中扣除"""
-    try:
-        data = request.get_json()
-        amount = float(data.get("amount", 0))
-        description = data.get("description", "利潤提款")
-        note = data.get("note", "")
-        
-        if amount <= 0:
-            return jsonify({"status": "error", "message": "無效的提款金額"}), 400
-        
-        # 計算當前總利潤
-        total_profit = 0.0
-        all_sales = db.session.execute(db.select(SalesRecord).filter_by(is_settled=True)).scalars().all()
-        
-        for sale in all_sales:
-            profit_info = FIFOService.calculate_profit_for_sale(sale)
-            if profit_info:
-                total_profit += profit_info.get('profit_twd', 0.0)
-        
-        # 扣除之前的利潤提款
-        previous_withdrawals = db.session.execute(
-            db.select(LedgerEntry)
-            .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
-        ).scalars().all()
-        
-        total_withdrawals = sum(entry.amount for entry in previous_withdrawals)
-        current_profit = total_profit - total_withdrawals
-        
-        if current_profit < amount:
-            return jsonify({"status": "error", "message": f"利潤餘額不足，當前可用利潤: NT$ {current_profit:.2f}"}), 400
-        
-        # 創建利潤提款記錄
-        entry = LedgerEntry(
-            entry_type="PROFIT_WITHDRAW",
-            amount=-amount,  # 負數表示扣除
-            description=f"{description} - {note}" if note else description,
-            operator_id=current_user.id,
-            profit_before=current_profit,
-            profit_after=current_profit - amount,
-            profit_change=-amount
-        )
-        
-        db.session.add(entry)
-        db.session.commit()
-        
-        return jsonify({
-            "status": "success", 
-            "message": f"利潤提款成功: NT$ {amount:.2f}",
-            "data": {
-                "amount": amount,
-                "profit_before": current_profit,
-                "profit_after": current_profit - amount,
-                "transaction_id": entry.id
-            }
-        })
-            
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"status": "error", "message": f"提取利潤失敗: {str(e)}"}), 500
-
-
-@app.route("/api/profit/adjust", methods=["POST"])
-@login_required
-def api_profit_adjust():
-    """API: 調整利潤餘額"""
-    try:
-        data = request.get_json()
-        account_id = data.get("account_id")
-        new_balance = float(data.get("new_balance", 0))
-        description = data.get("description")
-        note = data.get("note")
-        
-        if not account_id:
-            return jsonify({"status": "error", "message": "無效的帳戶ID"}), 400
-        
-        result = ProfitService.adjust_profit(
-            account_id=account_id,
-            new_balance=new_balance,
-            description=description,
-            note=note,
-            operator_id=current_user.id
-        )
-        
-        if result["success"]:
-            return jsonify({"status": "success", "data": result})
-        else:
-            return jsonify({"status": "error", "message": result["message"]}), 400
-            
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"調整利潤失敗: {str(e)}"}), 500
-
-
-@app.route("/api/profit/history", methods=["GET"])
-@login_required
-def api_profit_history():
-    """API: 獲取利潤變動歷史"""
-    try:
-        account_id = request.args.get("account_id", type=int)
-        limit = request.args.get("limit", 50, type=int)
-        
-        result = ProfitService.get_profit_history(account_id=account_id, limit=limit)
-        
-        if result["success"]:
-            return jsonify({"status": "success", "data": result})
-        else:
-            return jsonify({"status": "error", "message": result["message"]}), 400
-            
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"獲取利潤歷史失敗: {str(e)}"}), 500
