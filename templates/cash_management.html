@@ -1582,25 +1582,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 const before = (profitDetail.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const after = (profitDetail.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const change = (profitDetail.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
-                const changeColor = (profitDetail.change || 0) > 0 ? 'text-success' : 'text-danger';
+                const changeColor = 'text-primary';  // 利潤變動數字使用淺藍色
                 const changeSymbol = (profitDetail.change || 0) > 0 ? '+' : '';
                 
                 profitChangeHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #ffeaa7;">' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
                     '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                     '</div>';
             } else if (m.profit_before !== null && m.profit_after !== null && m.profit_change !== null) {
                 const before = (m.profit_before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const after = (m.profit_after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const change = (m.profit_change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
-                const changeColor = (m.profit_change || 0) > 0 ? 'text-success' : 'text-danger';
+                const changeColor = 'text-primary';  // 利潤變動數字使用淺藍色
                 const changeSymbol = (m.profit_change || 0) > 0 ? '+' : '';
                 
                 profitChangeHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #ffeaa7;">' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
                     '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                     '</div>';
             } else if (profit !== 0) {
                 // 有傳統利潤記錄，顯示簡單信息
@@ -1632,9 +1632,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 
                 paymentAccountBalanceHtml = '<div class="card" style="background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #e0e0e0;">' +
                     '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #007bff; padding-bottom: 4px; margin-bottom: 4px;">' + paymentAccount + '</div>' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
                     '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                     '</div>';
             }
             
@@ -1655,9 +1655,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 const depositChangeColorClass = depositHeaderIsRmb ? 'text-success' : 'text-primary';
                 depositAccountBalanceHtml = '<div class="card" style="background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #e0e0e0;">' +
                     '<div class="' + depositHeaderColorClass + ' fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: ' + depositHeaderBorder + '; padding-bottom: 4px; margin-bottom: 4px;">' + depositAccount + '</div>' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
                     '<div class="' + depositChangeColorClass + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
-                    '<div class="text-primary" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                     '</div>';
             }
             
@@ -2442,7 +2442,7 @@ window.renderMovements = function(transactions) {
             const before = (profitDetail.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
             const after = (profitDetail.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
             const change = (profitDetail.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
-            const changeColor = (profitDetail.change || 0) > 0 ? 'text-success' : (profitDetail.change || 0) < 0 ? 'text-danger' : 'text-muted';
+            const changeColor = 'text-primary';  // 利潤變動數字使用淺藍色
             const changeSymbol = (profitDetail.change || 0) > 0 ? '+' : '';
             
             profitDetailHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
@@ -2452,7 +2452,7 @@ window.renderMovements = function(transactions) {
                 '</div>';
         } else if (profitBefore !== null && profitAfter !== null && profitChange !== null) {
             // 有利潤變動記錄，顯示詳細信息
-            const changeColorClass = profitChange > 0 ? 'text-success' : 'text-danger';
+            const changeColorClass = 'text-primary';  // 利潤變動數字使用淺藍色
             const changeSymbol = profitChange > 0 ? '+' : '';
             
             console.log('✅ 渲染詳細利潤信息:', {
