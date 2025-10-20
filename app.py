@@ -2483,12 +2483,13 @@ def api_sales_entry():
             fifo_result = FIFOService.allocate_inventory_for_sale(new_sale)
             print(f"FIFO庫存分配成功: {fifo_result}")
             
-            # 5. 自動記錄利潤到RMB帳戶
+            # 5. 自動記錄利潤到RMB帳戶和LedgerEntry
             if fifo_result and 'profit_twd' in fifo_result and fifo_result['profit_twd'] > 0:
                 try:
                     # 找到對應的RMB帳戶
                     rmb_account = new_sale.rmb_account
                     if rmb_account:
+                        # 記錄到ProfitService（保持原有邏輯）
                         profit_result = ProfitService.add_profit(
                             account_id=rmb_account.id,
                             amount=fifo_result['profit_twd'],
@@ -2499,6 +2500,43 @@ def api_sales_entry():
                             related_transaction_type="SALES",
                             operator_id=current_user.id
                         )
+                        
+                        # 同時記錄到LedgerEntry中，用於利潤管理歷史
+                        try:
+                            # 計算當前總利潤（用於profit_before）
+                            all_sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+                            current_total_profit = 0.0
+                            for sale in all_sales:
+                                sale_profit_info = FIFOService.calculate_profit_for_sale(sale)
+                                if sale_profit_info:
+                                    current_total_profit += sale_profit_info.get('profit_twd', 0.0)
+                            
+                            # 扣除之前的利潤提款
+                            try:
+                                profit_withdrawals = db.session.execute(
+                                    db.select(LedgerEntry)
+                                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                                ).scalars().all()
+                                total_withdrawals = sum(entry.amount for entry in profit_withdrawals)
+                                current_total_profit -= total_withdrawals
+                            except:
+                                pass  # 如果查詢失敗，忽略
+                            
+                            # 創建利潤記錄
+                            profit_entry = LedgerEntry(
+                                entry_type="PROFIT_EARNED",
+                                amount=fifo_result['profit_twd'],
+                                description=f"售出利潤：{customer.name}",
+                                operator_id=current_user.id,
+                                profit_before=current_total_profit - fifo_result['profit_twd'],
+                                profit_after=current_total_profit,
+                                profit_change=fifo_result['profit_twd']
+                            )
+                            db.session.add(profit_entry)
+                            print(f"✅ 記錄售出利潤到LedgerEntry成功: {fifo_result['profit_twd']:.2f} TWD")
+                        except Exception as ledger_error:
+                            print(f"⚠️ 記錄售出利潤到LedgerEntry失敗: {ledger_error}")
+                        
                         if profit_result["success"]:
                             print(f"✅ 自動記錄銷售利潤成功: {fifo_result['profit_twd']:.2f} TWD")
                         else:
@@ -5353,21 +5391,45 @@ def api_profit_adjust():
 def api_profit_history():
     """API: 獲取利潤變動歷史 - 從LedgerEntry中獲取利潤提款記錄"""
     try:
-        limit = request.args.get("limit", 50, type=int)
+        page = request.args.get("page", 1, type=int)
+        per_page = request.args.get("per_page", 10, type=int)  # 每頁10筆
+        limit = per_page
         
         # 查詢所有利潤相關記錄（包含利潤提款和利潤扣除）
         try:
+            # 先查詢總數
+            total_query = (
+                db.select(db.func.count(LedgerEntry.id))
+                .filter(
+                    (LedgerEntry.entry_type == "PROFIT_WITHDRAW") |
+                    (LedgerEntry.entry_type == "PROFIT_DEDUCT") |
+                    (LedgerEntry.entry_type == "PROFIT_EARNED") |
+                    (LedgerEntry.description.like("%利潤提款%")) |
+                    (LedgerEntry.description.like("%利潤扣除%")) |
+                    (LedgerEntry.description.like("%售出利潤%"))
+                )
+            )
+            total_count = db.session.execute(total_query).scalar()
+            
+            # 計算分頁
+            total_pages = (total_count + per_page - 1) // per_page
+            offset = (page - 1) * per_page
+            
+            # 查詢分頁數據
             profit_entries = (
                 db.session.execute(
                     db.select(LedgerEntry)
                     .filter(
                         (LedgerEntry.entry_type == "PROFIT_WITHDRAW") |
                         (LedgerEntry.entry_type == "PROFIT_DEDUCT") |
+                        (LedgerEntry.entry_type == "PROFIT_EARNED") |
                         (LedgerEntry.description.like("%利潤提款%")) |
-                        (LedgerEntry.description.like("%利潤扣除%"))
+                        (LedgerEntry.description.like("%利潤扣除%")) |
+                        (LedgerEntry.description.like("%售出利潤%"))
                     )
                     .order_by(LedgerEntry.entry_date.desc())
-                    .limit(limit)
+                    .offset(offset)
+                    .limit(per_page)
                 )
                 .scalars()
                 .all()
@@ -5413,7 +5475,15 @@ def api_profit_history():
             "status": "success", 
             "data": {
                 "success": True,
-                "transactions": transactions
+                "transactions": transactions,
+                "pagination": {
+                    "current_page": page,
+                    "per_page": per_page,
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
             }
         })
             
@@ -7111,12 +7181,7 @@ def get_cash_management_transactions():
                         "change": rmb_balance_change,
                         "after": rmb_balance_after
                     },
-                    # 新增：入款戶餘額變化（應收帳款）
-                    "deposit_account_balance": {
-                        "before": 0,  # 應收帳款在售出前為0
-                        "change": s.twd_amount,  # 售出後增加應收帳款
-                        "after": s.twd_amount
-                    },
+                    # 應收帳款變動不記錄在交易紀錄中
                     # 新增：利潤變動記錄
                     "profit_change": profit,  # 直接使用數字
                     "profit_change_detail": {
