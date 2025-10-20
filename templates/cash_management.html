@@ -3124,11 +3124,7 @@ function openProfitManagementModal() {
             document.getElementById('totalSystemProfit').innerText = '載入失敗';
         });
 
-    // 載入可提款的利潤來源帳戶
-    loadProfitSourceAccounts();
-    
-    // 載入所有現金帳戶作為轉入目標
-    loadCashAccounts();
+    // 利潤提款不需要選擇帳戶，直接從系統總利潤扣除
     
     // 載入利潤更動紀錄
     loadProfitHistory();
@@ -3138,33 +3134,7 @@ function openProfitManagementModal() {
     profitModal.show();
 }
 
-// 載入有利潤餘額的帳戶
-function loadProfitSourceAccounts() {
-    const sourceAccountSelect = document.getElementById('withdrawSourceAccount');
-    sourceAccountSelect.innerHTML = '<option value="" selected disabled>請選擇利潤來源帳戶</option>';
-    
-    (window.ownerAccountsData || []).forEach(function(acc){
-        if (acc.profit_balance > 0) {
-            const option = document.createElement('option');
-            option.value = acc.id;
-            option.innerText = `${acc.name} (利潤餘額: NT$ ${acc.profit_balance.toLocaleString('en-US', {minimumFractionDigits: 2})})`;
-            sourceAccountSelect.appendChild(option);
-        }
-    });
-}
-
-// 載入所有現金帳戶
-function loadCashAccounts() {
-    const targetAccountSelect = document.getElementById('withdrawTargetAccount');
-    targetAccountSelect.innerHTML = '<option value="" selected disabled>請選擇轉入的現金帳戶</option>';
-    
-    (window.ownerAccountsData || []).forEach(function(acc){
-        const option = document.createElement('option');
-        option.value = acc.id;
-        option.innerText = `${acc.name} (${acc.currency})`;
-        targetAccountSelect.appendChild(option);
-    });
-}
+// 這些函數已移除，因為利潤提款不再需要選擇帳戶
 
 // 隱藏所有利潤表單
 function hideAllProfitForms() {
@@ -3221,11 +3191,10 @@ document.getElementById('withdrawProfitForm').addEventListener('submit', async f
     e.preventDefault();
     
     const amount = parseFloat(document.getElementById('withdrawAmount').value);
-    const sourceAccountId = document.getElementById('withdrawSourceAccount').value;
-    const targetAccountId = document.getElementById('withdrawTargetAccount').value;
+    const note = document.getElementById('withdrawNote').value;
     
-    if (!amount || !sourceAccountId || !targetAccountId) {
-        Swal.fire('錯誤', '請填寫所有提款資訊', 'error');
+    if (!amount || amount <= 0) {
+        Swal.fire('錯誤', '請輸入有效的提款金額', 'error');
         return;
     }
     
@@ -3236,10 +3205,9 @@ document.getElementById('withdrawProfitForm').addEventListener('submit', async f
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                account_id: sourceAccountId,
                 amount: amount,
-                description: `利潤提款轉入現金帳戶`,
-                note: `從利潤帳戶提款轉入現金帳戶`
+                description: `利潤提款`,
+                note: note || '利潤提款'
             }),
         });
         
@@ -3421,22 +3389,12 @@ document.getElementById('adjustProfitFormData').addEventListener('submit', async
                                 <div class="mb-3">
                                     <label for="withdrawAmount" class="form-label">提款金額</label>
                                     <input type="number" class="form-control" id="withdrawAmount" step="0.01" min="0" required>
+                                    <small class="form-text text-muted">從系統利潤總額中扣除</small>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="withdrawSourceAccount" class="form-label">從哪個利潤帳戶提款</label>
-                                    <select class="form-select" id="withdrawSourceAccount" required>
-                                        <option value="" selected disabled>請選擇利潤來源帳戶</option>
-                                        <!-- Options will be loaded dynamically from accounts with profit_balance > 0 -->
-                                    </select>
-                                    <small class="form-text text-muted">僅顯示有利潤餘額的帳戶</small>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="withdrawTargetAccount" class="form-label">轉入哪個現金帳戶</label>
-                                    <select class="form-select" id="withdrawTargetAccount" required>
-                                        <option value="" selected disabled>請選擇轉入的現金帳戶</option>
-                                        <!-- Options will be loaded dynamically from all cash accounts -->
-                                    </select>
-                                    <small class="form-text text-muted">利潤將轉入此現金帳戶</small>
+                                    <label for="withdrawNote" class="form-label">備註</label>
+                                    <textarea class="form-control" id="withdrawNote" rows="3" placeholder="請註明提款用途或去向..."></textarea>
+                                    <small class="form-text text-muted">例如：個人提款、投資用途、緊急支出等</small>
                                 </div>
                                 <button type="submit" class="btn btn-primary w-100 mt-3">確認提款</button>
                             </form>

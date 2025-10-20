@@ -6779,7 +6779,7 @@ def get_cash_management_transactions():
                     }
                 })
 
-        # 處理其他記帳記錄（排除銷帳）
+        # 處理其他記帳記錄（包含利潤提款）
         for entry in misc_entries:
             if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT"]:
                 twd_change = 0
@@ -6819,6 +6819,9 @@ def get_cash_management_transactions():
                         payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
                     else:
                         payment_account = "N/A"
+                elif entry.entry_type in ["PROFIT_WITHDRAW"]:
+                    payment_account = "系統利潤"
+                    deposit_account = "利潤提款"
 
                 # 構建基本記錄
                 record = {
@@ -6858,6 +6861,10 @@ def get_cash_management_transactions():
                     profit_before = getattr(entry, 'profit_before', None)
                     profit_after = getattr(entry, 'profit_after', None)
                     profit_change = getattr(entry, 'profit_change', None)
+                    
+                    # 為利潤提款設置特殊的類型顯示和金額變化
+                    record["type"] = "利潤提款"
+                    record["twd_change"] = entry.amount  # 利潤提款的金額變化
                     
                     record["profit_before"] = profit_before
                     record["profit_after"] = profit_after
@@ -8275,31 +8282,64 @@ def api_profit_add():
 @app.route("/api/profit/withdraw", methods=["POST"])
 @login_required
 def api_profit_withdraw():
-    """API: 提取利潤"""
+    """API: 提取利潤 - 從系統總利潤中扣除"""
     try:
         data = request.get_json()
-        account_id = data.get("account_id")
         amount = float(data.get("amount", 0))
-        description = data.get("description")
-        note = data.get("note")
+        description = data.get("description", "利潤提款")
+        note = data.get("note", "")
         
-        if not account_id or amount <= 0:
-            return jsonify({"status": "error", "message": "無效的帳戶ID或金額"}), 400
+        if amount <= 0:
+            return jsonify({"status": "error", "message": "無效的提款金額"}), 400
         
-        result = ProfitService.withdraw_profit(
-            account_id=account_id,
-            amount=amount,
-            description=description,
-            note=note,
-            operator_id=current_user.id
+        # 計算當前總利潤
+        total_profit = 0.0
+        all_sales = db.session.execute(db.select(SalesRecord).filter_by(is_settled=True)).scalars().all()
+        
+        for sale in all_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                total_profit += profit_info.get('profit_twd', 0.0)
+        
+        # 扣除之前的利潤提款
+        previous_withdrawals = db.session.execute(
+            db.select(LedgerEntry)
+            .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+        ).scalars().all()
+        
+        total_withdrawals = sum(entry.amount for entry in previous_withdrawals)
+        current_profit = total_profit - total_withdrawals
+        
+        if current_profit < amount:
+            return jsonify({"status": "error", "message": f"利潤餘額不足，當前可用利潤: NT$ {current_profit:.2f}"}), 400
+        
+        # 創建利潤提款記錄
+        entry = LedgerEntry(
+            entry_type="PROFIT_WITHDRAW",
+            amount=-amount,  # 負數表示扣除
+            description=f"{description} - {note}" if note else description,
+            operator_id=current_user.id,
+            profit_before=current_profit,
+            profit_after=current_profit - amount,
+            profit_change=-amount
         )
         
-        if result["success"]:
-            return jsonify({"status": "success", "data": result})
-        else:
-            return jsonify({"status": "error", "message": result["message"]}), 400
+        db.session.add(entry)
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"利潤提款成功: NT$ {amount:.2f}",
+            "data": {
+                "amount": amount,
+                "profit_before": current_profit,
+                "profit_after": current_profit - amount,
+                "transaction_id": entry.id
+            }
+        })
             
     except Exception as e:
+        db.session.rollback()
         return jsonify({"status": "error", "message": f"提取利潤失敗: {str(e)}"}), 500
 
 
