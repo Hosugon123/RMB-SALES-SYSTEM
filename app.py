@@ -5104,13 +5104,61 @@ def api_total_profit():
             .all()
         )
         
+        print(f"DEBUG: 找到 {len(settled_sales)} 筆已結清銷售記錄")
+        
+        # 如果沒有已結清的銷售記錄，檢查是否有任何銷售記錄
+        if len(settled_sales) == 0:
+            print("DEBUG: 沒有已結清的銷售記錄，檢查所有銷售記錄")
+            all_sales = (
+                db.session.execute(
+                    db.select(SalesRecord)
+                    .order_by(SalesRecord.created_at.desc())
+                )
+                .scalars()
+                .all()
+            )
+            print(f"DEBUG: 找到 {len(all_sales)} 筆所有銷售記錄")
+            
+            # 如果還是沒有銷售記錄，檢查是否有買入記錄
+            if len(all_sales) == 0:
+                purchases = (
+                    db.session.execute(
+                        db.select(PurchaseRecord)
+                        .order_by(PurchaseRecord.purchase_date.desc())
+                    )
+                    .scalars()
+                    .all()
+                )
+                print(f"DEBUG: 找到 {len(purchases)} 筆買入記錄")
+                
+                if len(purchases) == 0:
+                    print("DEBUG: 沒有任何銷售或買入記錄，返回零利潤")
+                    return jsonify({
+                        'status': 'success',
+                        'data': {
+                            'total_profit_twd': 0.0,
+                            'total_revenue_twd': 0.0,
+                            'total_cost_twd': 0.0,
+                            'overall_profit_margin': 0.0,
+                            'settled_sales_count': 0,
+                            'profit_breakdown': [],
+                            'message': '系統中沒有銷售記錄，無法計算利潤'
+                        }
+                    })
+        
         total_profit_twd = 0.0
         total_revenue_twd = 0.0
         total_cost_twd = 0.0
         profit_breakdown = []
         
-        for sale in settled_sales:
+        # 使用已結清的銷售記錄，如果沒有則使用所有銷售記錄
+        sales_to_process = settled_sales if len(settled_sales) > 0 else all_sales
+        
+        for sale in sales_to_process:
+            print(f"DEBUG: 處理銷售記錄 ID: {sale.id}, 客戶: {sale.customer.name if sale.customer else 'N/A'}")
             profit_info = FIFOService.calculate_profit_for_sale(sale)
+            print(f"DEBUG: 利潤計算結果: {profit_info}")
+            
             if profit_info:
                 sale_profit = profit_info.get('profit_twd', 0.0)
                 sale_cost = profit_info.get('total_cost_twd', 0.0)
@@ -5119,18 +5167,24 @@ def api_total_profit():
                 total_cost_twd += sale_cost
                 total_revenue_twd += sale.twd_amount
                 
+                print(f"DEBUG: 銷售 {sale.id} - 利潤: {sale_profit}, 成本: {sale_cost}, 收入: {sale.twd_amount}")
+                
                 profit_breakdown.append({
                     'sale_id': sale.id,
-                    'customer_name': sale.customer.name,
+                    'customer_name': sale.customer.name if sale.customer else 'N/A',
                     'rmb_amount': sale.rmb_amount,
                     'twd_amount': sale.twd_amount,
                     'profit_twd': sale_profit,
                     'cost_twd': sale_cost,
                     'date': sale.created_at.strftime('%Y-%m-%d')
                 })
+            else:
+                print(f"DEBUG: 銷售記錄 {sale.id} 無法計算利潤")
         
         # 計算整體利潤率
         overall_profit_margin = (total_profit_twd / total_revenue_twd * 100) if total_revenue_twd > 0 else 0
+        
+        print(f"DEBUG: 最終計算結果 - 總利潤: {total_profit_twd}, 總收入: {total_revenue_twd}, 總成本: {total_cost_twd}")
         
         return jsonify({
             'status': 'success',
@@ -5146,6 +5200,8 @@ def api_total_profit():
         
     except Exception as e:
         print(f"計算總利潤失敗: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
             'message': f'計算總利潤時發生錯誤: {str(e)}'
