@@ -22,10 +22,13 @@ def upgrade():
         'cash_accounts',
         sa.Column('profit_balance', sa.Float(), nullable=False, server_default='0')
     )
-    # 既有資料填入後，移除隱性預設
+    # 既有資料填入後，移除隱性預設（SQLite 不支援 ALTER COLUMN DROP DEFAULT，跳過）
+    bind = op.get_bind()
+    dialect = bind.dialect.name if bind is not None else None
     with op.get_context().autocommit_block():
         op.execute("UPDATE cash_accounts SET profit_balance = 0 WHERE profit_balance IS NULL")
-    op.alter_column('cash_accounts', 'profit_balance', server_default=None)
+    if dialect and dialect.lower() != 'sqlite':
+        op.alter_column('cash_accounts', 'profit_balance', server_default=None)
 
 
 def downgrade():

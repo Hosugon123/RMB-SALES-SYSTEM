@@ -212,6 +212,10 @@
                 font-size: 0.875rem;
             }
         }
+
+        /* 全域幣別顏色：台幣(藍)、人民幣(綠) */
+        .currency-twd { color: #0d6efd !important; }
+        .currency-rmb { color: #198754 !important; }
     </style>
     {% block styles %}{% endblock %}
 </head>
@@ -465,6 +469,98 @@
                         sidebarOverlay.classList.remove('show');
                     }
                 }
+            }
+
+            // 全域：僅將「帶數字的金額」上色（例如 NT$ 1,234、TWD 100、¥ 50、RMB 20）
+            try {
+                // 僅匹配「幣別 + 數字」的片段，不處理純文字「台幣/人民幣」
+                const REGEXES = [
+                    { re: /(NT\$\s*[+\-]?\d[\d,]*(?:\.\d+)?)/g, cls: 'currency-twd' },
+                    { re: /(TWD\s*:?[+\-]?\s*\d[\d,]*(?:\.\d+)?)/g, cls: 'currency-twd' },
+                    { re: /(¥\s*[+\-]?\d[\d,]*(?:\.\d+)?)/g, cls: 'currency-rmb' },
+                    { re: /(RMB\s*:?[+\-]?\s*\d[\d,]*(?:\.\d+)?)/g, cls: 'currency-rmb' }
+                ];
+
+                function shouldSkipElement(el) {
+                    if (!el) return true;
+                    // 保持紅/黃區域、徽章、按鈕與已有文字色彩不變
+                    if (el.closest('.text-danger, .text-warning, .badge, .btn, [role="button"], [class*="text-"]')) return true;
+                    return false;
+                }
+
+                function colorizeTextNodes(root) {
+                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                        acceptNode: function(node) {
+                            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+                            if (shouldSkipElement(node.parentElement)) return NodeFilter.FILTER_REJECT;
+                            // 若包含幣別加數字的片段才處理
+                            for (let i = 0; i < REGEXES.length; i++) {
+                                if (REGEXES[i].re.test(node.nodeValue)) {
+                                    // 重置 lastIndex 以便後續 replace 正常
+                                    REGEXES[i].re.lastIndex = 0;
+                                    return NodeFilter.FILTER_ACCEPT;
+                                }
+                                REGEXES[i].re.lastIndex = 0;
+                            }
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                    });
+
+                    const targets = [];
+                    while (walker.nextNode()) targets.push(walker.currentNode);
+
+                    targets.forEach(function(textNode){
+                        const original = textNode.nodeValue;
+                        const fragment = document.createDocumentFragment();
+                        let remaining = original;
+
+                        // 將多個 regex 串接處理，確保不重疊地分段
+                        function processOnce(text) {
+                            let minIndex = -1, minMatch = null, minRegex = null;
+                            for (let i = 0; i < REGEXES.length; i++) {
+                                REGEXES[i].re.lastIndex = 0;
+                                const m = REGEXES[i].re.exec(text);
+                                if (m) {
+                                    const idx = m.index;
+                                    if (minIndex === -1 || idx < minIndex) {
+                                        minIndex = idx; minMatch = m[0]; minRegex = REGEXES[i];
+                                    }
+                                }
+                            }
+                            if (minIndex === -1) return null;
+                            return { index: minIndex, value: minMatch, cls: minRegex.cls };
+                        }
+
+                        while (remaining && remaining.length) {
+                            const hit = processOnce(remaining);
+                            if (!hit) {
+                                fragment.appendChild(document.createTextNode(remaining));
+                                break;
+                            }
+                            if (hit.index > 0) {
+                                fragment.appendChild(document.createTextNode(remaining.slice(0, hit.index)));
+                            }
+                            const span = document.createElement('span');
+                            span.className = hit.cls;
+                            span.textContent = hit.value;
+                            fragment.appendChild(span);
+                            remaining = remaining.slice(hit.index + hit.value.length);
+                        }
+
+                        textNode.parentNode.replaceChild(fragment, textNode);
+                    });
+                }
+
+                function applyCurrencyColorize() {
+                    colorizeTextNodes(document.body);
+                }
+
+                // 初次與互動後套用
+                applyCurrencyColorize();
+                setTimeout(applyCurrencyColorize, 100);
+                document.addEventListener('click', function(){ setTimeout(applyCurrencyColorize, 0); });
+            } catch (e) {
+                console.warn('幣別著色處理失敗:', e);
             }
         });
     </script>

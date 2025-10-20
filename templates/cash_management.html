@@ -91,6 +91,10 @@
                 <button class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#transferModal">
                     <i class="bi bi-arrow-left-right me-1"></i>內部轉帳
                 </button>
+                <!-- 新增：集中利潤操作主按鈕 -->
+                <button class="btn btn-warning btn-sm" id="btnOpenGlobalProfit">
+                    <i class="bi bi-cash-coin me-1"></i>利潤
+                </button>
                 <button class="btn btn-secondary btn-sm" onclick="manualRefreshData()">
                     <i class="bi bi-arrow-clockwise me-1"></i>刷新數據
                 </button>
@@ -146,7 +150,7 @@
                                 <span class="fw-bold text-danger">NT$ {{ "{:,.2f}".format(customer.total_receivables_twd) }}</span>
                             </td>
                             <td class="text-center">
-                                <button class="btn btn-success btn-sm settlement-btn" 
+                                <button class="btn btn-primary btn-sm settlement-btn" 
                                         data-customer-id="{{ customer.id }}" 
                                         data-customer-name="{{ customer.name }}" 
                                         data-amount="{{ customer.total_receivables_twd }}">
@@ -416,15 +420,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     accountsHtml += '<div class="d-flex align-items-center">';
                     accountsHtml += '<div class="me-3 text-end" style="min-width: 200px;">';
                     accountsHtml += '<div class="' + currencyTextClass + ' fw-bold account-balance">' + acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
-                    accountsHtml += '<div class="text-warning small">利潤: ' + (acc.profit_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
                     accountsHtml += '</div>';
                     accountsHtml += '<div class="btn-group btn-group-sm">';
                     accountsHtml += '<button class="btn btn-outline-primary btn-movement btn-sm" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" title="存入/提出">';
                     accountsHtml += '<i class="bi bi-arrow-down-up"></i>';
                     accountsHtml += '</button>';
-                    accountsHtml += '<button class="btn btn-outline-warning btn-profit-manage btn-sm" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" data-profit-balance="' + (acc.profit_balance || 0) + '" title="利潤管理">';
-                    accountsHtml += '<i class="bi bi-currency-dollar"></i>';
-                    accountsHtml += '</button>';
+                    // 移除每帳戶的利潤管理按鈕，改由全域利潤按鈕統一處理
                     accountsHtml += '<button class="btn btn-outline-danger btn-sm delete-account-btn" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" title="刪除帳戶">';
                     accountsHtml += '<i class="bi bi-x-lg"></i>';
                     accountsHtml += '</button>';
@@ -1057,8 +1058,12 @@ document.addEventListener('DOMContentLoaded', function () {
         // 設置模態框數據
         document.getElementById('settlementCustomerName').value = customerName;
         document.getElementById('settlementTotalReceivable').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        document.getElementById('settlementAmount').value = totalReceivable;
-        document.getElementById('settlementAmountDisplay').value = `NT$ ${totalReceivable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        // 清空輸入框，避免預設填入金額
+        const amountInput = document.getElementById('settlementAmount');
+        if (amountInput) amountInput.value = '';
+        // 顯示區預設為 0.00（藍色樣式在模板中）
+        const amountDisplay = document.getElementById('settlementAmountDisplay');
+        if (amountDisplay) amountDisplay.value = `NT$ 0.00`;
         document.getElementById('settlementRemainingReceivable').value = `NT$ 0.00`;
         document.getElementById('settlementNote').value = '';
         
@@ -1072,7 +1077,7 @@ document.addEventListener('DOMContentLoaded', function () {
             
             // 創建新的事件處理函數
             settlementAmountInput._inputHandler = function() {
-                const amount = parseFloat(this.value) || 0;
+                const amount = parseFloat(this.getActualValue ? this.getActualValue() : this.value) || 0;
                 const remaining = Math.max(0, totalReceivable - amount);
                 
                 // 更新顯示欄位
@@ -1505,7 +1510,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 case 'SALES':
                 case '售出':
                     typeDisplay = '售出';
-                    typeClass = 'badge bg-primary-subtle text-primary-emphasis';
+                    typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                     break;
                 case 'TRANSFER':
                 case '轉帳':
@@ -1515,7 +1520,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 case 'SETTLEMENT':
                 case '銷帳':
                     typeDisplay = '銷帳';
-                    typeClass = 'badge bg-danger-subtle text-danger-emphasis';
+                    typeClass = 'badge bg-primary-subtle text-primary-emphasis';
                     break;
                 case 'DEPOSIT':
                 case '存款':
@@ -1640,13 +1645,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
-                const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
                 const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
                 
+                // 根據本筆交易的變動判斷入款戶幣別顏色：TWD 藍、RMB 綠
+                // 判斷入款戶幣別：優先依金額正向變動判斷，其次依名稱關鍵字
+                const depositHeaderIsRmb = (rmbChange > 0 && twdChange <= 0) || /RMB|人民幣|¥/.test(depositAccount || '');
+                const depositHeaderColorClass = depositHeaderIsRmb ? 'text-success' : 'text-primary';
+                const depositHeaderBorder = depositHeaderIsRmb ? '1px solid #28a745' : '1px solid #007bff';
+                const depositChangeColorClass = depositHeaderIsRmb ? 'text-success' : 'text-primary';
                 depositAccountBalanceHtml = '<div class="card" style="background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #e0e0e0;">' +
-                    '<div class="text-success fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #28a745; padding-bottom: 4px; margin-bottom: 4px;">' + depositAccount + '</div>' +
+                    '<div class="' + depositHeaderColorClass + ' fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: ' + depositHeaderBorder + '; padding-bottom: 4px; margin-bottom: 4px;">' + depositAccount + '</div>' +
                     '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
-                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="' + depositChangeColorClass + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
                     '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
                     '</div>';
             }
@@ -2325,7 +2335,7 @@ window.renderMovements = function(transactions) {
             case 'SALES':
             case '售出':
                 typeDisplay = '售出';
-                typeClass = 'badge bg-primary-subtle text-primary-emphasis';
+                typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                 break;
             case 'TRANSFER':
             case '轉帳':
@@ -2335,7 +2345,7 @@ window.renderMovements = function(transactions) {
             case 'SETTLEMENT':
             case '銷帳':
                 typeDisplay = '銷帳';
-                typeClass = 'badge bg-danger-subtle text-danger-emphasis';
+                typeClass = 'badge bg-primary-subtle text-primary-emphasis';
                 break;
             case 'DEPOSIT':
             case '存款':
@@ -3072,20 +3082,48 @@ let currentProfitAccountName = null;
 
 // 利潤管理按鈕點擊事件
 document.addEventListener('click', function(e) {
-    if (e.target.closest('.btn-profit-manage')) {
-        const button = e.target.closest('.btn-profit-manage');
-        currentProfitAccountId = button.dataset.accountId;
-        currentProfitAccountName = button.dataset.accountName;
-        const profitBalance = parseFloat(button.dataset.profitBalance) || 0;
-        
-        openProfitModal(profitBalance);
+    if (e.target.closest('#btnOpenGlobalProfit')) {
+        // 全域利潤入口：不綁定特定帳戶，僅開啟模態框與歷史
+        currentProfitAccountId = null;
+        currentProfitAccountName = '';
+        openProfitModal(0);
+    }
+});
+
+// 變更選擇之帳戶
+document.addEventListener('change', function(e){
+    if (e.target && e.target.id === 'profitAccountSelect'){
+        const select = e.target;
+        const selectedId = select.value ? parseInt(select.value) : null;
+        currentProfitAccountId = selectedId;
+        const selectedOption = select.options[select.selectedIndex];
+        const nameText = selectedOption ? selectedOption.textContent : '';
+        const balance = selectedOption ? parseFloat(selectedOption.dataset.profitBalance || '0') : 0;
+        currentProfitAccountName = nameText;
+        document.getElementById('profitAccountName').value = nameText;
+        document.getElementById('profitCurrentBalance').value = balance.toLocaleString('en-US', {minimumFractionDigits: 2});
+        // 重新載入歷史
+        loadProfitHistory();
     }
 });
 
 // 打開利潤管理模態框
 function openProfitModal(profitBalance) {
-    document.getElementById('profitAccountName').value = currentProfitAccountName;
-    document.getElementById('profitCurrentBalance').value = profitBalance.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('profitAccountName').value = currentProfitAccountName || '（請先選擇帳戶）';
+    document.getElementById('profitCurrentBalance').value = (profitBalance || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+
+    // 以全域帳戶清單建立下拉選單
+    const select = document.getElementById('profitAccountSelect');
+    if (select) {
+        select.innerHTML = '<option value="">請選擇帳戶</option>';
+        (window.ownerAccountsData || []).forEach(function(acc){
+            const opt = document.createElement('option');
+            opt.value = acc.id;
+            opt.textContent = acc.name + ' (' + acc.currency + ')';
+            opt.dataset.profitBalance = acc.profit_balance || 0;
+            select.appendChild(opt);
+        });
+    }
     
     // 隱藏所有表單
     hideAllProfitForms();
@@ -3108,7 +3146,8 @@ function hideAllProfitForms() {
 // 載入利潤歷史
 async function loadProfitHistory() {
     try {
-        const response = await fetch(`/api/profit/history?account_id=${currentProfitAccountId}&limit=20`);
+        const accountQuery = currentProfitAccountId ? `?account_id=${currentProfitAccountId}&limit=20` : `?limit=20`;
+        const response = await fetch(`/api/profit/history${accountQuery}`);
         const result = await response.json();
         
         const historyContainer = document.getElementById('profitHistory');
@@ -3297,7 +3336,11 @@ document.getElementById('adjustProfitFormData').addEventListener('submit', async
                             <h6>帳戶資訊</h6>
                             <div class="mb-3">
                                 <label class="form-label">帳戶名稱</label>
-                                <input type="text" class="form-control" id="profitAccountName" readonly>
+                                <input type="text" class="form-control mb-2" id="profitAccountName" readonly>
+                                <!-- 全域利潤入口：提供帳戶選擇器 -->
+                                <select id="profitAccountSelect" class="form-select">
+                                    <option value="">請選擇帳戶</option>
+                                </select>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">當前利潤餘額</label>

@@ -50,7 +50,7 @@
                         <label class="form-label"><strong>步驟 2:</strong> 選擇資金帳戶</label>
                         <!-- 付款區塊 -->
                         <div class="p-3 mb-3 border rounded bg-light">
-                            <h6 class="text-danger"><i class="bi bi-box-arrow-up-right me-2"></i>從哪個 TWD 帳戶付款</h6>
+                            <h6 class="text-primary"><i class="bi bi-box-arrow-up-right me-2"></i>從哪個 TWD 帳戶付款</h6>
                             <select class="form-select" id="paymentAccountSelect" name="payment_account_id">
                                 <option value="" disabled selected>--- 請選擇付款帳戶 ---</option>
                                 <!-- JavaScript 將會動態填充這裡 -->
@@ -59,17 +59,17 @@
                         
                         <!-- 付款狀態選擇 -->
                         <div class="p-3 mb-3 border rounded bg-warning bg-opacity-10">
-                            <h6 class="text-warning"><i class="bi bi-clock-history me-2"></i>付款狀態</h6>
+                            <h6 class="fw-bold text-dark"><i class="bi bi-clock-history me-2"></i>付款狀態</h6>
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="payment_status" id="paymentStatusPaid" value="paid" checked>
                                 <label class="form-check-label" for="paymentStatusPaid">
-                                    <strong class="text-success">已付款</strong> - 立即從選定帳戶扣款
+                                    <strong class="text-primary">已付款</strong> - 立即從選定帳戶扣款
                                 </label>
                             </div>
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="payment_status" id="paymentStatusUnpaid" value="unpaid">
                                 <label class="form-check-label" for="paymentStatusUnpaid">
-                                    <strong class="text-warning">未付款</strong> - 建立待付款項，稍後處理
+                                    <strong class="text-danger">未付款</strong> - 建立待付款項，稍後處理
                                 </label>
                             </div>
                             <small class="text-muted">未付款時，付款帳戶選擇將被忽略</small>
