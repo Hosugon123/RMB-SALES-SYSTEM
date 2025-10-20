@@ -5093,66 +5093,40 @@ def get_frequent_customers():
 def api_total_profit():
     """計算系統總利潤的API，所有登入使用者都可以存取"""
     try:
-        # 查詢所有已結清的銷售記錄
-        settled_sales = (
+        # 與儀表板保持一致的計算邏輯：計算所有銷售記錄的利潤，並扣除利潤提款
+        all_sales = (
             db.session.execute(
                 db.select(SalesRecord)
-                .filter_by(is_settled=True)
                 .order_by(SalesRecord.created_at.desc())
             )
             .scalars()
             .all()
         )
         
-        print(f"DEBUG: 找到 {len(settled_sales)} 筆已結清銷售記錄")
+        print(f"DEBUG: 找到 {len(all_sales)} 筆所有銷售記錄")
         
-        # 如果沒有已結清的銷售記錄，檢查是否有任何銷售記錄
-        if len(settled_sales) == 0:
-            print("DEBUG: 沒有已結清的銷售記錄，檢查所有銷售記錄")
-            all_sales = (
-                db.session.execute(
-                    db.select(SalesRecord)
-                    .order_by(SalesRecord.created_at.desc())
-                )
-                .scalars()
-                .all()
-            )
-            print(f"DEBUG: 找到 {len(all_sales)} 筆所有銷售記錄")
-            
-            # 如果還是沒有銷售記錄，檢查是否有買入記錄
-            if len(all_sales) == 0:
-                purchases = (
-                    db.session.execute(
-                        db.select(PurchaseRecord)
-                        .order_by(PurchaseRecord.purchase_date.desc())
-                    )
-                    .scalars()
-                    .all()
-                )
-                print(f"DEBUG: 找到 {len(purchases)} 筆買入記錄")
-                
-                if len(purchases) == 0:
-                    print("DEBUG: 沒有任何銷售或買入記錄，返回零利潤")
-                    return jsonify({
-                        'status': 'success',
-                        'data': {
-                            'total_profit_twd': 0.0,
-                            'total_revenue_twd': 0.0,
-                            'total_cost_twd': 0.0,
-                            'overall_profit_margin': 0.0,
-                            'settled_sales_count': 0,
-                            'profit_breakdown': [],
-                            'message': '系統中沒有銷售記錄，無法計算利潤'
-                        }
-                    })
+        if len(all_sales) == 0:
+            print("DEBUG: 沒有任何銷售記錄，返回零利潤")
+            return jsonify({
+                'status': 'success',
+                'data': {
+                    'total_profit_twd': 0.0,
+                    'total_revenue_twd': 0.0,
+                    'total_cost_twd': 0.0,
+                    'overall_profit_margin': 0.0,
+                    'settled_sales_count': 0,
+                    'profit_breakdown': [],
+                    'message': '系統中沒有銷售記錄，無法計算利潤'
+                }
+            })
         
         total_profit_twd = 0.0
         total_revenue_twd = 0.0
         total_cost_twd = 0.0
         profit_breakdown = []
         
-        # 使用已結清的銷售記錄，如果沒有則使用所有銷售記錄
-        sales_to_process = settled_sales if len(settled_sales) > 0 else all_sales
+        # 使用所有銷售記錄計算利潤（與儀表板一致）
+        sales_to_process = all_sales
         
         for sale in sales_to_process:
             print(f"DEBUG: 處理銷售記錄 ID: {sale.id}, 客戶: {sale.customer.name if sale.customer else 'N/A'}")
@@ -5181,10 +5155,32 @@ def api_total_profit():
             else:
                 print(f"DEBUG: 銷售記錄 {sale.id} 無法計算利潤")
         
+        # 扣除利潤提款記錄（與儀表板邏輯一致）
+        try:
+            profit_withdrawals = (
+                db.session.execute(
+                    db.select(LedgerEntry)
+                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                )
+                .scalars()
+                .all()
+            )
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: 利潤API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
+                db.session.rollback()
+                profit_withdrawals = []
+            else:
+                db.session.rollback()
+                raise e
+        
+        total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
+        total_profit_twd -= total_profit_withdrawals
+        
+        print(f"DEBUG: 利潤API計算 - 銷售利潤: {total_profit_twd + total_profit_withdrawals:.2f}, 利潤提款: {total_profit_withdrawals:.2f}, 最終利潤: {total_profit_twd:.2f}")
+        
         # 計算整體利潤率
         overall_profit_margin = (total_profit_twd / total_revenue_twd * 100) if total_revenue_twd > 0 else 0
-        
-        print(f"DEBUG: 最終計算結果 - 總利潤: {total_profit_twd}, 總收入: {total_revenue_twd}, 總成本: {total_cost_twd}")
         
         return jsonify({
             'status': 'success',
@@ -5193,7 +5189,7 @@ def api_total_profit():
                 'total_revenue_twd': round(total_revenue_twd, 2),
                 'total_cost_twd': round(total_cost_twd, 2),
                 'overall_profit_margin': round(overall_profit_margin, 2),
-                'settled_sales_count': len(settled_sales),
+                'settled_sales_count': len(sales_to_process),
                 'profit_breakdown': profit_breakdown
             }
         })
