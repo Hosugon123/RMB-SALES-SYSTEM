@@ -181,6 +181,7 @@ class CashAccount(db.Model):
     name = db.Column(db.String(100), nullable=False)
     currency = db.Column(db.String(10), nullable=False)
     balance = db.Column(db.Float, nullable=False, default=0.0)
+    profit_balance = db.Column(db.Float, nullable=False, default=0.0)  # 新增：獨立利潤餘額
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     holder = db.relationship("Holder", back_populates="cash_accounts", lazy="select")
 
@@ -447,6 +448,243 @@ class DeleteAuditLog(db.Model):
             'ip_address': self.ip_address,
             'user_agent': self.user_agent
         }
+
+
+class ProfitTransaction(db.Model):
+    """利潤交易記錄模型 - 記錄所有利潤變動"""
+    __tablename__ = "profit_transactions"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # 關聯帳戶
+    account_id = db.Column(db.Integer, db.ForeignKey("cash_accounts.id"), nullable=False)
+    
+    # 交易資訊
+    transaction_type = db.Column(db.String(50), nullable=False)  # PROFIT_EARNED, PROFIT_WITHDRAW, PROFIT_ADJUSTMENT
+    amount = db.Column(db.Float, nullable=False)  # 利潤變動金額（正數為增加，負數為減少）
+    balance_before = db.Column(db.Float, nullable=False)  # 變動前利潤餘額
+    balance_after = db.Column(db.Float, nullable=False)   # 變動後利潤餘額
+    
+    # 關聯交易記錄
+    related_transaction_id = db.Column(db.Integer, nullable=True)  # 關聯的交易記錄ID
+    related_transaction_type = db.Column(db.String(50), nullable=True)  # 關聯的交易類型
+    
+    # 描述和備註
+    description = db.Column(db.String(500), nullable=True)
+    note = db.Column(db.String(200), nullable=True)
+    
+    # 操作者資訊
+    operator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    
+    # 時間資訊
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    
+    # 關聯
+    account = db.relationship("CashAccount", backref="profit_transactions")
+    operator = db.relationship("User", backref="profit_transactions")
+    
+    def __repr__(self):
+        return f'<ProfitTransaction {self.id}: {self.transaction_type} {self.amount} on account {self.account_id}>'
+
+
+# ===================================================================
+# 利潤管理服務類
+# ===================================================================
+class ProfitService:
+    """利潤管理服務類 - 處理所有利潤相關操作"""
+    
+    @staticmethod
+    def add_profit(account_id, amount, transaction_type, description=None, note=None, 
+                   related_transaction_id=None, related_transaction_type=None, operator_id=None):
+        """增加利潤到指定帳戶"""
+        try:
+            account = db.session.get(CashAccount, account_id)
+            if not account:
+                return {"success": False, "message": "帳戶不存在"}
+            
+            if operator_id is None:
+                operator_id = current_user.id if current_user and current_user.is_authenticated else 1
+            
+            # 記錄變動前餘額
+            balance_before = account.profit_balance
+            
+            # 更新利潤餘額
+            account.profit_balance += amount
+            balance_after = account.profit_balance
+            
+            # 同步更新總金額（利潤變動時總金額也要變動）
+            account.balance += amount
+            
+            # 創建利潤交易記錄
+            profit_transaction = ProfitTransaction(
+                account_id=account_id,
+                transaction_type=transaction_type,
+                amount=amount,
+                balance_before=balance_before,
+                balance_after=balance_after,
+                related_transaction_id=related_transaction_id,
+                related_transaction_type=related_transaction_type,
+                description=description,
+                note=note,
+                operator_id=operator_id
+            )
+            
+            db.session.add(profit_transaction)
+            db.session.commit()
+            
+            return {
+                "success": True, 
+                "message": f"利潤變動成功：{amount:+.2f}",
+                "balance_before": balance_before,
+                "balance_after": balance_after,
+                "transaction_id": profit_transaction.id
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            return {"success": False, "message": f"利潤變動失敗: {str(e)}"}
+    
+    @staticmethod
+    def withdraw_profit(account_id, amount, description=None, note=None, operator_id=None):
+        """從指定帳戶提取利潤"""
+        try:
+            account = db.session.get(CashAccount, account_id)
+            if not account:
+                return {"success": False, "message": "帳戶不存在"}
+            
+            if account.profit_balance < amount:
+                return {"success": False, "message": f"利潤餘額不足，當前餘額: {account.profit_balance:.2f}"}
+            
+            if operator_id is None:
+                operator_id = current_user.id if current_user and current_user.is_authenticated else 1
+            
+            # 記錄變動前餘額
+            balance_before = account.profit_balance
+            
+            # 更新利潤餘額（減少）
+            account.profit_balance -= amount
+            balance_after = account.profit_balance
+            
+            # 同步更新總金額（利潤變動時總金額也要變動）
+            account.balance -= amount
+            
+            # 創建利潤交易記錄
+            profit_transaction = ProfitTransaction(
+                account_id=account_id,
+                transaction_type="PROFIT_WITHDRAW",
+                amount=-amount,  # 負數表示提取
+                balance_before=balance_before,
+                balance_after=balance_after,
+                description=description or f"利潤提取: {amount:.2f}",
+                note=note,
+                operator_id=operator_id
+            )
+            
+            db.session.add(profit_transaction)
+            db.session.commit()
+            
+            return {
+                "success": True, 
+                "message": f"利潤提取成功：{amount:.2f}",
+                "balance_before": balance_before,
+                "balance_after": balance_after,
+                "transaction_id": profit_transaction.id
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            return {"success": False, "message": f"利潤提取失敗: {str(e)}"}
+    
+    @staticmethod
+    def adjust_profit(account_id, new_balance, description=None, note=None, operator_id=None):
+        """調整利潤餘額到指定數值"""
+        try:
+            account = db.session.get(CashAccount, account_id)
+            if not account:
+                return {"success": False, "message": "帳戶不存在"}
+            
+            if operator_id is None:
+                operator_id = current_user.id if current_user and current_user.is_authenticated else 1
+            
+            # 記錄變動前餘額
+            balance_before = account.profit_balance
+            
+            # 計算調整金額
+            adjustment_amount = new_balance - balance_before
+            
+            # 更新利潤餘額
+            account.profit_balance = new_balance
+            balance_after = new_balance
+            
+            # 同步更新總金額（利潤變動時總金額也要變動）
+            account.balance += adjustment_amount
+            
+            # 創建利潤交易記錄
+            profit_transaction = ProfitTransaction(
+                account_id=account_id,
+                transaction_type="PROFIT_ADJUSTMENT",
+                amount=adjustment_amount,
+                balance_before=balance_before,
+                balance_after=balance_after,
+                description=description or f"利潤調整: {balance_before:.2f} → {balance_after:.2f}",
+                note=note,
+                operator_id=operator_id
+            )
+            
+            db.session.add(profit_transaction)
+            db.session.commit()
+            
+            return {
+                "success": True, 
+                "message": f"利潤調整成功：{balance_before:.2f} → {balance_after:.2f}",
+                "balance_before": balance_before,
+                "balance_after": balance_after,
+                "adjustment_amount": adjustment_amount,
+                "transaction_id": profit_transaction.id
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            return {"success": False, "message": f"利潤調整失敗: {str(e)}"}
+    
+    @staticmethod
+    def get_profit_history(account_id=None, limit=50):
+        """獲取利潤變動歷史"""
+        try:
+            query = db.select(ProfitTransaction).options(
+                db.selectinload(ProfitTransaction.account),
+                db.selectinload(ProfitTransaction.operator)
+            ).order_by(ProfitTransaction.created_at.desc())
+            
+            if account_id:
+                query = query.filter(ProfitTransaction.account_id == account_id)
+            
+            if limit:
+                query = query.limit(limit)
+            
+            transactions = db.session.execute(query).scalars().all()
+            
+            return {
+                "success": True,
+                "transactions": [
+                    {
+                        "id": t.id,
+                        "account_name": t.account.name if t.account else "未知帳戶",
+                        "transaction_type": t.transaction_type,
+                        "amount": t.amount,
+                        "balance_before": t.balance_before,
+                        "balance_after": t.balance_after,
+                        "description": t.description,
+                        "note": t.note,
+                        "operator_name": t.operator.username if t.operator else "未知",
+                        "created_at": t.created_at.isoformat()
+                    }
+                    for t in transactions
+                ]
+            }
+            
+        except Exception as e:
+            return {"success": False, "message": f"獲取利潤歷史失敗: {str(e)}"}
 
 
 # ===================================================================
@@ -2244,6 +2482,32 @@ def api_sales_entry():
             # 使用FIFO服務分配庫存
             fifo_result = FIFOService.allocate_inventory_for_sale(new_sale)
             print(f"FIFO庫存分配成功: {fifo_result}")
+            
+            # 5. 自動記錄利潤到RMB帳戶
+            if fifo_result and 'profit_twd' in fifo_result and fifo_result['profit_twd'] > 0:
+                try:
+                    # 找到對應的RMB帳戶
+                    rmb_account = new_sale.rmb_account
+                    if rmb_account:
+                        profit_result = ProfitService.add_profit(
+                            account_id=rmb_account.id,
+                            amount=fifo_result['profit_twd'],
+                            transaction_type="PROFIT_EARNED",
+                            description=f"銷售利潤：客戶「{customer.name}」",
+                            note=f"RMB {new_sale.rmb_amount}，匯率 {new_sale.twd_amount/new_sale.rmb_amount:.4f}",
+                            related_transaction_id=new_sale.id,
+                            related_transaction_type="SALES",
+                            operator_id=current_user.id
+                        )
+                        if profit_result["success"]:
+                            print(f"✅ 自動記錄銷售利潤成功: {fifo_result['profit_twd']:.2f} TWD")
+                        else:
+                            print(f"⚠️ 自動記錄銷售利潤失敗: {profit_result['message']}")
+                    else:
+                        print("⚠️ 找不到RMB帳戶，跳過利潤記錄")
+                except Exception as profit_error:
+                    print(f"⚠️ 記錄銷售利潤時發生錯誤: {profit_error}")
+                    # 不影響銷售記錄的創建
         except Exception as e:
             print(f"FIFO庫存分配失敗: {e}")
             # 如果FIFO分配失敗，回滾整個交易
@@ -2360,6 +2624,7 @@ def cash_management_operator():
                         "name": acc.name,
                         "currency": acc.currency,
                         "balance": acc.balance,
+                        "profit_balance": acc.profit_balance,  # 新增：利潤餘額
                         "is_active": acc.is_active,
                     }
                 )
@@ -2692,6 +2957,7 @@ def cash_management():
                         "name": acc.name,
                         "currency": acc.currency,
                         "balance": acc.balance,
+                        "profit_balance": acc.profit_balance,  # 新增：利潤餘額
                         "is_active": acc.is_active,
                     }
                 )
@@ -2945,37 +3211,19 @@ def cash_management():
         total_twd = actual_total_twd
         total_rmb = actual_total_rmb
         
-        # 計算每筆交易後的累積餘額（用於流水顯示，從最早的交易開始正向計算）
-        # 先按日期正序排列，計算累計餘額
-        chronological_stream = sorted(unified_stream, key=lambda x: x["date"])
+        # 計算每筆交易後的累積餘額（用於流水顯示，從實際餘額開始倒推）
+        running_twd_balance = actual_total_twd
+        running_rmb_balance = actual_total_rmb
         
-        running_twd_balance = 0
-        running_rmb_balance = 0
-        
-        # 從最早的交易開始，正向計算每筆交易後的餘額
-        for transaction in chronological_stream:
-            # 獲取變動值，確保不是None或0
-            twd_change = transaction.get('twd_change', 0)
-            rmb_change = transaction.get('rmb_change', 0)
+        # 從最新的交易開始，向前倒推每筆交易前的餘額
+        for movement in unified_stream:
+            # 記錄此筆交易後的餘額（當前累積餘額）
+            movement['running_twd_balance'] = running_twd_balance
+            movement['running_rmb_balance'] = running_rmb_balance
             
-            # 調試信息：檢查變動值
-            if twd_change != 0 or rmb_change != 0:
-                print(f"DEBUG: 交易 {transaction.get('type', 'N/A')} - TWD變動: {twd_change}, RMB變動: {rmb_change}")
-            
-            # 計算此筆交易後的餘額
-            running_twd_balance += twd_change
-            running_rmb_balance += rmb_change
-            
-            # 記錄此筆交易後的餘額
-            transaction['running_twd_balance'] = running_twd_balance
-            transaction['running_rmb_balance'] = running_rmb_balance
-            
-            # 調試信息：檢查累積餘額
-            if twd_change != 0 or rmb_change != 0:
-                print(f"  累積餘額: TWD={running_twd_balance}, RMB={running_rmb_balance}")
-        
-        # 重新按日期倒序排列，保持顯示順序
-        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+            # 計算此筆交易前的餘額（為下一筆交易準備）
+            running_twd_balance -= (movement.get('twd_change', 0) or 0)
+            running_rmb_balance -= (movement.get('rmb_change', 0) or 0)
         
         # --- 修正：使用實際的資料庫餘額，不重新計算 ---
         accounts_by_holder = {}
@@ -6646,9 +6894,18 @@ def get_cash_management_transactions():
                     for entry in misc_entries:
                         if (entry.entry_type == "SETTLEMENT" and 
                             entry.description == log.description and
-                            abs((entry.entry_date - log.time).total_seconds()) < 10):
+                            abs((entry.entry_date - log.time).total_seconds()) < 30):  # 放寬時間範圍到30秒
                             matching_entry = entry
                             break
+                    
+                    # 如果還是找不到，嘗試通過金額和時間匹配
+                    if not matching_entry:
+                        for entry in misc_entries:
+                            if (entry.entry_type == "SETTLEMENT" and 
+                                abs(entry.amount - log.amount) < 0.01 and  # 金額匹配
+                                abs((entry.entry_date - log.time).total_seconds()) < 60):  # 1分鐘內
+                                matching_entry = entry
+                                break
                     
                     if matching_entry and matching_entry.account:
                         deposit_account = matching_entry.account.name
@@ -6672,30 +6929,71 @@ def get_cash_management_transactions():
                 }
                 
                 # 添加帳戶餘額變化信息（針對SETTLEMENT類型）
-                if log.type == "SETTLEMENT" and matching_entry and matching_entry.account:
-                    account_balance_before = matching_entry.account.balance - twd_change
-                    account_balance_after = matching_entry.account.balance
-                    record["account_balance"] = {
-                        "before": account_balance_before,
-                        "change": twd_change,
-                        "after": account_balance_after
-                    }
+                if log.type == "SETTLEMENT":
+                    if matching_entry and matching_entry.account:
+                        # 使用找到的 LedgerEntry 對應的帳戶
+                        account_balance_before = matching_entry.account.balance - twd_change
+                        account_balance_after = matching_entry.account.balance
+                        record["account_balance"] = {
+                            "before": account_balance_before,
+                            "change": twd_change,
+                            "after": account_balance_after
+                        }
+                        # 同時添加入款戶餘額變化信息
+                        record["deposit_account_balance"] = {
+                            "before": account_balance_before,
+                            "change": twd_change,
+                            "after": account_balance_after,
+                            "account_name": matching_entry.account.name
+                        }
+                    else:
+                        # 如果找不到對應的 LedgerEntry，嘗試從描述中推斷帳戶
+                        # 或者使用默認的帳戶餘額變化計算
+                        record["account_balance"] = {
+                            "before": 0.0,  # 暫時設為0，需要進一步優化
+                            "change": twd_change,
+                            "after": twd_change
+                        }
+                        record["deposit_account_balance"] = {
+                            "before": 0.0,
+                            "change": twd_change,
+                            "after": twd_change,
+                            "account_name": deposit_account
+                        }
                 
                 unified_stream.append(record)
 
         # 按日期排序（新的在前）
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
         
-        # 計算累積餘額
-        running_twd_balance = 0
-        running_rmb_balance = 0
+        # 獲取所有帳戶
+        all_accounts_obj = (
+            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            .scalars()
+            .all()
+        )
         
-        # 從最早的記錄開始計算累積餘額（因為我們已經按日期倒序排列，所以需要反轉）
-        for record in reversed(unified_stream):
-            running_twd_balance += record.get("twd_change", 0)
-            running_rmb_balance += record.get("rmb_change", 0)
+        # 計算當前實際的帳戶總餘額
+        actual_total_twd = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "TWD"
+        )
+        actual_total_rmb = sum(
+            acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
+        )
+        
+        # 計算累積餘額（從實際餘額開始倒推）
+        running_twd_balance = actual_total_twd
+        running_rmb_balance = actual_total_rmb
+        
+        # 從最新的交易開始，向前倒推每筆交易前的餘額
+        for record in unified_stream:
+            # 記錄此筆交易後的餘額（當前累積餘額）
             record["running_twd_balance"] = running_twd_balance
             record["running_rmb_balance"] = running_rmb_balance
+            
+            # 計算此筆交易前的餘額（為下一筆交易準備）
+            running_twd_balance -= (record.get("twd_change", 0) or 0)
+            running_rmb_balance -= (record.get("rmb_change", 0) or 0)
         
         # 重新按日期倒序排列（新的在前）
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
@@ -6721,7 +7019,7 @@ def get_cash_management_transactions():
                 }
             }
         })
-
+    
     except Exception as e:
         print(f"獲取分頁流水記錄時出錯: {e}")
         return jsonify({"status": "error", "message": f"系統錯誤: {str(e)}"}), 500
@@ -6974,12 +7272,12 @@ def api_delete_user(user_id):
         # 執行刪除
         db.session.delete(user_to_delete)
         db.session.commit()
-        
+
         return jsonify({
             "status": "success", 
             "message": f'使用者 "{username}" 已成功刪除！'
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -7235,8 +7533,8 @@ def get_account_balances_for_dropdowns():
                             acc_info['current_balance'] += twd_change
                         elif acc_info['currency'] == 'RMB' and rmb_change != 0:
                             acc_info['current_balance'] += rmb_change
-                        break
-            
+                            break
+                    
             # 處理入款帳戶（通常是增加餘額）
             if deposit_account != 'N/A':
                 for acc_id, acc_info in account_balances.items():
@@ -7774,7 +8072,7 @@ def remote_data_recovery():
                 "customer_fixes": customer_fixes
             }
         })
-        
+
     except Exception as e:
         print(f"遠程數據修復失敗: {e}")
         traceback.print_exc()
@@ -7810,9 +8108,9 @@ def get_data_status():
         total_receivables = Customer.query.with_entities(func.sum(Customer.total_receivables_twd)).scalar() or 0
         
         return jsonify({
-            "status": "success",
+                "status": "success",
             "timestamp": datetime.now().isoformat(),
-            "data": {
+                "data": {
                 "inventory": {
                     "total_batches": total_inventories,
                     "total_original": total_original,
@@ -7931,3 +8229,125 @@ def api_total_profit():
             'status': 'error',
             'message': f'計算總利潤時發生錯誤: {str(e)}'
         }), 500
+
+
+# ===================================================================
+# 利潤管理 API 端點
+# ===================================================================
+
+@app.route("/api/profit/add", methods=["POST"])
+@login_required
+def api_profit_add():
+    """API: 增加利潤"""
+    try:
+        data = request.get_json()
+        account_id = data.get("account_id")
+        amount = float(data.get("amount", 0))
+        transaction_type = data.get("transaction_type", "PROFIT_EARNED")
+        description = data.get("description")
+        note = data.get("note")
+        related_transaction_id = data.get("related_transaction_id")
+        related_transaction_type = data.get("related_transaction_type")
+        
+        if not account_id or amount <= 0:
+            return jsonify({"status": "error", "message": "無效的帳戶ID或金額"}), 400
+        
+        result = ProfitService.add_profit(
+            account_id=account_id,
+            amount=amount,
+            transaction_type=transaction_type,
+            description=description,
+            note=note,
+            related_transaction_id=related_transaction_id,
+            related_transaction_type=related_transaction_type,
+            operator_id=current_user.id
+        )
+        
+        if result["success"]:
+            return jsonify({"status": "success", "data": result})
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"增加利潤失敗: {str(e)}"}), 500
+
+
+@app.route("/api/profit/withdraw", methods=["POST"])
+@login_required
+def api_profit_withdraw():
+    """API: 提取利潤"""
+    try:
+        data = request.get_json()
+        account_id = data.get("account_id")
+        amount = float(data.get("amount", 0))
+        description = data.get("description")
+        note = data.get("note")
+        
+        if not account_id or amount <= 0:
+            return jsonify({"status": "error", "message": "無效的帳戶ID或金額"}), 400
+        
+        result = ProfitService.withdraw_profit(
+            account_id=account_id,
+            amount=amount,
+            description=description,
+            note=note,
+            operator_id=current_user.id
+        )
+        
+        if result["success"]:
+            return jsonify({"status": "success", "data": result})
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"提取利潤失敗: {str(e)}"}), 500
+
+
+@app.route("/api/profit/adjust", methods=["POST"])
+@login_required
+def api_profit_adjust():
+    """API: 調整利潤餘額"""
+    try:
+        data = request.get_json()
+        account_id = data.get("account_id")
+        new_balance = float(data.get("new_balance", 0))
+        description = data.get("description")
+        note = data.get("note")
+        
+        if not account_id:
+            return jsonify({"status": "error", "message": "無效的帳戶ID"}), 400
+        
+        result = ProfitService.adjust_profit(
+            account_id=account_id,
+            new_balance=new_balance,
+            description=description,
+            note=note,
+            operator_id=current_user.id
+        )
+        
+        if result["success"]:
+            return jsonify({"status": "success", "data": result})
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"調整利潤失敗: {str(e)}"}), 500
+
+
+@app.route("/api/profit/history", methods=["GET"])
+@login_required
+def api_profit_history():
+    """API: 獲取利潤變動歷史"""
+    try:
+        account_id = request.args.get("account_id", type=int)
+        limit = request.args.get("limit", 50, type=int)
+        
+        result = ProfitService.get_profit_history(account_id=account_id, limit=limit)
+        
+        if result["success"]:
+            return jsonify({"status": "success", "data": result})
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"獲取利潤歷史失敗: {str(e)}"}), 500

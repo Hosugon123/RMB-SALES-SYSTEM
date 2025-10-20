@@ -414,10 +414,16 @@ document.addEventListener('DOMContentLoaded', function () {
                     
                     // 右側：金額和操作按鈕
                     accountsHtml += '<div class="d-flex align-items-center">';
-                    accountsHtml += '<strong class="me-3 ' + currencyTextClass + ' account-balance" style="min-width: 120px; text-align: right;">' + acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong>';
+                    accountsHtml += '<div class="me-3 text-end" style="min-width: 200px;">';
+                    accountsHtml += '<div class="' + currencyTextClass + ' fw-bold account-balance">' + acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                    accountsHtml += '<div class="text-warning small">利潤: ' + (acc.profit_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
+                    accountsHtml += '</div>';
                     accountsHtml += '<div class="btn-group btn-group-sm">';
                     accountsHtml += '<button class="btn btn-outline-primary btn-movement btn-sm" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" title="存入/提出">';
                     accountsHtml += '<i class="bi bi-arrow-down-up"></i>';
+                    accountsHtml += '</button>';
+                    accountsHtml += '<button class="btn btn-outline-warning btn-profit-manage btn-sm" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" data-profit-balance="' + (acc.profit_balance || 0) + '" title="利潤管理">';
+                    accountsHtml += '<i class="bi bi-currency-dollar"></i>';
                     accountsHtml += '</button>';
                     accountsHtml += '<button class="btn btn-outline-danger btn-sm delete-account-btn" data-account-id="' + acc.id + '" data-account-name="' + acc.name + '" title="刪除帳戶">';
                     accountsHtml += '<i class="bi bi-x-lg"></i>';
@@ -3057,7 +3063,339 @@ window.executePendingPaymentSettlement = async function(pendingId, originalAmoun
     }
 };
 
+// ===================================================================
+// 利潤管理功能
+// ===================================================================
+
+let currentProfitAccountId = null;
+let currentProfitAccountName = null;
+
+// 利潤管理按鈕點擊事件
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.btn-profit-manage')) {
+        const button = e.target.closest('.btn-profit-manage');
+        currentProfitAccountId = button.dataset.accountId;
+        currentProfitAccountName = button.dataset.accountName;
+        const profitBalance = parseFloat(button.dataset.profitBalance) || 0;
+        
+        openProfitModal(profitBalance);
+    }
+});
+
+// 打開利潤管理模態框
+function openProfitModal(profitBalance) {
+    document.getElementById('profitAccountName').value = currentProfitAccountName;
+    document.getElementById('profitCurrentBalance').value = profitBalance.toLocaleString('en-US', {minimumFractionDigits: 2});
+    
+    // 隱藏所有表單
+    hideAllProfitForms();
+    
+    // 載入利潤歷史
+    loadProfitHistory();
+    
+    // 顯示模態框
+    const profitModal = new bootstrap.Modal(document.getElementById('profitModal'));
+    profitModal.show();
+}
+
+// 隱藏所有利潤表單
+function hideAllProfitForms() {
+    document.getElementById('addProfitForm').style.display = 'none';
+    document.getElementById('withdrawProfitForm').style.display = 'none';
+    document.getElementById('adjustProfitForm').style.display = 'none';
+}
+
+// 載入利潤歷史
+async function loadProfitHistory() {
+    try {
+        const response = await fetch(`/api/profit/history?account_id=${currentProfitAccountId}&limit=20`);
+        const result = await response.json();
+        
+        const historyContainer = document.getElementById('profitHistory');
+        
+        if (result.status === 'success' && result.data.transactions.length > 0) {
+            let historyHtml = '';
+            result.data.transactions.forEach(transaction => {
+                const amountClass = transaction.amount > 0 ? 'text-success' : 'text-danger';
+                const amountSymbol = transaction.amount > 0 ? '+' : '';
+                
+                historyHtml += `
+                    <div class="card mb-2">
+                        <div class="card-body p-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="fw-bold">${transaction.description || '利潤變動'}</small>
+                                    <br>
+                                    <small class="text-muted">${new Date(transaction.created_at).toLocaleString('zh-TW')}</small>
+                                </div>
+                                <div class="text-end">
+                                    <div class="${amountClass} fw-bold">${amountSymbol}${transaction.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                                    <small class="text-muted">餘額: ${transaction.balance_after.toLocaleString('en-US', {minimumFractionDigits: 2})}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            historyContainer.innerHTML = historyHtml;
+        } else {
+            historyContainer.innerHTML = '<div class="text-center text-muted">暫無利潤變動記錄</div>';
+        }
+    } catch (error) {
+        console.error('載入利潤歷史失敗:', error);
+        document.getElementById('profitHistory').innerHTML = '<div class="text-center text-danger">載入失敗</div>';
+    }
+}
+
+// 利潤操作按鈕事件
+document.getElementById('btnAddProfit').addEventListener('click', function() {
+    hideAllProfitForms();
+    document.getElementById('addProfitForm').style.display = 'block';
+});
+
+document.getElementById('btnWithdrawProfit').addEventListener('click', function() {
+    hideAllProfitForms();
+    document.getElementById('withdrawProfitForm').style.display = 'block';
+});
+
+document.getElementById('btnAdjustProfit').addEventListener('click', function() {
+    hideAllProfitForms();
+    document.getElementById('adjustProfitForm').style.display = 'block';
+});
+
+// 取消按鈕事件
+document.getElementById('cancelAddProfit').addEventListener('click', hideAllProfitForms);
+document.getElementById('cancelWithdrawProfit').addEventListener('click', hideAllProfitForms);
+document.getElementById('cancelAdjustProfit').addEventListener('click', hideAllProfitForms);
+
+// 增加利潤表單提交
+document.getElementById('addProfitFormData').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const amount = parseFloat(document.getElementById('addProfitAmount').value);
+    const description = document.getElementById('addProfitDescription').value;
+    const note = document.getElementById('addProfitNote').value;
+    
+    try {
+        const response = await fetch('/api/profit/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                account_id: currentProfitAccountId,
+                amount: amount,
+                transaction_type: 'PROFIT_EARNED',
+                description: description,
+                note: note
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            Swal.fire('成功', result.data.message, 'success');
+            hideAllProfitForms();
+            loadProfitHistory();
+            // 重新載入頁面以更新顯示
+            location.reload();
+        } else {
+            Swal.fire('錯誤', result.message, 'error');
+        }
+    } catch (error) {
+        console.error('增加利潤失敗:', error);
+        Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+    }
+});
+
+// 提取利潤表單提交
+document.getElementById('withdrawProfitFormData').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const amount = parseFloat(document.getElementById('withdrawProfitAmount').value);
+    const description = document.getElementById('withdrawProfitDescription').value;
+    const note = document.getElementById('withdrawProfitNote').value;
+    
+    try {
+        const response = await fetch('/api/profit/withdraw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                account_id: currentProfitAccountId,
+                amount: amount,
+                description: description,
+                note: note
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            Swal.fire('成功', result.data.message, 'success');
+            hideAllProfitForms();
+            loadProfitHistory();
+            // 重新載入頁面以更新顯示
+            location.reload();
+        } else {
+            Swal.fire('錯誤', result.message, 'error');
+        }
+    } catch (error) {
+        console.error('提取利潤失敗:', error);
+        Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+    }
+});
+
+// 調整利潤表單提交
+document.getElementById('adjustProfitFormData').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const newBalance = parseFloat(document.getElementById('adjustProfitNewBalance').value);
+    const description = document.getElementById('adjustProfitDescription').value;
+    const note = document.getElementById('adjustProfitNote').value;
+    
+    try {
+        const response = await fetch('/api/profit/adjust', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                account_id: currentProfitAccountId,
+                new_balance: newBalance,
+                description: description,
+                note: note
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            Swal.fire('成功', result.data.message, 'success');
+            hideAllProfitForms();
+            loadProfitHistory();
+            // 重新載入頁面以更新顯示
+            location.reload();
+        } else {
+            Swal.fire('錯誤', result.message, 'error');
+        }
+    } catch (error) {
+        console.error('調整利潤失敗:', error);
+        Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+    }
+});
+
 </script>
+
+    <!-- 利潤管理模態框 -->
+    <div class="modal fade" id="profitModal" tabindex="-1" aria-labelledby="profitModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="profitModalLabel">利潤管理</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <!-- 左側：利潤操作 -->
+                        <div class="col-md-6">
+                            <h6>帳戶資訊</h6>
+                            <div class="mb-3">
+                                <label class="form-label">帳戶名稱</label>
+                                <input type="text" class="form-control" id="profitAccountName" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">當前利潤餘額</label>
+                                <input type="text" class="form-control" id="profitCurrentBalance" readonly>
+                            </div>
+                            
+                            <h6 class="mt-4">利潤操作</h6>
+                            <div class="btn-group-vertical w-100 mb-3" role="group">
+                                <button type="button" class="btn btn-outline-success" id="btnAddProfit">增加利潤</button>
+                                <button type="button" class="btn btn-outline-warning" id="btnWithdrawProfit">提取利潤</button>
+                                <button type="button" class="btn btn-outline-info" id="btnAdjustProfit">調整餘額</button>
+                            </div>
+                            
+                            <!-- 增加利潤表單 -->
+                            <div id="addProfitForm" style="display: none;">
+                                <h6>增加利潤</h6>
+                                <form id="addProfitFormData">
+                                    <div class="mb-3">
+                                        <label for="addProfitAmount" class="form-label">金額</label>
+                                        <input type="number" class="form-control" id="addProfitAmount" step="0.01" min="0" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="addProfitDescription" class="form-label">描述</label>
+                                        <input type="text" class="form-control" id="addProfitDescription" placeholder="例如：銷售利潤">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="addProfitNote" class="form-label">備註</label>
+                                        <textarea class="form-control" id="addProfitNote" rows="2"></textarea>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-success">確認增加</button>
+                                        <button type="button" class="btn btn-secondary" id="cancelAddProfit">取消</button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- 提取利潤表單 -->
+                            <div id="withdrawProfitForm" style="display: none;">
+                                <h6>提取利潤</h6>
+                                <form id="withdrawProfitFormData">
+                                    <div class="mb-3">
+                                        <label for="withdrawProfitAmount" class="form-label">金額</label>
+                                        <input type="number" class="form-control" id="withdrawProfitAmount" step="0.01" min="0" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="withdrawProfitDescription" class="form-label">描述</label>
+                                        <input type="text" class="form-control" id="withdrawProfitDescription" placeholder="例如：利潤提取">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="withdrawProfitNote" class="form-label">備註</label>
+                                        <textarea class="form-control" id="withdrawProfitNote" rows="2"></textarea>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-warning">確認提取</button>
+                                        <button type="button" class="btn btn-secondary" id="cancelWithdrawProfit">取消</button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- 調整餘額表單 -->
+                            <div id="adjustProfitForm" style="display: none;">
+                                <h6>調整餘額</h6>
+                                <form id="adjustProfitFormData">
+                                    <div class="mb-3">
+                                        <label for="adjustProfitNewBalance" class="form-label">新餘額</label>
+                                        <input type="number" class="form-control" id="adjustProfitNewBalance" step="0.01" min="0" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="adjustProfitDescription" class="form-label">描述</label>
+                                        <input type="text" class="form-control" id="adjustProfitDescription" placeholder="例如：利潤調整">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="adjustProfitNote" class="form-label">備註</label>
+                                        <textarea class="form-control" id="adjustProfitNote" rows="2"></textarea>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-info">確認調整</button>
+                                        <button type="button" class="btn btn-secondary" id="cancelAdjustProfit">取消</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <!-- 右側：利潤歷史 -->
+                        <div class="col-md-6">
+                            <h6>利潤變動歷史</h6>
+                            <div id="profitHistory" style="max-height: 400px; overflow-y: auto;">
+                                <div class="text-center text-muted">載入中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- 增強數字輸入腳本已在 base.html 全域引入，這裡不重複載入 -->
 {% endblock %}
