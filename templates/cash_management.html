@@ -3280,80 +3280,90 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// 增加利潤表單提交
-document.getElementById('addProfitFormData').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const amount = parseFloat(document.getElementById('addProfitAmount').value);
-    const description = document.getElementById('addProfitDescription').value;
-    const note = document.getElementById('addProfitNote').value;
-    
-    try {
-        const response = await fetch('/api/profit/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                account_id: currentProfitAccountId,
-                amount: amount,
-                transaction_type: 'PROFIT_EARNED',
-                description: description,
-                note: note
-            })
+// 增加利潤表單提交 - 確保DOM載入後執行
+document.addEventListener('DOMContentLoaded', function() {
+    const addProfitForm = document.getElementById('addProfitFormData');
+    if (addProfitForm) {
+        addProfitForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const amount = parseFloat(document.getElementById('addProfitAmount').value);
+            const description = document.getElementById('addProfitDescription').value;
+            const note = document.getElementById('addProfitNote').value;
+            
+            try {
+                const response = await fetch('/api/profit/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_id: currentProfitAccountId,
+                        amount: amount,
+                        transaction_type: 'PROFIT_EARNED',
+                        description: description,
+                        note: note
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    Swal.fire('成功', result.data.message, 'success');
+                    hideAllProfitForms();
+                    loadProfitHistory();
+                    // 重新載入頁面以更新顯示
+                    location.reload();
+                } else {
+                    Swal.fire('錯誤', result.message, 'error');
+                }
+            } catch (error) {
+                console.error('增加利潤失敗:', error);
+                Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+            }
         });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            Swal.fire('成功', result.data.message, 'success');
-            hideAllProfitForms();
-            loadProfitHistory();
-            // 重新載入頁面以更新顯示
-            location.reload();
-        } else {
-            Swal.fire('錯誤', result.message, 'error');
-        }
-    } catch (error) {
-        console.error('增加利潤失敗:', error);
-        Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
     }
 });
 
 // 舊的提款表單處理器已移除，使用新的簡化版本
 
-// 調整利潤表單提交
-document.getElementById('adjustProfitFormData').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const newBalance = parseFloat(document.getElementById('adjustProfitNewBalance').value);
-    const description = document.getElementById('adjustProfitDescription').value;
-    const note = document.getElementById('adjustProfitNote').value;
-    
-    try {
-        const response = await fetch('/api/profit/adjust', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                account_id: currentProfitAccountId,
-                new_balance: newBalance,
-                description: description,
-                note: note
-            })
+// 調整利潤表單提交 - 確保DOM載入後執行
+document.addEventListener('DOMContentLoaded', function() {
+    const adjustProfitForm = document.getElementById('adjustProfitFormData');
+    if (adjustProfitForm) {
+        adjustProfitForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const newBalance = parseFloat(document.getElementById('adjustProfitNewBalance').value);
+            const description = document.getElementById('adjustProfitDescription').value;
+            const note = document.getElementById('adjustProfitNote').value;
+            
+            try {
+                const response = await fetch('/api/profit/adjust', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_id: currentProfitAccountId,
+                        new_balance: newBalance,
+                        description: description,
+                        note: note
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    Swal.fire('成功', result.data.message, 'success');
+                    hideAllProfitForms();
+                    loadProfitHistory();
+                    // 重新載入頁面以更新顯示
+                    location.reload();
+                } else {
+                    Swal.fire('錯誤', result.message, 'error');
+                }
+            } catch (error) {
+                console.error('調整利潤失敗:', error);
+                Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
+            }
         });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            Swal.fire('成功', result.data.message, 'success');
-            hideAllProfitForms();
-            loadProfitHistory();
-            // 重新載入頁面以更新顯示
-            location.reload();
-        } else {
-            Swal.fire('錯誤', result.message, 'error');
-        }
-    } catch (error) {
-        console.error('調整利潤失敗:', error);
-        Swal.fire('錯誤', '網路請求失敗，請稍後再試。', 'error');
     }
 });
 
