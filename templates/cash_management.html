@@ -2238,9 +2238,30 @@ window.loadMovements = function(page = 1) {
     // 顯示載入中
     movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中...</td></tr>';
     
-    // 發送API請求
-    fetch(`/api/cash_management/transactions?page=${page}`)
-        .then(response => response.json())
+        // 發送API請求（帶重試機制）
+        loadTransactionsWithRetry(page, false);
+};
+
+// 重試機制函數
+function loadTransactionsWithRetry(page, useSimpleAPI = false) {
+    const apiUrl = useSimpleAPI ? 
+        `/api/cash_management/transactions_simple?page=${page}` : 
+        `/api/cash_management/transactions?page=${page}`;
+    
+    console.log(`📡 嘗試載入交易記錄 (${useSimpleAPI ? '簡化' : '完整'} API):`, apiUrl);
+    
+    // 設置超時
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超時
+    
+    fetch(apiUrl, { signal: controller.signal })
+        .then(response => {
+            clearTimeout(timeoutId);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(result => {
             console.log('📡 API回應結果:', result);
             if (result.status === 'success') {
@@ -2252,16 +2273,31 @@ window.loadMovements = function(page = 1) {
                 window.currentPagination = result.data.pagination;
                 window.renderMovements(result.data.transactions);
                 window.renderPagination(result.data.pagination);
+                
+                // 如果使用簡化API成功，顯示提示
+                if (useSimpleAPI) {
+                    console.log('⚠️ 使用簡化API載入成功，部分功能可能受限');
+                }
             } else {
                 console.error('❌ 載入流水記錄失敗:', result.message);
                 movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">載入失敗: ' + result.message + '</td></tr>';
             }
         })
         .catch(error => {
-            console.error('❌ 網路錯誤:', error);
-            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+            clearTimeout(timeoutId);
+            console.error('❌ API請求失敗:', error);
+            
+            // 如果還沒嘗試簡化API，則重試
+            if (!useSimpleAPI) {
+                console.log('🔄 嘗試使用簡化API重試...');
+                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> 載入中（重試）...</td></tr>';
+                setTimeout(() => loadTransactionsWithRetry(page, true), 1000);
+            } else {
+                // 簡化API也失敗了
+                movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-3 text-danger">網路錯誤，請重試</td></tr>';
+            }
         });
-};
+}
 
 // 全局函數：渲染資金流水
 window.renderMovements = function(transactions) {

@@ -7120,12 +7120,17 @@ def manage_customer():
 @app.route("/api/cash_management/transactions", methods=["GET"])
 @login_required  
 def get_cash_management_transactions():
-    """獲取現金管理的分頁流水記錄"""
+    """獲取現金管理的分頁流水記錄（優化版本）"""
     try:
         page = request.args.get("page", 1, type=int)
-        per_page = 50  # 每頁50筆資料
+        per_page = min(request.args.get("per_page", 20, type=int), 50)  # 限制每頁最多50筆
         
-        # 獲取流水記錄數據（與cash_management路由相同的邏輯）
+        print(f"DEBUG: 現金管理API請求 - 頁碼: {page}, 每頁: {per_page}")
+        
+        # 優化：限制查詢數量，避免一次性載入所有數據
+        limit = per_page * 2  # 多查詢一些以確保有足夠數據
+        
+        # 獲取流水記錄數據（限制數量）
         purchases = db.session.execute(
             db.select(PurchaseRecord)
             .options(
@@ -7133,6 +7138,8 @@ def get_cash_management_transactions():
                 db.selectinload(PurchaseRecord.deposit_account),
                 db.selectinload(PurchaseRecord.channel)
             )
+            .order_by(PurchaseRecord.purchase_date.desc())
+            .limit(limit)
         ).scalars().all()
         
         sales = db.session.execute(
@@ -7141,7 +7148,11 @@ def get_cash_management_transactions():
                 db.selectinload(SalesRecord.customer),
                 db.selectinload(SalesRecord.rmb_account)
             )
+            .order_by(SalesRecord.created_at.desc())
+            .limit(limit)
         ).scalars().all()
+        
+        print(f"DEBUG: 查詢到 {len(purchases)} 筆買入記錄, {len(sales)} 筆銷售記錄")
         
         # 安全地查詢 LedgerEntry，處理可能缺少的欄位
         try:
@@ -7212,56 +7223,56 @@ def get_cash_management_transactions():
                     }
                 })
 
+        # 優化：批量計算所有銷售的利潤，避免重複計算
+        print("DEBUG: 開始批量計算銷售利潤...")
+        
+        # 預計算所有銷售的利潤
+        sales_profits = {}
+        running_profit = 0.0
+        
+        # 按時間順序處理銷售記錄
+        sorted_sales = sorted(sales, key=lambda x: x.created_at)
+        
+        for s in sorted_sales:
+            if s.customer:
+                try:
+                    profit_info = FIFOService.calculate_profit_for_sale(s)
+                    profit = profit_info['profit_twd'] if profit_info else 0
+                    
+                    # 計算變動前的利潤（累積）
+                    profit_before = running_profit
+                    running_profit += profit
+                    profit_after = running_profit
+                    
+                    sales_profits[s.id] = {
+                        'profit': profit,
+                        'profit_before': profit_before,
+                        'profit_after': profit_after
+                    }
+                    
+                except Exception as e:
+                    print(f"DEBUG: 計算銷售{s.id}利潤失敗: {e}")
+                    sales_profits[s.id] = {
+                        'profit': 0,
+                        'profit_before': running_profit,
+                        'profit_after': running_profit
+                    }
+        
+        print(f"DEBUG: 批量計算完成，處理了 {len(sales_profits)} 筆銷售記錄")
+        
         # 處理售出記錄
         for s in sales:
             if s.customer:
-                profit_info = FIFOService.calculate_profit_for_sale(s)
-                profit = profit_info['profit_twd'] if profit_info else 0
+                # 使用預計算的利潤數據
+                profit_data = sales_profits.get(s.id, {'profit': 0, 'profit_before': 0, 'profit_after': 0})
+                profit = profit_data['profit']
+                profit_before = profit_data['profit_before']
+                profit_after = profit_data['profit_after']
                 
                 # 計算RMB帳戶餘額變化
                 rmb_balance_before = s.rmb_account.balance + s.rmb_amount if s.rmb_account else 0
                 rmb_balance_after = s.rmb_account.balance if s.rmb_account else 0
                 rmb_balance_change = -s.rmb_amount
-                
-                # 計算實際的利潤變動前後值
-                # 使用FIFO計算當前銷售之前的總利潤
-                profit_before = 0.0
-                profit_after = profit
-                
-                # 計算當前銷售之前的總利潤
-                try:
-                    # 獲取當前銷售之前的所有銷售記錄
-                    previous_sales = db.session.execute(
-                        db.select(SalesRecord)
-                        .filter(SalesRecord.created_at < s.created_at)
-                    ).scalars().all()
-                    
-                    # 計算之前的總利潤
-                    for prev_sale in previous_sales:
-                        prev_profit_info = FIFOService.calculate_profit_for_sale(prev_sale)
-                        if prev_profit_info:
-                            profit_before += prev_profit_info.get('profit_twd', 0.0)
-                    
-                    # 扣除之前的利潤提款
-                    previous_withdrawals = db.session.execute(
-                        db.select(LedgerEntry)
-                        .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
-                        .filter(LedgerEntry.entry_date < s.created_at)
-                    ).scalars().all()
-                    
-                    total_withdrawals = sum(abs(entry.amount) for entry in previous_withdrawals)
-                    profit_before -= total_withdrawals
-                    
-                    # 計算變動後的利潤
-                    profit_after = profit_before + profit
-                    
-                    print(f"DEBUG: 銷售{s.id}的利潤信息 - 前:{profit_before:.2f}, 後:{profit_after:.2f}, 變動:{profit:.2f}")
-                    
-                except Exception as e:
-                    print(f"DEBUG: 計算利潤變動失敗: {e}")
-                    # 如果計算失敗，使用簡化邏輯
-                    profit_before = 0.0
-                    profit_after = profit
                 
                 unified_stream.append({
                     "type": "售出",
@@ -7545,6 +7556,128 @@ def get_cash_management_transactions():
     
     except Exception as e:
         print(f"獲取分頁流水記錄時出錯: {e}")
+        return jsonify({"status": "error", "message": f"系統錯誤: {str(e)}"}), 500
+
+
+@app.route("/api/cash_management/transactions_simple", methods=["GET"])
+@login_required  
+def get_cash_management_transactions_simple():
+    """獲取現金管理的簡化流水記錄（快速版本）"""
+    try:
+        page = request.args.get("page", 1, type=int)
+        per_page = min(request.args.get("per_page", 10, type=int), 20)  # 限制更少
+        
+        print(f"DEBUG: 簡化API請求 - 頁碼: {page}, 每頁: {per_page}")
+        
+        # 只查詢最近的記錄
+        limit = per_page
+        
+        # 獲取最近的銷售記錄
+        sales = db.session.execute(
+            db.select(SalesRecord)
+            .options(
+                db.selectinload(SalesRecord.customer),
+                db.selectinload(SalesRecord.rmb_account)
+            )
+            .order_by(SalesRecord.created_at.desc())
+            .limit(limit)
+        ).scalars().all()
+        
+        # 獲取最近的買入記錄
+        purchases = db.session.execute(
+            db.select(PurchaseRecord)
+            .options(
+                db.selectinload(PurchaseRecord.payment_account),
+                db.selectinload(PurchaseRecord.deposit_account),
+                db.selectinload(PurchaseRecord.channel)
+            )
+            .order_by(PurchaseRecord.purchase_date.desc())
+            .limit(limit)
+        ).scalars().all()
+        
+        unified_stream = []
+        
+        # 處理買入記錄（簡化版）
+        for p in purchases:
+            if p.payment_account and p.deposit_account:
+                channel_name = "未知渠道"
+                if p.channel:
+                    channel_name = p.channel.name
+                elif hasattr(p, 'channel_name_manual') and p.channel_name_manual:
+                    channel_name = p.channel_name_manual
+                
+                unified_stream.append({
+                    "type": "買入",
+                    "date": p.purchase_date.isoformat(),
+                    "description": f"向 {channel_name} 買入",
+                    "twd_change": -p.twd_cost,
+                    "rmb_change": p.rmb_amount,
+                    "operator": p.operator.username if p.operator else "未知",
+                    "payment_account": p.payment_account.name if p.payment_account else "N/A",
+                    "deposit_account": p.deposit_account.name if p.deposit_account else "N/A",
+                    "note": p.note if hasattr(p, 'note') and p.note else None,
+                    "profit": 0,  # 買入不產生利潤
+                    "profit_change_detail": None
+                })
+        
+        # 處理銷售記錄（簡化版，不計算複雜的利潤變動）
+        for s in sales:
+            if s.customer:
+                # 簡化利潤計算
+                try:
+                    profit_info = FIFOService.calculate_profit_for_sale(s)
+                    profit = profit_info['profit_twd'] if profit_info else 0
+                except Exception as e:
+                    print(f"DEBUG: 簡化API計算銷售{s.id}利潤失敗: {e}")
+                    profit = 0
+                
+                unified_stream.append({
+                    "type": "售出",
+                    "date": s.created_at.isoformat(),
+                    "description": f"售予 {s.customer.name}",
+                    "twd_change": s.twd_amount,
+                    "rmb_change": -s.rmb_amount,
+                    "operator": s.operator.username if s.operator else "未知",
+                    "profit": profit,
+                    "payment_account": s.rmb_account.name if s.rmb_account else "N/A",
+                    "deposit_account": "應收帳款",
+                    "note": s.note if hasattr(s, 'note') and s.note else None,
+                    "profit_change_detail": {
+                        "before": 0,  # 簡化處理
+                        "change": profit,
+                        "after": profit
+                    }
+                })
+        
+        # 按時間排序
+        unified_stream.sort(key=lambda x: x['date'], reverse=True)
+        
+        # 分頁
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_records = unified_stream[start_idx:end_idx]
+        
+        print(f"DEBUG: 簡化API返回 {len(paginated_records)} 筆記錄")
+        
+        return jsonify({
+            "status": "success",
+            "data": {
+                "records": paginated_records,
+                "pagination": {
+                    "current_page": page,
+                    "per_page": per_page,
+                    "total_count": len(unified_stream),
+                    "total_pages": (len(unified_stream) + per_page - 1) // per_page,
+                    "has_next": end_idx < len(unified_stream),
+                    "has_prev": page > 1
+                }
+            }
+        })
+        
+    except Exception as e:
+        print(f"簡化API錯誤: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": f"系統錯誤: {str(e)}"}), 500
 
 
