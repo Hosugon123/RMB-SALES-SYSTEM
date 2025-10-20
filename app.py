@@ -7168,7 +7168,7 @@ def get_cash_management_transactions():
                     "type": "售出",
                     "date": s.created_at.isoformat(),
                     "description": f"售予 {s.customer.name}",
-                    "twd_change": s.twd_amount,  # 售出收入
+                    "twd_change": 0,  # 售出後台幣進入應收帳款，不直接進入現金帳戶
                     "rmb_change": -s.rmb_amount,
                     "operator": s.operator.username if s.operator else "未知",
                     "profit": profit,

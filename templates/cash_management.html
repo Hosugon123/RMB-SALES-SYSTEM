@@ -1585,7 +1585,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const changeColor = (profitDetail.change || 0) > 0 ? 'text-success' : 'text-danger';
                 const changeSymbol = (profitDetail.change || 0) > 0 ? '+' : '';
                 
-                profitChangeHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #ffeaa7;">' +
+                profitChangeHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #bbdefb;">' +
                     '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
                     '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
                     '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
@@ -1597,7 +1597,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const changeColor = (m.profit_change || 0) > 0 ? 'text-success' : 'text-danger';
                 const changeSymbol = (m.profit_change || 0) > 0 ? '+' : '';
                 
-                profitChangeHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #ffeaa7;">' +
+                profitChangeHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border: 1px solid #bbdefb;">' +
                     '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
                     '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
                     '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
@@ -2445,7 +2445,7 @@ window.renderMovements = function(transactions) {
             const changeColor = (profitDetail.change || 0) > 0 ? 'text-success' : (profitDetail.change || 0) < 0 ? 'text-danger' : 'text-muted';
             const changeSymbol = (profitDetail.change || 0) > 0 ? '+' : '';
             
-            profitDetailHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+            profitDetailHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
                 '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
                 '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
                 '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
@@ -2462,7 +2462,7 @@ window.renderMovements = function(transactions) {
                 change: changeSymbol + profitChangeDisplay
             });
             
-            profitDetailHtml = '<div class="card" style="background-color: #fff3cd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+            profitDetailHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
                 '<div class="text-dark" style="font-size: 0.8rem;">前: ' + profitBeforeDisplay + '</div>' +
                 '<div class="' + changeColorClass + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + profitChangeDisplay + '</div>' +
                 '<div class="text-dark" style="font-size: 0.8rem;">後: ' + profitAfterDisplay + '</div>' +
