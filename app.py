@@ -5382,7 +5382,7 @@ def api_profit_history():
             transactions.append({
                 "id": entry.id,
                 "transaction_type": "PROFIT_WITHDRAW",
-                "amount": abs(entry.amount),  # 轉為正數顯示
+                "amount": entry.amount,  # 保持原始值（負數表示提款）
                 "balance_before": getattr(entry, 'profit_before', None),
                 "balance_after": getattr(entry, 'profit_after', None),
                 "description": entry.description,
@@ -7080,7 +7080,7 @@ def get_cash_management_transactions():
                     "type": "售出",
                     "date": s.created_at.isoformat(),
                     "description": f"售予 {s.customer.name}",
-                    "twd_change": 0,
+                    "twd_change": s.twd_amount,  # 售出收入
                     "rmb_change": -s.rmb_amount,
                     "operator": s.operator.username if s.operator else "未知",
                     "profit": profit,
@@ -7093,10 +7093,18 @@ def get_cash_management_transactions():
                         "change": rmb_balance_change,
                         "after": rmb_balance_after
                     },
+                    # 新增：TWD帳戶餘額變化（應收帳款）
+                    "twd_account_balance": {
+                        "before": 0,  # 應收帳款在售出前為0
+                        "change": s.twd_amount,  # 售出後增加應收帳款
+                        "after": s.twd_amount
+                    },
                     # 新增：利潤變動記錄
-                    "profit_change": {
-                        "amount": profit,
-                        "description": "售出利潤"
+                    "profit_change": profit,  # 直接使用數字
+                    "profit_change_detail": {
+                        "before": 0,  # 售出前利潤為0
+                        "change": profit,  # 售出利潤
+                        "after": profit  # 售出後利潤
                     }
                 })
 
@@ -7185,7 +7193,7 @@ def get_cash_management_transactions():
                     
                     # 為利潤提款設置特殊的類型顯示和金額變化
                     record["type"] = "利潤提款"
-                    record["twd_change"] = entry.amount  # 利潤提款的金額變化
+                    record["twd_change"] = -abs(entry.amount)  # 利潤提款的金額變化（負數）
                     
                     record["profit_before"] = profit_before
                     record["profit_after"] = profit_after
