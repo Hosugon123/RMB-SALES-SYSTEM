@@ -894,13 +894,18 @@ class FIFOService:
             if remaining_to_allocate > 0:
                 raise ValueError(f"庫存不足，還需要 {remaining_to_allocate} RMB")
             
-            db.session.commit()
+            db.session.flush()  # 改為flush，讓上層控制commit
             print(f"FIFO分配完成，總成本: {total_cost} TWD")
+            
+            # 計算利潤
+            profit_twd = sales_record.twd_amount - total_cost
+            print(f"利潤計算: 售價 {sales_record.twd_amount} TWD - 成本 {total_cost} TWD = 利潤 {profit_twd} TWD")
             
             return {
                 'allocations': allocations,
                 'total_cost': total_cost,
-                'total_rmb': rmb_amount
+                'total_rmb': rmb_amount,
+                'profit_twd': profit_twd  # 新增利潤計算
             }
             
         except Exception as e:
@@ -2484,15 +2489,20 @@ def api_sales_entry():
             print(f"FIFO庫存分配成功: {fifo_result}")
             
             # 5. 自動記錄利潤到RMB帳戶和LedgerEntry
-            if fifo_result and 'profit_twd' in fifo_result and fifo_result['profit_twd'] > 0:
+            print(f"DEBUG: fifo_result = {fifo_result}")
+            if fifo_result and 'profit_twd' in fifo_result:
+                profit_amount = fifo_result['profit_twd']
+                print(f"DEBUG: 售出利潤金額: {profit_amount} TWD")
+                
                 try:
                     # 找到對應的RMB帳戶
                     rmb_account = new_sale.rmb_account
+                    print(f"DEBUG: RMB帳戶 = {rmb_account}")
                     if rmb_account:
                         # 記錄到ProfitService（保持原有邏輯）
                         profit_result = ProfitService.add_profit(
                             account_id=rmb_account.id,
-                            amount=fifo_result['profit_twd'],
+                            amount=profit_amount,
                             transaction_type="PROFIT_EARNED",
                             description=f"銷售利潤：客戶「{customer.name}」",
                             note=f"RMB {new_sale.rmb_amount}，匯率 {new_sale.twd_amount/new_sale.rmb_amount:.4f}",
@@ -2503,10 +2513,14 @@ def api_sales_entry():
                         
                         # 同時記錄到LedgerEntry中，用於利潤管理歷史
                         try:
-                            # 計算當前總利潤（用於profit_before）
-                            all_sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+                            # 計算當前總利潤（不包含當前銷售記錄）
+                            existing_sales = db.session.execute(
+                                db.select(SalesRecord)
+                                .filter(SalesRecord.id != new_sale.id)
+                            ).scalars().all()
+                            
                             current_total_profit = 0.0
-                            for sale in all_sales:
+                            for sale in existing_sales:
                                 sale_profit_info = FIFOService.calculate_profit_for_sale(sale)
                                 if sale_profit_info:
                                     current_total_profit += sale_profit_info.get('profit_twd', 0.0)
@@ -2525,20 +2539,25 @@ def api_sales_entry():
                             # 創建利潤記錄
                             profit_entry = LedgerEntry(
                                 entry_type="PROFIT_EARNED",
-                                amount=fifo_result['profit_twd'],
+                                amount=profit_amount,
                                 description=f"售出利潤：{customer.name}",
                                 operator_id=current_user.id,
-                                profit_before=current_total_profit - fifo_result['profit_twd'],
-                                profit_after=current_total_profit,
-                                profit_change=fifo_result['profit_twd']
+                                profit_before=current_total_profit,
+                                profit_after=current_total_profit + profit_amount,
+                                profit_change=profit_amount
                             )
                             db.session.add(profit_entry)
-                            print(f"✅ 記錄售出利潤到LedgerEntry成功: {fifo_result['profit_twd']:.2f} TWD")
+                            db.session.flush()  # 確保記錄被添加到會話中
+                            print(f"✅ 記錄售出利潤到LedgerEntry成功: {profit_amount:.2f} TWD")
+                            print(f"DEBUG: 利潤記錄 - 前: {current_total_profit:.2f}, 後: {current_total_profit + profit_amount:.2f}, 變動: {profit_amount:.2f}")
+                            print(f"DEBUG: LedgerEntry ID: {profit_entry.id}")
                         except Exception as ledger_error:
                             print(f"⚠️ 記錄售出利潤到LedgerEntry失敗: {ledger_error}")
+                            import traceback
+                            traceback.print_exc()
                         
                         if profit_result["success"]:
-                            print(f"✅ 自動記錄銷售利潤成功: {fifo_result['profit_twd']:.2f} TWD")
+                            print(f"✅ 自動記錄銷售利潤成功: {profit_amount:.2f} TWD")
                         else:
                             print(f"⚠️ 自動記錄銷售利潤失敗: {profit_result['message']}")
                     else:
@@ -5129,9 +5148,12 @@ def get_frequent_customers():
 @app.route("/api/total-profit", methods=["GET"])
 @login_required
 def api_total_profit():
-    """計算系統總利潤的API，所有登入使用者都可以存取"""
+    """計算系統總利潤的API，使用FIFO計算邏輯確保準確性"""
     try:
-        # 與儀表板保持一致的計算邏輯：計算所有銷售記錄的利潤，並扣除利潤提款
+        # 使用FIFO計算邏輯，確保與實際銷售和成本數據一致
+        print("DEBUG: 開始使用FIFO計算總利潤")
+        
+        # 獲取所有銷售記錄
         all_sales = (
             db.session.execute(
                 db.select(SalesRecord)
@@ -5141,7 +5163,7 @@ def api_total_profit():
             .all()
         )
         
-        print(f"DEBUG: 找到 {len(all_sales)} 筆所有銷售記錄")
+        print(f"DEBUG: 找到 {len(all_sales)} 筆銷售記錄")
         
         if len(all_sales) == 0:
             print("DEBUG: 沒有任何銷售記錄，返回零利潤")
@@ -5149,24 +5171,16 @@ def api_total_profit():
                 'status': 'success',
                 'data': {
                     'total_profit_twd': 0.0,
-                    'total_revenue_twd': 0.0,
-                    'total_cost_twd': 0.0,
-                    'overall_profit_margin': 0.0,
-                    'settled_sales_count': 0,
-                    'profit_breakdown': [],
                     'message': '系統中沒有銷售記錄，無法計算利潤'
                 }
             })
         
+        # 使用FIFO計算每筆銷售的利潤
         total_profit_twd = 0.0
         total_revenue_twd = 0.0
         total_cost_twd = 0.0
-        profit_breakdown = []
         
-        # 使用所有銷售記錄計算利潤（與儀表板一致）
-        sales_to_process = all_sales
-        
-        for sale in sales_to_process:
+        for sale in all_sales:
             print(f"DEBUG: 處理銷售記錄 ID: {sale.id}, 客戶: {sale.customer.name if sale.customer else 'N/A'}")
             profit_info = FIFOService.calculate_profit_for_sale(sale)
             print(f"DEBUG: 利潤計算結果: {profit_info}")
@@ -5180,20 +5194,10 @@ def api_total_profit():
                 total_revenue_twd += sale.twd_amount
                 
                 print(f"DEBUG: 銷售 {sale.id} - 利潤: {sale_profit}, 成本: {sale_cost}, 收入: {sale.twd_amount}")
-                
-                profit_breakdown.append({
-                    'sale_id': sale.id,
-                    'customer_name': sale.customer.name if sale.customer else 'N/A',
-                    'rmb_amount': sale.rmb_amount,
-                    'twd_amount': sale.twd_amount,
-                    'profit_twd': sale_profit,
-                    'cost_twd': sale_cost,
-                    'date': sale.created_at.strftime('%Y-%m-%d')
-                })
             else:
                 print(f"DEBUG: 銷售記錄 {sale.id} 無法計算利潤")
         
-        # 扣除利潤提款記錄（與儀表板邏輯一致）
+        # 扣除利潤提款記錄
         try:
             profit_withdrawals = (
                 db.session.execute(
@@ -5203,22 +5207,14 @@ def api_total_profit():
                 .scalars()
                 .all()
             )
+            total_profit_withdrawals = sum(abs(entry.amount) for entry in profit_withdrawals)  # 提款記錄的amount是負數
+            total_profit_twd -= total_profit_withdrawals
+            print(f"DEBUG: 利潤提款總計: {total_profit_withdrawals:.2f}")
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: 利潤API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
-                db.session.rollback()
-                profit_withdrawals = []
-            else:
-                db.session.rollback()
-                raise e
+            print(f"DEBUG: 查詢利潤提款記錄失敗: {e}")
+            total_profit_withdrawals = 0.0
         
-        total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
-        total_profit_twd -= total_profit_withdrawals
-        
-        print(f"DEBUG: 利潤API計算 - 銷售利潤: {total_profit_twd + total_profit_withdrawals:.2f}, 利潤提款: {total_profit_withdrawals:.2f}, 最終利潤: {total_profit_twd:.2f}")
-        
-        # 計算整體利潤率
-        overall_profit_margin = (total_profit_twd / total_revenue_twd * 100) if total_revenue_twd > 0 else 0
+        print(f"DEBUG: 最終利潤計算 - 銷售利潤: {total_profit_twd + total_profit_withdrawals:.2f}, 利潤提款: {total_profit_withdrawals:.2f}, 最終利潤: {total_profit_twd:.2f}")
         
         return jsonify({
             'status': 'success',
@@ -5226,9 +5222,8 @@ def api_total_profit():
                 'total_profit_twd': round(total_profit_twd, 2),
                 'total_revenue_twd': round(total_revenue_twd, 2),
                 'total_cost_twd': round(total_cost_twd, 2),
-                'overall_profit_margin': round(overall_profit_margin, 2),
-                'settled_sales_count': len(sales_to_process),
-                'profit_breakdown': profit_breakdown
+                'total_profit_withdrawals': round(total_profit_withdrawals, 2),
+                'message': f'系統總利潤：{total_profit_twd:.2f} TWD（收入：{total_revenue_twd:.2f} TWD，成本：{total_cost_twd:.2f} TWD，提款：{total_profit_withdrawals:.2f} TWD）'
             }
         })
         
@@ -5434,6 +5429,11 @@ def api_profit_history():
                 .scalars()
                 .all()
             )
+            
+            print(f"DEBUG: api_profit_history 查詢到 {len(profit_entries)} 筆記錄")
+            for entry in profit_entries:
+                print(f"DEBUG: 記錄 - 類型: {entry.entry_type}, 金額: {entry.amount}, 描述: {entry.description}")
+                print(f"DEBUG: 利潤欄位 - profit_before: {getattr(entry, 'profit_before', 'None')}, profit_after: {getattr(entry, 'profit_after', 'None')}, profit_change: {getattr(entry, 'profit_change', 'None')}")
         except Exception as e:
             if "profit_before does not exist" in str(e):
                 print("警告: 利潤歷史API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，返回空記錄")
@@ -5445,7 +5445,45 @@ def api_profit_history():
         
         # 構建返回數據
         transactions = []
+        print(f"DEBUG: 找到 {len(profit_entries)} 筆利潤記錄")
+        
+        # 計算當前總利潤（用於餘額計算）
+        try:
+            # 使用FIFO計算當前總利潤
+            all_sales = (
+                db.session.execute(
+                    db.select(SalesRecord)
+                )
+                .scalars()
+                .all()
+            )
+            
+            fifo_total_profit = 0.0
+            for sale in all_sales:
+                profit_info = FIFOService.calculate_profit_for_sale(sale)
+                if profit_info:
+                    fifo_total_profit += profit_info.get('profit_twd', 0.0)
+            
+            # 扣除利潤提款
+            profit_withdraw_entries = (
+                db.session.execute(
+                    db.select(LedgerEntry)
+                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                )
+                .scalars()
+                .all()
+            )
+            total_profit_withdrawals = sum(abs(entry.amount) for entry in profit_withdraw_entries)
+            
+            current_total_profit = fifo_total_profit - total_profit_withdrawals
+            print(f"DEBUG: 當前總利潤 (FIFO計算): {current_total_profit:.2f}")
+        except Exception as e:
+            print(f"DEBUG: 計算當前總利潤失敗: {e}")
+            current_total_profit = 0.0
+        
         for entry in profit_entries:
+            print(f"DEBUG: 處理記錄 - 類型: {entry.entry_type}, 描述: {entry.description}, 金額: {entry.amount}")
+            
             # 判斷是否為提款或扣除（應該顯示為負數）
             is_withdrawal = (
                 entry.entry_type == "PROFIT_WITHDRAW" or
@@ -5459,12 +5497,33 @@ def api_profit_history():
             if is_withdrawal and entry.amount > 0:
                 display_amount = -entry.amount  # 提款和扣除應該顯示為負數
             
+            print(f"DEBUG: 記錄處理結果 - 是否提款: {is_withdrawal}, 顯示金額: {display_amount}")
+            
+            # 如果profit_before和profit_after為空，嘗試計算
+            balance_before = getattr(entry, 'profit_before', None)
+            balance_after = getattr(entry, 'profit_after', None)
+            
+            if balance_before is None or balance_after is None:
+                # 使用當前總利潤作為基準，根據記錄類型計算
+                if entry.entry_type == "PROFIT_EARNED":
+                    # 利潤入庫：餘額增加
+                    balance_after = current_total_profit
+                    balance_before = balance_after - entry.amount
+                elif entry.entry_type == "PROFIT_WITHDRAW":
+                    # 利潤提款：餘額減少
+                    balance_before = current_total_profit + abs(entry.amount)
+                    balance_after = current_total_profit
+                else:
+                    # 其他情況：使用當前總利潤
+                    balance_before = current_total_profit
+                    balance_after = current_total_profit
+            
             transactions.append({
                 "id": entry.id,
                 "transaction_type": entry.entry_type or "利潤變動",
                 "amount": display_amount,  # 根據類型調整正負
-                "balance_before": getattr(entry, 'profit_before', None),
-                "balance_after": getattr(entry, 'profit_after', None),
+                "balance_before": balance_before,
+                "balance_after": balance_after,
                 "description": entry.description,
                 "note": getattr(entry, 'note', None),
                 "operator_name": entry.operator.username if entry.operator else "未知",
@@ -7164,11 +7223,51 @@ def get_cash_management_transactions():
                 rmb_balance_after = s.rmb_account.balance if s.rmb_account else 0
                 rmb_balance_change = -s.rmb_amount
                 
+                # 計算實際的利潤變動前後值
+                # 使用FIFO計算當前銷售之前的總利潤
+                profit_before = 0.0
+                profit_after = profit
+                
+                # 計算當前銷售之前的總利潤
+                try:
+                    # 獲取當前銷售之前的所有銷售記錄
+                    previous_sales = db.session.execute(
+                        db.select(SalesRecord)
+                        .filter(SalesRecord.created_at < s.created_at)
+                    ).scalars().all()
+                    
+                    # 計算之前的總利潤
+                    for prev_sale in previous_sales:
+                        prev_profit_info = FIFOService.calculate_profit_for_sale(prev_sale)
+                        if prev_profit_info:
+                            profit_before += prev_profit_info.get('profit_twd', 0.0)
+                    
+                    # 扣除之前的利潤提款
+                    previous_withdrawals = db.session.execute(
+                        db.select(LedgerEntry)
+                        .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                        .filter(LedgerEntry.entry_date < s.created_at)
+                    ).scalars().all()
+                    
+                    total_withdrawals = sum(abs(entry.amount) for entry in previous_withdrawals)
+                    profit_before -= total_withdrawals
+                    
+                    # 計算變動後的利潤
+                    profit_after = profit_before + profit
+                    
+                    print(f"DEBUG: 銷售{s.id}的利潤信息 - 前:{profit_before:.2f}, 後:{profit_after:.2f}, 變動:{profit:.2f}")
+                    
+                except Exception as e:
+                    print(f"DEBUG: 計算利潤變動失敗: {e}")
+                    # 如果計算失敗，使用簡化邏輯
+                    profit_before = 0.0
+                    profit_after = profit
+                
                 unified_stream.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
                     "description": f"售予 {s.customer.name}",
-                    "twd_change": 0,  # 售出後台幣進入應收帳款，不直接進入現金帳戶
+                    "twd_change": s.twd_amount,  # 售出後台幣進入應收帳款
                     "rmb_change": -s.rmb_amount,
                     "operator": s.operator.username if s.operator else "未知",
                     "profit": profit,
@@ -7181,13 +7280,18 @@ def get_cash_management_transactions():
                         "change": rmb_balance_change,
                         "after": rmb_balance_after
                     },
-                    # 應收帳款變動不記錄在交易紀錄中
+                    # 新增：入款戶餘額變化（應收帳款）
+                    "deposit_account_balance": {
+                        "before": 0,  # 應收帳款變動前
+                        "change": s.twd_amount,  # 應收帳款增加
+                        "after": s.twd_amount  # 應收帳款變動後
+                    },
                     # 新增：利潤變動記錄
                     "profit_change": profit,  # 直接使用數字
                     "profit_change_detail": {
-                        "before": 0,  # 售出前利潤為0
+                        "before": profit_before,  # 從LedgerEntry獲取
                         "change": profit,  # 售出利潤
-                        "after": profit  # 售出後利潤
+                        "after": profit_after  # 從LedgerEntry獲取
                     }
                 })
 
