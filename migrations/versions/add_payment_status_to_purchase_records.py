@@ -17,18 +17,27 @@ depends_on = None
 
 
 def upgrade():
-    # 新增欄位到 purchase_records，預設 'paid' 不可為空
-    op.add_column(
-        'purchase_records',
-        sa.Column('payment_status', sa.String(length=20), nullable=False, server_default='paid')
-    )
-    # 將現有資料填入預設值後，移除 server_default，避免未來隱性預設
-    with op.get_context().autocommit_block():
-        op.execute("UPDATE purchase_records SET payment_status = 'paid' WHERE payment_status IS NULL")
-    op.alter_column('purchase_records', 'payment_status', server_default=None)
+    # 僅在欄位不存在時才新增
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_columns = {col['name'] for col in inspector.get_columns('purchase_records')}
+
+    if 'payment_status' not in existing_columns:
+        op.add_column(
+            'purchase_records',
+            sa.Column('payment_status', sa.String(length=20), nullable=False, server_default='paid')
+        )
+        # 將現有資料填入預設值後，移除 server_default，避免未來隱性預設
+        with op.get_context().autocommit_block():
+            op.execute("UPDATE purchase_records SET payment_status = 'paid' WHERE payment_status IS NULL")
+        op.alter_column('purchase_records', 'payment_status', server_default=None)
 
 
 def downgrade():
-    op.drop_column('purchase_records', 'payment_status')
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_columns = {col['name'] for col in inspector.get_columns('purchase_records')}
+    if 'payment_status' in existing_columns:
+        op.drop_column('purchase_records', 'payment_status')
 
 
