@@ -5284,6 +5284,7 @@ def api_profit_withdraw():
         print(f"DEBUG: 利潤提款檢查 - 總銷售利潤: {total_profit:.2f}, 已提款: {total_withdrawals:.2f}, 可用利潤: {current_profit:.2f}, 提款金額: {amount:.2f}")
         
         if current_profit < amount:
+            print(f"DEBUG: 提款失敗 - 餘額不足: 可用 {current_profit:.2f} < 提款 {amount:.2f}")
             return jsonify({"status": "error", "message": f"利潤餘額不足，當前可用利潤: NT$ {current_profit:.2f}"}), 400
         
         # 創建利潤提款記錄
@@ -5350,19 +5351,58 @@ def api_profit_adjust():
 @app.route("/api/profit/history", methods=["GET"])
 @login_required
 def api_profit_history():
-    """API: 獲取利潤變動歷史"""
+    """API: 獲取利潤變動歷史 - 從LedgerEntry中獲取利潤提款記錄"""
     try:
-        account_id = request.args.get("account_id", type=int)
         limit = request.args.get("limit", 50, type=int)
         
-        result = ProfitService.get_profit_history(account_id=account_id, limit=limit)
+        # 查詢利潤提款記錄
+        try:
+            profit_entries = (
+                db.session.execute(
+                    db.select(LedgerEntry)
+                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                    .order_by(LedgerEntry.entry_date.desc())
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+        except Exception as e:
+            if "profit_before does not exist" in str(e):
+                print("警告: 利潤歷史API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，返回空記錄")
+                db.session.rollback()
+                profit_entries = []
+            else:
+                db.session.rollback()
+                raise e
         
-        if result["success"]:
-            return jsonify({"status": "success", "data": result})
-        else:
-            return jsonify({"status": "error", "message": result["message"]}), 400
+        # 構建返回數據
+        transactions = []
+        for entry in profit_entries:
+            transactions.append({
+                "id": entry.id,
+                "transaction_type": "PROFIT_WITHDRAW",
+                "amount": abs(entry.amount),  # 轉為正數顯示
+                "balance_before": getattr(entry, 'profit_before', None),
+                "balance_after": getattr(entry, 'profit_after', None),
+                "description": entry.description,
+                "note": getattr(entry, 'note', None),
+                "operator_name": entry.operator.username if entry.operator else "未知",
+                "created_at": entry.entry_date.isoformat()
+            })
+        
+        return jsonify({
+            "status": "success", 
+            "data": {
+                "success": True,
+                "transactions": transactions
+            }
+        })
             
     except Exception as e:
+        print(f"獲取利潤歷史失敗: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": f"獲取利潤歷史失敗: {str(e)}"}), 500
 
 
