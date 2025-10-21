@@ -7278,31 +7278,31 @@ def get_cash_management_transactions():
                     "type": "售出",
                     "date": s.created_at.isoformat(),
                     "description": f"售予 {s.customer.name}",
-                    "twd_change": s.twd_amount,  # 售出後台幣進入應收帳款
-                    "rmb_change": -s.rmb_amount,
+                    "twd_change": 0,  # 售出時TWD變動為0，不直接影響總台幣金額
+                    "rmb_change": -s.rmb_amount,  # RMB變動：售出金額
                     "operator": s.operator.username if s.operator else "未知",
                     "profit": profit,
-                    "payment_account": s.rmb_account.name if s.rmb_account else "N/A",
-                    "deposit_account": "應收帳款",
+                    "payment_account": s.rmb_account.name if s.rmb_account else "N/A",  # 出款戶：RMB帳戶
+                    "deposit_account": "應收帳款",  # 入款戶：應收帳款
                     "note": s.note if hasattr(s, 'note') and s.note else None,
-                    # 新增：出款戶餘額變化（RMB帳戶）
+                    # 出款戶餘額變化（RMB帳戶）：售出金額
                     "payment_account_balance": {
                         "before": rmb_balance_before,
-                        "change": rmb_balance_change,
+                        "change": rmb_balance_change,  # -s.rmb_amount
                         "after": rmb_balance_after
                     },
-                    # 新增：入款戶餘額變化（應收帳款）
+                    # 入款戶餘額變化（應收帳款）：應收帳款之變動
                     "deposit_account_balance": {
                         "before": 0,  # 應收帳款變動前
-                        "change": s.twd_amount,  # 應收帳款增加
+                        "change": s.twd_amount,  # 應收帳款增加（台幣金額）
                         "after": s.twd_amount  # 應收帳款變動後
                     },
-                    # 新增：利潤變動記錄
-                    "profit_change": profit,  # 直接使用數字
+                    # 利潤變動記錄
+                    "profit_change": profit,  # 利潤之變動
                     "profit_change_detail": {
-                        "before": profit_before,  # 從LedgerEntry獲取
-                        "change": profit,  # 售出利潤
-                        "after": profit_after  # 從LedgerEntry獲取
+                        "before": profit_before,
+                        "change": profit,
+                        "after": profit_after
                     }
                 })
 
@@ -7666,17 +7666,34 @@ def get_cash_management_transactions_simple():
                     print(f"DEBUG: 簡化API計算銷售{s.id}利潤失敗: {e}")
                     profit = 0
                 
+                # 計算RMB帳戶餘額變化
+                rmb_balance_before = s.rmb_account.balance + s.rmb_amount if s.rmb_account else 0
+                rmb_balance_after = s.rmb_account.balance if s.rmb_account else 0
+                rmb_balance_change = -s.rmb_amount
+                
                 unified_stream.append({
                     "type": "售出",
                     "date": s.created_at.isoformat(),
                     "description": f"售予 {s.customer.name}",
-                    "twd_change": s.twd_amount,
-                    "rmb_change": -s.rmb_amount,
+                    "twd_change": 0,  # 售出時TWD變動為0，不直接影響總台幣金額
+                    "rmb_change": -s.rmb_amount,  # RMB變動：售出金額
                     "operator": s.operator.username if s.operator else "未知",
                     "profit": profit,
-                    "payment_account": s.rmb_account.name if s.rmb_account else "N/A",
-                    "deposit_account": "應收帳款",
+                    "payment_account": s.rmb_account.name if s.rmb_account else "N/A",  # 出款戶：RMB帳戶
+                    "deposit_account": "應收帳款",  # 入款戶：應收帳款
                     "note": s.note if hasattr(s, 'note') and s.note else None,
+                    # 出款戶餘額變化（RMB帳戶）：售出金額
+                    "payment_account_balance": {
+                        "before": rmb_balance_before,
+                        "change": rmb_balance_change,  # -s.rmb_amount
+                        "after": rmb_balance_after
+                    },
+                    # 入款戶餘額變化（應收帳款）：應收帳款之變動
+                    "deposit_account_balance": {
+                        "before": 0,  # 應收帳款變動前
+                        "change": s.twd_amount,  # 應收帳款增加（台幣金額）
+                        "after": s.twd_amount  # 應收帳款變動後
+                    },
                     "profit_change_detail": {
                         "before": 0,  # 簡化處理
                         "change": profit,
