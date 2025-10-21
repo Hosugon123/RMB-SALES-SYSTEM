@@ -1297,14 +1297,41 @@ class FIFOService:
                     except:
                         operator_id = 1  # 默認系統用戶ID
                     
-                    entry = LedgerEntry(
-                        entry_type="WITHDRAW",
-                        account_id=deposit_account.id,
-                        amount=purchase_record.rmb_amount,
-                        description="獨立儲值頁面：刪除儲值紀錄回退純利潤庫存",
-                        operator_id=operator_id,
-                    )
-                    db.session.add(entry)
+                    try:
+                        entry = LedgerEntry(
+                            entry_type="WITHDRAW",
+                            account_id=deposit_account.id,
+                            amount=purchase_record.rmb_amount,
+                            description="獨立儲值頁面：刪除儲值紀錄回退純利潤庫存",
+                            operator_id=operator_id,
+                        )
+                        db.session.add(entry)
+                    except Exception as e:
+                        if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                            print("警告: 儲值頁面創建LedgerEntry時缺少欄位，嘗試修復...")
+                            db.session.rollback()
+                            
+                            # 嘗試添加缺失的欄位
+                            try:
+                                db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                                db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                                db.session.commit()
+                                print("✅ 儲值頁面欄位修復完成，重新創建記錄...")
+                                
+                                # 重新創建記錄
+                                entry = LedgerEntry(
+                                    entry_type="WITHDRAW",
+                                    account_id=deposit_account.id,
+                                    amount=purchase_record.rmb_amount,
+                                    description="獨立儲值頁面：刪除儲值紀錄回退純利潤庫存",
+                                    operator_id=operator_id,
+                                )
+                                db.session.add(entry)
+                            except Exception as fix_error:
+                                print(f"❌ 儲值頁面修復欄位失敗: {fix_error}")
+                                raise fix_error
+                        else:
+                            raise e
                     print(f"創建提款流水記錄: -{purchase_record.rmb_amount} RMB")
             else:
                 # 正常買入記錄：回滾帳戶餘額
@@ -2673,15 +2700,43 @@ def api_sales_entry():
                                 pass  # 如果查詢失敗，忽略
                             
                             # 創建利潤記錄
-                            profit_entry = LedgerEntry(
-                                entry_type="PROFIT_EARNED",
-                                amount=profit_amount,
-                                description=f"售出利潤：{customer.name}",
-                                operator_id=current_user.id,
-                                profit_before=current_total_profit,
-                                profit_after=current_total_profit + profit_amount,
-                                profit_change=profit_amount
-                            )
+                            try:
+                                profit_entry = LedgerEntry(
+                                    entry_type="PROFIT_EARNED",
+                                    amount=profit_amount,
+                                    description=f"售出利潤：{customer.name}",
+                                    operator_id=current_user.id,
+                                    profit_before=current_total_profit,
+                                    profit_after=current_total_profit + profit_amount,
+                                    profit_change=profit_amount
+                                )
+                            except Exception as e:
+                                if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                                    print("警告: 銷售記錄創建利潤LedgerEntry時缺少欄位，嘗試修復...")
+                                    db.session.rollback()
+                                    
+                                    # 嘗試添加缺失的欄位
+                                    try:
+                                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                                        db.session.commit()
+                                        print("✅ 銷售記錄欄位修復完成，重新創建記錄...")
+                                        
+                                        # 重新創建記錄
+                                        profit_entry = LedgerEntry(
+                                            entry_type="PROFIT_EARNED",
+                                            amount=profit_amount,
+                                            description=f"售出利潤：{customer.name}",
+                                            operator_id=current_user.id,
+                                            profit_before=current_total_profit,
+                                            profit_after=current_total_profit + profit_amount,
+                                            profit_change=profit_amount
+                                        )
+                                    except Exception as fix_error:
+                                        print(f"❌ 銷售記錄修復欄位失敗: {fix_error}")
+                                        raise fix_error
+                                else:
+                                    raise e
                             db.session.add(profit_entry)
                             db.session.flush()  # 確保記錄被添加到會話中
                             print(f"✅ 記錄售出利潤到LedgerEntry成功: {profit_amount:.2f} TWD")
@@ -4162,13 +4217,39 @@ def settle_pending_payment_api():
             description += f" | {note}"
         
         # 創建流水記錄
-        ledger_entry = LedgerEntry(
-            account_id=payment_account.id,
-            amount=-settlement_amount,  # 負數表示支出
-            description=description,
-            operator_id=current_user.id
-        )
-        db.session.add(ledger_entry)
+        try:
+            ledger_entry = LedgerEntry(
+                account_id=payment_account.id,
+                amount=-settlement_amount,  # 負數表示支出
+                description=description,
+                operator_id=current_user.id
+            )
+            db.session.add(ledger_entry)
+        except Exception as e:
+            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                print("警告: 待付款項銷帳創建LedgerEntry時缺少欄位，嘗試修復...")
+                db.session.rollback()
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    db.session.commit()
+                    print("✅ 待付款項銷帳欄位修復完成，重新創建記錄...")
+                    
+                    # 重新創建記錄
+                    ledger_entry = LedgerEntry(
+                        account_id=payment_account.id,
+                        amount=-settlement_amount,  # 負數表示支出
+                        description=description,
+                        operator_id=current_user.id
+                    )
+                    db.session.add(ledger_entry)
+                except Exception as fix_error:
+                    print(f"❌ 待付款項銷帳修復欄位失敗: {fix_error}")
+                    raise fix_error
+            else:
+                raise e
         
         # 提交所有變更
         db.session.commit()
@@ -4285,14 +4366,41 @@ def process_payment_api():
         if note:
             description += f" - {note}"
         
-        ledger_entry = LedgerEntry(
-            entry_type="SETTLEMENT",
-            description=description,
-            amount=payment_amount,
-            account_id=twd_account_id,
-            operator_id=current_user.id,
-        )
-        db.session.add(ledger_entry)
+        try:
+            ledger_entry = LedgerEntry(
+                entry_type="SETTLEMENT",
+                description=description,
+                amount=payment_amount,
+                account_id=twd_account_id,
+                operator_id=current_user.id,
+            )
+            db.session.add(ledger_entry)
+        except Exception as e:
+            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                print("警告: 客戶銷帳創建LedgerEntry時缺少欄位，嘗試修復...")
+                db.session.rollback()
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    db.session.commit()
+                    print("✅ 客戶銷帳欄位修復完成，重新創建記錄...")
+                    
+                    # 重新創建記錄
+                    ledger_entry = LedgerEntry(
+                        entry_type="SETTLEMENT",
+                        description=description,
+                        amount=payment_amount,
+                        account_id=twd_account_id,
+                        operator_id=current_user.id,
+                    )
+                    db.session.add(ledger_entry)
+                except Exception as fix_error:
+                    print(f"❌ 客戶銷帳修復欄位失敗: {fix_error}")
+                    raise fix_error
+            else:
+                raise e
 
         # 自動沖銷最早的未付訂單
         unpaid_sales = (
@@ -4866,13 +4974,39 @@ def admin_update_cash_account():
                         
                         # 創建流水記錄
                         entry_type = "PROFIT_WITHDRAW" if withdraw_type == "profit" else "ASSET_WITHDRAW"
-                        entry = LedgerEntry(
-                            entry_type=entry_type,
-                            account_id=account.id,
-                            amount=amount,  # 提款金額
-                            description=description,
-                            operator_id=current_user.id,
-                        )
+                        try:
+                            entry = LedgerEntry(
+                                entry_type=entry_type,
+                                account_id=account.id,
+                                amount=amount,  # 提款金額
+                                description=description,
+                                operator_id=current_user.id,
+                            )
+                        except Exception as e:
+                            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                                print("警告: 提款操作創建LedgerEntry時缺少欄位，嘗試修復...")
+                                db.session.rollback()
+                                
+                                # 嘗試添加缺失的欄位
+                                try:
+                                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                                    db.session.commit()
+                                    print("✅ 提款操作欄位修復完成，重新創建記錄...")
+                                    
+                                    # 重新創建記錄
+                                    entry = LedgerEntry(
+                                        entry_type=entry_type,
+                                        account_id=account.id,
+                                        amount=amount,  # 提款金額
+                                        description=description,
+                                        operator_id=current_user.id,
+                                    )
+                                except Exception as fix_error:
+                                    print(f"❌ 提款操作修復欄位失敗: {fix_error}")
+                                    raise fix_error
+                            else:
+                                raise e
                         
                         # 如果是利潤提款，記錄詳細利潤信息（如果欄位存在）
                         if withdraw_type == "profit":
@@ -4972,15 +5106,43 @@ def admin_update_cash_account():
                         return redirect(url_for('cash_management'))
                     
                     # 創建流水記錄
-                    entry = LedgerEntry(
-                        entry_type="DEPOSIT",
-                        account_id=account.id,
-                        amount=amount,
-                        description=description,
-                        operator_id=current_user.id,
-                    )
-                    db.session.add(entry)
-                    db.session.commit()
+                    try:
+                        entry = LedgerEntry(
+                            entry_type="DEPOSIT",
+                            account_id=account.id,
+                            amount=amount,
+                            description=description,
+                            operator_id=current_user.id,
+                        )
+                        db.session.add(entry)
+                        db.session.commit()
+                    except Exception as e:
+                        if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                            print("警告: 存款操作創建LedgerEntry時缺少欄位，嘗試修復...")
+                            db.session.rollback()
+                            
+                            # 嘗試添加缺失的欄位
+                            try:
+                                db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                                db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                                db.session.commit()
+                                print("✅ 存款操作欄位修復完成，重新創建記錄...")
+                                
+                                # 重新創建記錄
+                                entry = LedgerEntry(
+                                    entry_type="DEPOSIT",
+                                    account_id=account.id,
+                                    amount=amount,
+                                    description=description,
+                                    operator_id=current_user.id,
+                                )
+                                db.session.add(entry)
+                                db.session.commit()
+                            except Exception as fix_error:
+                                print(f"❌ 存款操作修復欄位失敗: {fix_error}")
+                                raise fix_error
+                        else:
+                            raise e
                     
                     # 觸發全局數據同步（重新整理整個資料庫）
                     try:
@@ -5095,16 +5257,45 @@ def admin_update_cash_account():
                     to_account.balance += amount
 
                     # 創建單一轉帳記錄
-                    transfer_entry = LedgerEntry(
-                        entry_type="TRANSFER",
-                        account_id=None,  # 轉帳記錄不需要單一帳戶ID
-                        amount=amount,
-                        description=f"從 {from_account.name} 轉入至 {to_account.name}",
-                        operator_id=current_user.id,
-                        from_account_id=from_account.id,
-                        to_account_id=to_account.id,
-                    )
-                    db.session.add(transfer_entry)
+                    try:
+                        transfer_entry = LedgerEntry(
+                            entry_type="TRANSFER",
+                            account_id=None,  # 轉帳記錄不需要單一帳戶ID
+                            amount=amount,
+                            description=f"從 {from_account.name} 轉入至 {to_account.name}",
+                            operator_id=current_user.id,
+                            from_account_id=from_account.id,
+                            to_account_id=to_account.id,
+                        )
+                        db.session.add(transfer_entry)
+                    except Exception as e:
+                        if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                            print("警告: 轉帳操作創建LedgerEntry時缺少欄位，嘗試修復...")
+                            db.session.rollback()
+                            
+                            # 嘗試添加缺失的欄位
+                            try:
+                                db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                                db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                                db.session.commit()
+                                print("✅ 轉帳操作欄位修復完成，重新創建記錄...")
+                                
+                                # 重新創建記錄
+                                transfer_entry = LedgerEntry(
+                                    entry_type="TRANSFER",
+                                    account_id=None,  # 轉帳記錄不需要單一帳戶ID
+                                    amount=amount,
+                                    description=f"從 {from_account.name} 轉入至 {to_account.name}",
+                                    operator_id=current_user.id,
+                                    from_account_id=from_account.id,
+                                    to_account_id=to_account.id,
+                                )
+                                db.session.add(transfer_entry)
+                            except Exception as fix_error:
+                                print(f"❌ 轉帳操作修復欄位失敗: {fix_error}")
+                                raise fix_error
+                        else:
+                            raise e
 
                     db.session.commit()
                     flash(
@@ -5634,18 +5825,47 @@ def api_profit_withdraw():
             return jsonify({"status": "error", "message": f"利潤餘額不足，當前可用利潤: NT$ {current_profit:.2f}"}), 400
         
         # 創建利潤提款記錄
-        entry = LedgerEntry(
-            entry_type="PROFIT_WITHDRAW",
-            amount=-amount,  # 負數表示扣除
-            description=f"{description} - {note}" if note else description,
-            operator_id=current_user.id,
-            profit_before=current_profit,
-            profit_after=current_profit - amount,
-            profit_change=-amount
-        )
-        
-        db.session.add(entry)
-        db.session.commit()
+        try:
+            entry = LedgerEntry(
+                entry_type="PROFIT_WITHDRAW",
+                amount=-amount,  # 負數表示扣除
+                description=f"{description} - {note}" if note else description,
+                operator_id=current_user.id,
+                profit_before=current_profit,
+                profit_after=current_profit - amount,
+                profit_change=-amount
+            )
+            db.session.add(entry)
+            db.session.commit()
+        except Exception as e:
+            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                print("警告: 利潤提款創建LedgerEntry時缺少欄位，嘗試修復...")
+                db.session.rollback()
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    db.session.commit()
+                    print("✅ 利潤提款欄位修復完成，重新創建記錄...")
+                    
+                    # 重新創建記錄
+                    entry = LedgerEntry(
+                        entry_type="PROFIT_WITHDRAW",
+                        amount=-amount,  # 負數表示扣除
+                        description=f"{description} - {note}" if note else description,
+                        operator_id=current_user.id,
+                        profit_before=current_profit,
+                        profit_after=current_profit - amount,
+                        profit_change=-amount
+                    )
+                    db.session.add(entry)
+                    db.session.commit()
+                except Exception as fix_error:
+                    print(f"❌ 利潤提款修復欄位失敗: {fix_error}")
+                    raise fix_error
+            else:
+                raise e
         
         return jsonify({
             "status": "success", 
