@@ -5313,17 +5313,55 @@ def api_profit_withdraw():
                 
                 # 嘗試添加缺失的欄位
                 try:
-                    # 添加利潤欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 利潤提款API添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤提款API profit_before 欄位已存在")
+                        else:
+                            raise e
                     
-                    # 添加轉帳欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 利潤提款API添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤提款API profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 利潤提款API添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤提款API profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 利潤提款API添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤提款API from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 利潤提款API添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤提款API to_account_id 欄位已存在")
+                        else:
+                            raise e
                     
                     db.session.commit()
-                    print("✅ 成功添加所有缺失欄位，重新查詢...")
+                    print("✅ 利潤提款API欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     previous_withdrawals = db.session.execute(
@@ -5332,6 +5370,7 @@ def api_profit_withdraw():
                     ).scalars().all()
                 except Exception as fix_error:
                     print(f"❌ 修復欄位失敗: {fix_error}")
+                    db.session.rollback()
                     previous_withdrawals = []
             else:
                 db.session.rollback()
@@ -5467,17 +5506,55 @@ def api_profit_history():
                 
                 # 嘗試添加缺失的欄位
                 try:
-                    # 添加利潤欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 利潤歷史API添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤歷史API profit_before 欄位已存在")
+                        else:
+                            raise e
                     
-                    # 添加轉帳欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 利潤歷史API添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤歷史API profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 利潤歷史API添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤歷史API profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 利潤歷史API添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤歷史API from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 利潤歷史API添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 利潤歷史API to_account_id 欄位已存在")
+                        else:
+                            raise e
                     
                     db.session.commit()
-                    print("✅ 成功添加所有缺失欄位，重新查詢...")
+                    print("✅ 利潤歷史API欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     profit_entries = (
@@ -7229,17 +7306,55 @@ def get_cash_management_transactions():
                 
                 # 嘗試添加缺失的欄位
                 try:
-                    # 添加利潤欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ profit_before 欄位已存在")
+                        else:
+                            raise e
                     
-                    # 添加轉帳欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ to_account_id 欄位已存在")
+                        else:
+                            raise e
                     
                     db.session.commit()
-                    print("✅ 成功添加缺失欄位，重新查詢...")
+                    print("✅ 欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -7248,6 +7363,7 @@ def get_cash_management_transactions():
                     ).scalars().all()
                 except Exception as fix_error:
                     print(f"❌ 修復欄位失敗: {fix_error}")
+                    db.session.rollback()
                     misc_entries = []
             else:
                 print(f"❌ 查詢LedgerEntry失敗: {e}")
@@ -7777,17 +7893,55 @@ def get_cash_management_transactions_simple():
                 
                 # 嘗試添加缺失的欄位
                 try:
-                    # 添加利潤欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 簡化API添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 簡化API profit_before 欄位已存在")
+                        else:
+                            raise e
                     
-                    # 添加轉帳欄位
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 簡化API添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 簡化API profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 簡化API添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 簡化API profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 簡化API添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 簡化API from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 簡化API添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 簡化API to_account_id 欄位已存在")
+                        else:
+                            raise e
                     
                     db.session.commit()
-                    print("✅ 簡化API成功添加缺失欄位，重新查詢...")
+                    print("✅ 簡化API欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -7798,6 +7952,7 @@ def get_cash_management_transactions_simple():
                     ).scalars().all()
                 except Exception as fix_error:
                     print(f"❌ 簡化API修復欄位失敗: {fix_error}")
+                    db.session.rollback()
                     misc_entries = []
             else:
                 print(f"❌ 簡化API查詢LedgerEntry失敗: {e}")
