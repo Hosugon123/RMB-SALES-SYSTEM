@@ -6667,8 +6667,45 @@ def api_settlement():
         )
         db.session.add(settlement_cash_log)
         
-        # 提交事務
-        db.session.commit()
+        # 提交事務前檢查欄位是否存在
+        try:
+            db.session.commit()
+        except Exception as e:
+            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                print("警告: 銷帳API提交時發現欄位缺失，嘗試修復...")
+                db.session.rollback()
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 銷帳API添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 銷帳API from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 銷帳API添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 銷帳API to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 銷帳API欄位修復完成，重新提交...")
+                    
+                    # 重新提交
+                    db.session.commit()
+                except Exception as fix_error:
+                    print(f"❌ 銷帳API修復欄位失敗: {fix_error}")
+                    raise fix_error
+            else:
+                raise e
         
         # 強制刷新對象狀態
         db.session.refresh(customer)
@@ -7893,9 +7930,15 @@ def get_cash_management_transactions():
                 # 重新開始會話
                 db.session.close()
                 db.session.begin()
+                # 重新嘗試查詢
+                try:
+                    cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
+                except Exception as retry_error:
+                    print(f"重新查詢 cash_logs 仍然失敗: {retry_error}")
+                    cash_logs = []
             else:
                 db.session.rollback()
-            cash_logs = []
+                cash_logs = []
 
         unified_stream = []
         
