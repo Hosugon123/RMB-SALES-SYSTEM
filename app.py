@@ -6382,15 +6382,60 @@ def api_settlement():
         account.balance += amount
         
         # 創建銷帳記錄（LedgerEntry）
-        settlement_entry = LedgerEntry(
-            account_id=account.id,
-            entry_type="SETTLEMENT",
-            amount=amount,
-            entry_date=datetime.utcnow(),
-            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-            operator_id=current_user.id
-        )
-        db.session.add(settlement_entry)
+        try:
+            settlement_entry = LedgerEntry(
+                account_id=account.id,
+                entry_type="SETTLEMENT",
+                amount=amount,
+                entry_date=datetime.utcnow(),
+                description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+                operator_id=current_user.id
+            )
+            db.session.add(settlement_entry)
+        except Exception as e:
+            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                print("警告: 銷帳API創建LedgerEntry時缺少欄位，嘗試修復...")
+                db.session.rollback()
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 銷帳API添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 銷帳API from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 銷帳API添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 銷帳API to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 銷帳API欄位修復完成，重新創建記錄...")
+                    
+                    # 重新創建記錄
+                    settlement_entry = LedgerEntry(
+                        account_id=account.id,
+                        entry_type="SETTLEMENT",
+                        amount=amount,
+                        entry_date=datetime.utcnow(),
+                        description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+                        operator_id=current_user.id
+                    )
+                    db.session.add(settlement_entry)
+                except Exception as fix_error:
+                    print(f"❌ 銷帳API修復欄位失敗: {fix_error}")
+                    raise fix_error
+            else:
+                raise e
         
         # 創建現金流水記錄（CashLog）- 暫時不設置 account_id
         settlement_cash_log = CashLog(
