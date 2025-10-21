@@ -7622,7 +7622,14 @@ def get_cash_management_transactions():
             cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
         except Exception as e:
             print(f"警告: cash_logs 查詢失敗: {e}")
-            db.session.rollback()
+            if "InFailedSqlTransaction" in str(e):
+                print("檢測到失敗的事務，嘗試重新開始...")
+                db.session.rollback()
+                # 重新開始會話
+                db.session.close()
+                db.session.begin()
+            else:
+                db.session.rollback()
             cash_logs = []
 
         unified_stream = []
