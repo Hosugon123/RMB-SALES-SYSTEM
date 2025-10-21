@@ -353,7 +353,13 @@ class LedgerEntry(db.Model):
     profit_after = db.Column(db.Float, nullable=True)   # 變動後利潤
     profit_change = db.Column(db.Float, nullable=True)  # 變動之利潤數字
     
-    account = db.relationship("CashAccount")
+    # 新增：轉帳相關欄位
+    from_account_id = db.Column(db.Integer, db.ForeignKey("cash_accounts.id"), nullable=True)  # 轉出帳戶
+    to_account_id = db.Column(db.Integer, db.ForeignKey("cash_accounts.id"), nullable=True)    # 轉入帳戶
+    
+    account = db.relationship("CashAccount", foreign_keys=[account_id])
+    from_account = db.relationship("CashAccount", foreign_keys=[from_account_id])
+    to_account = db.relationship("CashAccount", foreign_keys=[to_account_id])
     operator = db.relationship("User")
 
 
@@ -3142,22 +3148,24 @@ def cash_management():
                     # 提款：帳戶 -> 外部
                     payment_account = entry.account.name if entry.account else "N/A"
                     deposit_account = "外部提款"
-                elif entry.entry_type in ["TRANSFER_OUT"]:
-                    # 轉出：本帳戶 -> 其他帳戶
-                    payment_account = entry.account.name if entry.account else "N/A"
-                    # 從描述中提取目標帳戶名稱
-                    if "轉出至" in entry.description:
-                        deposit_account = entry.description.replace("轉出至 ", "")
+                elif entry.entry_type in ["TRANSFER"]:
+                    # 內部轉帳：從轉出帳戶 -> 轉入帳戶
+                    if entry.from_account and entry.to_account:
+                        payment_account = entry.from_account.name
+                        deposit_account = entry.to_account.name
                     else:
-                        deposit_account = "N/A"
-                elif entry.entry_type in ["TRANSFER_IN"]:
-                    # 轉入：其他帳戶 -> 本帳戶
-                    deposit_account = entry.account.name if entry.account else "N/A"
-                    # 從描述中提取來源帳戶名稱
-                    if "從" in entry.description and "轉入" in entry.description:
-                        payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
-                    else:
-                        payment_account = "N/A"
+                        # 向後兼容：從描述中提取帳戶名稱
+                        if "從" in entry.description and "轉入至" in entry.description:
+                            parts = entry.description.split("從 ")[1].split(" 轉入至 ")
+                            if len(parts) == 2:
+                                payment_account = parts[0]
+                                deposit_account = parts[1]
+                            else:
+                                payment_account = "N/A"
+                                deposit_account = "N/A"
+                        else:
+                            payment_account = "N/A"
+                            deposit_account = "N/A"
                 elif entry.entry_type in ["SETTLEMENT"]:
                     # 銷帳：客戶 -> 帳戶
                     payment_account = "客戶付款"
@@ -4838,21 +4846,17 @@ def admin_update_cash_account():
                     from_account.balance -= amount
                     to_account.balance += amount
 
-                    out_entry = LedgerEntry(
-                        entry_type="TRANSFER_OUT",
-                        account_id=from_account.id,
+                    # 創建單一轉帳記錄
+                    transfer_entry = LedgerEntry(
+                        entry_type="TRANSFER",
+                        account_id=None,  # 轉帳記錄不需要單一帳戶ID
                         amount=amount,
-                        description=f"轉出至 {to_account.name}",
+                        description=f"從 {from_account.name} 轉入至 {to_account.name}",
                         operator_id=current_user.id,
+                        from_account_id=from_account.id,
+                        to_account_id=to_account.id,
                     )
-                    in_entry = LedgerEntry(
-                        entry_type="TRANSFER_IN",
-                        account_id=to_account.id,
-                        amount=amount,
-                        description=f"從 {from_account.name} 轉入",
-                        operator_id=current_user.id,
-                    )
-                    db.session.add_all([out_entry, in_entry])
+                    db.session.add(transfer_entry)
 
                     db.session.commit()
                     flash(
@@ -5304,9 +5308,25 @@ def api_profit_withdraw():
             ).scalars().all()
         except Exception as e:
             if "profit_before does not exist" in str(e):
-                print("警告: 利潤提款API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
+                print("警告: 利潤提款API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，嘗試修復...")
                 db.session.rollback()
-                previous_withdrawals = []
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    db.session.commit()
+                    print("✅ 成功添加利潤欄位，重新查詢...")
+                    
+                    # 重新查詢
+                    previous_withdrawals = db.session.execute(
+                        db.select(LedgerEntry)
+                        .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 修復欄位失敗: {fix_error}")
+                    previous_withdrawals = []
             else:
                 db.session.rollback()
                 raise e
@@ -5436,9 +5456,39 @@ def api_profit_history():
                 print(f"DEBUG: 利潤欄位 - profit_before: {getattr(entry, 'profit_before', 'None')}, profit_after: {getattr(entry, 'profit_after', 'None')}, profit_change: {getattr(entry, 'profit_change', 'None')}")
         except Exception as e:
             if "profit_before does not exist" in str(e):
-                print("警告: 利潤歷史API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，返回空記錄")
+                print("警告: 利潤歷史API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，嘗試修復...")
                 db.session.rollback()
-                profit_entries = []
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    db.session.commit()
+                    print("✅ 成功添加利潤欄位，重新查詢...")
+                    
+                    # 重新查詢
+                    profit_entries = (
+                        db.session.execute(
+                            db.select(LedgerEntry)
+                            .filter(
+                                (LedgerEntry.entry_type == "PROFIT_WITHDRAW") |
+                                (LedgerEntry.entry_type == "PROFIT_DEDUCT") |
+                                (LedgerEntry.entry_type == "PROFIT_EARNED") |
+                                (LedgerEntry.description.like("%利潤提款%")) |
+                                (LedgerEntry.description.like("%利潤扣除%")) |
+                                (LedgerEntry.description.like("%售出利潤%"))
+                            )
+                            .order_by(LedgerEntry.entry_date.desc())
+                            .offset(offset)
+                            .limit(per_page)
+                        )
+                        .scalars()
+                        .all()
+                    )
+                except Exception as fix_error:
+                    print(f"❌ 修復欄位失敗: {fix_error}")
+                    profit_entries = []
             else:
                 db.session.rollback()
                 raise e
@@ -7312,7 +7362,11 @@ def get_cash_management_transactions():
                 twd_change = 0
                 rmb_change = 0
                 
-                if entry.account and entry.account.currency == "TWD":
+                if entry.entry_type in ["TRANSFER"]:
+                    # 轉帳記錄：內部調動，TWD/RMB 變動應為 0
+                    twd_change = 0
+                    rmb_change = 0
+                elif entry.account and entry.account.currency == "TWD":
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
                     else:
@@ -7334,18 +7388,24 @@ def get_cash_management_transactions():
                 elif entry.entry_type in ["WITHDRAW"]:
                     payment_account = entry.account.name if entry.account else "N/A"
                     deposit_account = "外部提款"
-                elif entry.entry_type in ["TRANSFER_OUT"]:
-                    payment_account = entry.account.name if entry.account else "N/A"
-                    if "轉出至" in entry.description:
-                        deposit_account = entry.description.replace("轉出至 ", "")
+                elif entry.entry_type in ["TRANSFER"]:
+                    # 內部轉帳：從轉出帳戶 -> 轉入帳戶
+                    if entry.from_account and entry.to_account:
+                        payment_account = entry.from_account.name
+                        deposit_account = entry.to_account.name
                     else:
-                        deposit_account = "N/A"
-                elif entry.entry_type in ["TRANSFER_IN"]:
-                    deposit_account = entry.account.name if entry.account else "N/A"
-                    if "從" in entry.description and "轉入" in entry.description:
-                        payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
-                    else:
-                        payment_account = "N/A"
+                        # 向後兼容：從描述中提取帳戶名稱
+                        if "從" in entry.description and "轉入至" in entry.description:
+                            parts = entry.description.split("從 ")[1].split(" 轉入至 ")
+                            if len(parts) == 2:
+                                payment_account = parts[0]
+                                deposit_account = parts[1]
+                            else:
+                                payment_account = "N/A"
+                                deposit_account = "N/A"
+                        else:
+                            payment_account = "N/A"
+                            deposit_account = "N/A"
                 elif entry.entry_type in ["PROFIT_WITHDRAW"]:
                     payment_account = "系統利潤"
                     deposit_account = "利潤提款"
@@ -7354,7 +7414,30 @@ def get_cash_management_transactions():
                 payment_account_balance = None
                 deposit_account_balance = None
                 
-                if entry.account:
+                # 處理轉帳記錄的餘額變化（轉帳記錄的 account_id 為 None）
+                if entry.entry_type in ["TRANSFER"]:
+                    # 轉帳記錄：需要同時處理轉出和轉入帳戶的餘額變化
+                    if entry.from_account and entry.to_account:
+                        # 轉出帳戶餘額變化
+                        from_balance_before = entry.from_account.balance + entry.amount
+                        from_balance_after = entry.from_account.balance
+                        from_balance_change = -entry.amount
+                        payment_account_balance = {
+                            "before": from_balance_before,
+                            "change": from_balance_change,
+                            "after": from_balance_after
+                        }
+                        
+                        # 轉入帳戶餘額變化
+                        to_balance_before = entry.to_account.balance - entry.amount
+                        to_balance_after = entry.to_account.balance
+                        to_balance_change = entry.amount
+                        deposit_account_balance = {
+                            "before": to_balance_before,
+                            "change": to_balance_change,
+                            "after": to_balance_after
+                        }
+                elif entry.account:
                     # 計算當前帳戶的餘額變化
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         # 增加餘額的交易
@@ -7735,7 +7818,11 @@ def get_cash_management_transactions_simple():
                 twd_change = 0
                 rmb_change = 0
                 
-                if entry.account and entry.account.currency == "TWD":
+                if entry.entry_type in ["TRANSFER"]:
+                    # 轉帳記錄：內部調動，TWD/RMB 變動應為 0
+                    twd_change = 0
+                    rmb_change = 0
+                elif entry.account and entry.account.currency == "TWD":
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
                     else:
@@ -7757,18 +7844,24 @@ def get_cash_management_transactions_simple():
                 elif entry.entry_type in ["WITHDRAW"]:
                     payment_account = entry.account.name if entry.account else "N/A"
                     deposit_account = "外部提款"
-                elif entry.entry_type in ["TRANSFER_OUT"]:
-                    payment_account = entry.account.name if entry.account else "N/A"
-                    if "轉出至" in entry.description:
-                        deposit_account = entry.description.replace("轉出至 ", "")
+                elif entry.entry_type in ["TRANSFER"]:
+                    # 內部轉帳：從轉出帳戶 -> 轉入帳戶
+                    if entry.from_account and entry.to_account:
+                        payment_account = entry.from_account.name
+                        deposit_account = entry.to_account.name
                     else:
-                        deposit_account = "N/A"
-                elif entry.entry_type in ["TRANSFER_IN"]:
-                    deposit_account = entry.account.name if entry.account else "N/A"
-                    if "從" in entry.description and "轉入" in entry.description:
-                        payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
-                    else:
-                        payment_account = "N/A"
+                        # 向後兼容：從描述中提取帳戶名稱
+                        if "從" in entry.description and "轉入至" in entry.description:
+                            parts = entry.description.split("從 ")[1].split(" 轉入至 ")
+                            if len(parts) == 2:
+                                payment_account = parts[0]
+                                deposit_account = parts[1]
+                            else:
+                                payment_account = "N/A"
+                                deposit_account = "N/A"
+                        else:
+                            payment_account = "N/A"
+                            deposit_account = "N/A"
                 elif entry.entry_type in ["PROFIT_WITHDRAW"]:
                     payment_account = "系統利潤"
                     deposit_account = "利潤提款"
@@ -7780,7 +7873,30 @@ def get_cash_management_transactions_simple():
                 payment_account_balance = None
                 deposit_account_balance = None
                 
-                if entry.account:
+                # 處理轉帳記錄的餘額變化（轉帳記錄的 account_id 為 None）
+                if entry.entry_type in ["TRANSFER"]:
+                    # 轉帳記錄：需要同時處理轉出和轉入帳戶的餘額變化
+                    if entry.from_account and entry.to_account:
+                        # 轉出帳戶餘額變化
+                        from_balance_before = entry.from_account.balance + entry.amount
+                        from_balance_after = entry.from_account.balance
+                        from_balance_change = -entry.amount
+                        payment_account_balance = {
+                            "before": from_balance_before,
+                            "change": from_balance_change,
+                            "after": from_balance_after
+                        }
+                        
+                        # 轉入帳戶餘額變化
+                        to_balance_before = entry.to_account.balance - entry.amount
+                        to_balance_after = entry.to_account.balance
+                        to_balance_change = entry.amount
+                        deposit_account_balance = {
+                            "before": to_balance_before,
+                            "change": to_balance_change,
+                            "after": to_balance_after
+                        }
+                elif entry.account:
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         account_balance_before = entry.account.balance - entry.amount
                         account_balance_after = entry.account.balance
@@ -7951,7 +8067,11 @@ def get_cash_management_totals():
                 twd_change = 0
                 rmb_change = 0
                 
-                if entry.account and entry.account.currency == "TWD":
+                if entry.entry_type in ["TRANSFER"]:
+                    # 轉帳記錄：內部調動，TWD/RMB 變動應為 0
+                    twd_change = 0
+                    rmb_change = 0
+                elif entry.account and entry.account.currency == "TWD":
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
                     else:
@@ -8317,7 +8437,11 @@ def get_account_balances_for_dropdowns():
                 twd_change = 0
                 rmb_change = 0
                 
-                if entry.account and entry.account.currency == "TWD":
+                if entry.entry_type in ["TRANSFER"]:
+                    # 轉帳記錄：內部調動，TWD/RMB 變動應為 0
+                    twd_change = 0
+                    rmb_change = 0
+                elif entry.account and entry.account.currency == "TWD":
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
                     else:
@@ -8551,7 +8675,11 @@ def get_accurate_account_balances():
                 twd_change = 0
                 rmb_change = 0
                 
-                if entry.account and entry.account.currency == "TWD":
+                if entry.entry_type in ["TRANSFER"]:
+                    # 轉帳記錄：內部調動，TWD/RMB 變動應為 0
+                    twd_change = 0
+                    rmb_change = 0
+                elif entry.account and entry.account.currency == "TWD":
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
                     else:

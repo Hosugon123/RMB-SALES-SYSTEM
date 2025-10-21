@@ -1513,9 +1513,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                     break;
                 case 'TRANSFER':
-                case '轉帳':
-                    typeDisplay = '轉帳';
-                    typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+                case '內部轉帳':
+                    typeDisplay = '內部轉帳';
+                    typeClass = 'badge bg-secondary-subtle text-secondary-emphasis';
                     break;
                 case 'SETTLEMENT':
                 case '銷帳':
@@ -2374,9 +2374,9 @@ window.renderMovements = function(transactions) {
                 typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                 break;
             case 'TRANSFER':
-            case '轉帳':
-                typeDisplay = '轉帳';
-                typeClass = 'badge bg-warning-subtle text-warning-emphasis';
+            case '內部轉帳':
+                typeDisplay = '內部轉帳';
+                typeClass = 'badge bg-secondary-subtle text-secondary-emphasis';
                 break;
             case 'SETTLEMENT':
             case '銷帳':

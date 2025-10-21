@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利潤管理修復測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="mb-4">🔧 利潤管理修復測試</h1>
+                
+                <!-- 測試按鈕 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>測試功能</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <button id="testProfitHistory" class="btn btn-primary mb-2">
+                                    <i class="bi bi-clock-history"></i> 測試利潤歷史API
+                                </button>
+                                <button id="testProfitWithdraw" class="btn btn-success mb-2">
+                                    <i class="bi bi-cash-coin"></i> 測試利潤提款API
+                                </button>
+                                <button id="testDatabaseColumns" class="btn btn-info mb-2">
+                                    <i class="bi bi-database"></i> 檢查資料庫欄位
+                                </button>
+                            </div>
+                            <div class="col-md-6">
+                                <button id="clearResults" class="btn btn-outline-secondary mb-2">
+                                    <i class="bi bi-trash"></i> 清除結果
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 測試結果 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5>測試結果</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="testResults" class="alert alert-info">
+                            點擊上方按鈕開始測試...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const baseUrl = window.location.origin;
+        
+        // 測試利潤歷史API
+        document.getElementById('testProfitHistory').addEventListener('click', async function() {
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>測試利潤歷史API中...';
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/profit/history?page=1&per_page=10`);
+                const data = await response.json();
+                
+                let html = '<h6>📊 利潤歷史API測試結果</h6>';
+                html += `<p><strong>狀態碼:</strong> ${response.status}</p>`;
+                html += `<p><strong>API狀態:</strong> ${data.status}</p>`;
+                
+                if (data.status === 'success') {
+                    const transactions = data.data.transactions;
+                    html += `<p><strong>記錄數量:</strong> ${transactions.length}</p>`;
+                    
+                    if (transactions.length > 0) {
+                        html += '<h6>📋 利潤記錄詳情:</h6>';
+                        html += '<div class="table-responsive"><table class="table table-sm">';
+                        html += '<thead><tr><th>ID</th><th>類型</th><th>金額</th><th>描述</th><th>日期</th><th>利潤前</th><th>利潤後</th><th>利潤變動</th></tr></thead><tbody>';
+                        
+                        transactions.forEach(record => {
+                            html += `<tr>
+                                <td>${record.id || '-'}</td>
+                                <td>${record.transaction_type || '-'}</td>
+                                <td>${record.amount || '-'}</td>
+                                <td>${record.description || '-'}</td>
+                                <td>${record.created_at || '-'}</td>
+                                <td>${record.balance_before || '-'}</td>
+                                <td>${record.balance_after || '-'}</td>
+                                <td>${record.amount || '-'}</td>
+                            </tr>`;
+                        });
+                        
+                        html += '</tbody></table></div>';
+                    } else {
+                        html += '<div class="alert alert-warning">⚠️ 沒有找到利潤記錄</div>';
+                    }
+                } else {
+                    html += `<div class="alert alert-danger">❌ API錯誤: ${data.message || '未知錯誤'}</div>`;
+                }
+                
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-danger">❌ 測試失敗: ${error.message}</div>`;
+            }
+        });
+        
+        // 測試利潤提款API
+        document.getElementById('testProfitWithdraw').addEventListener('click', async function() {
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>測試利潤提款API中...';
+            
+            try {
+                const response = await fetch(`${baseUrl}/api/profit/withdraw`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        amount: 100,
+                        description: '測試利潤提款',
+                        note: '修復測試用'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                let html = '<h6>💰 利潤提款API測試結果</h6>';
+                html += `<p><strong>狀態碼:</strong> ${response.status}</p>`;
+                html += `<p><strong>API狀態:</strong> ${data.status}</p>`;
+                
+                if (data.status === 'success') {
+                    html += `<div class="alert alert-success">✅ 利潤提款成功</div>`;
+                    html += `<p><strong>提款金額:</strong> ${data.data.amount}</p>`;
+                    html += `<p><strong>提款前利潤:</strong> ${data.data.profit_before}</p>`;
+                    html += `<p><strong>提款後利潤:</strong> ${data.data.profit_after}</p>`;
+                    html += `<p><strong>交易ID:</strong> ${data.data.transaction_id}</p>`;
+                } else {
+                    html += `<div class="alert alert-danger">❌ 提款失敗: ${data.message}</div>`;
+                }
+                
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-danger">❌ 測試失敗: ${error.message}</div>`;
+            }
+        });
+        
+        // 檢查資料庫欄位
+        document.getElementById('testDatabaseColumns').addEventListener('click', async function() {
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>檢查資料庫欄位中...';
+            
+            try {
+                // 通過API檢查欄位是否存在
+                const response = await fetch(`${baseUrl}/api/profit/history?page=1&per_page=1`);
+                const data = await response.json();
+                
+                let html = '<h6>🗄️ 資料庫欄位檢查結果</h6>';
+                
+                if (data.status === 'success') {
+                    html += '<div class="alert alert-success">✅ 資料庫欄位正常</div>';
+                    html += '<p>利潤相關欄位已存在，API可以正常查詢</p>';
+                } else if (data.message && data.message.includes('profit_before does not exist')) {
+                    html += '<div class="alert alert-warning">⚠️ 資料庫欄位缺失</div>';
+                    html += '<p>缺少利潤相關欄位，正在嘗試修復...</p>';
+                } else {
+                    html += `<div class="alert alert-info">ℹ️ 其他問題: ${data.message}</div>`;
+                }
+                
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-danger">❌ 檢查失敗: ${error.message}</div>`;
+            }
+        });
+        
+        // 清除結果
+        document.getElementById('clearResults').addEventListener('click', function() {
+            document.getElementById('testResults').innerHTML = '點擊上方按鈕開始測試...';
+        });
+    </script>
+</body>
+</html>
