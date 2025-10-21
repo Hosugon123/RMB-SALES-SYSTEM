@@ -7350,6 +7350,42 @@ def get_cash_management_transactions():
                     payment_account = "系統利潤"
                     deposit_account = "利潤提款"
 
+                # 計算帳戶餘額變化
+                payment_account_balance = None
+                deposit_account_balance = None
+                
+                if entry.account:
+                    # 計算當前帳戶的餘額變化
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        # 增加餘額的交易
+                        account_balance_before = entry.account.balance - entry.amount
+                        account_balance_after = entry.account.balance
+                        account_balance_change = entry.amount
+                    else:
+                        # 減少餘額的交易
+                        account_balance_before = entry.account.balance + entry.amount
+                        account_balance_after = entry.account.balance
+                        account_balance_change = -entry.amount
+                    
+                    # 根據交易類型設置對應的帳戶餘額變化
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        # 入款戶餘額變化
+                        deposit_account_balance = {
+                            "before": account_balance_before,
+                            "change": account_balance_change,
+                            "after": account_balance_after
+                        }
+                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT"]:
+                        # 出款戶餘額變化
+                        payment_account_balance = {
+                            "before": account_balance_before,
+                            "change": account_balance_change,
+                            "after": account_balance_after
+                        }
+                    elif entry.entry_type in ["PROFIT_WITHDRAW"]:
+                        # 利潤提款不影響帳戶餘額
+                        pass
+                
                 # 構建基本記錄
                 record = {
                     "type": entry.entry_type,
@@ -7364,23 +7400,10 @@ def get_cash_management_transactions():
                 }
                 
                 # 添加帳戶餘額變化信息
-                if entry.account:
-                    if entry.account.currency == "TWD":
-                        account_balance_before = entry.account.balance - twd_change
-                        account_balance_after = entry.account.balance
-                        record["account_balance"] = {
-                            "before": account_balance_before,
-                            "change": twd_change,
-                            "after": account_balance_after
-                        }
-                    elif entry.account.currency == "RMB":
-                        account_balance_before = entry.account.balance - rmb_change
-                        account_balance_after = entry.account.balance
-                        record["account_balance"] = {
-                            "before": account_balance_before,
-                            "change": rmb_change,
-                            "after": account_balance_after
-                        }
+                if payment_account_balance:
+                    record["payment_account_balance"] = payment_account_balance
+                if deposit_account_balance:
+                    record["deposit_account_balance"] = deposit_account_balance
                 
                 # 如果是利潤提款，添加詳細利潤信息
                 if entry.entry_type == "PROFIT_WITHDRAW":
@@ -7595,6 +7618,18 @@ def get_cash_management_transactions_simple():
             .limit(limit)
         ).scalars().all()
         
+        # 獲取最近的LedgerEntry記錄（包含內部轉帳等）
+        try:
+            misc_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .options(db.selectinload(LedgerEntry.account))
+                .order_by(LedgerEntry.entry_date.desc())
+                .limit(limit)
+            ).scalars().all()
+        except Exception as e:
+            print(f"DEBUG: 簡化API查詢LedgerEntry失敗: {e}")
+            misc_entries = []
+        
         unified_stream = []
         
         # 處理買入記錄（簡化版）
@@ -7648,6 +7683,94 @@ def get_cash_management_transactions_simple():
                         "after": profit
                     }
                 })
+        
+        # 處理LedgerEntry記錄（簡化版）
+        for entry in misc_entries:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT"]:
+                twd_change = 0
+                rmb_change = 0
+                
+                if entry.account and entry.account.currency == "TWD":
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        twd_change = entry.amount
+                    else:
+                        twd_change = -entry.amount
+                elif entry.account and entry.account.currency == "RMB":
+                    rmb_change = (
+                        entry.amount
+                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
+                        else -entry.amount
+                    )
+                
+                # 設置出入款帳戶
+                payment_account = "N/A"
+                deposit_account = "N/A"
+                
+                if entry.entry_type in ["DEPOSIT"]:
+                    payment_account = "外部存款"
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                elif entry.entry_type in ["WITHDRAW"]:
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    deposit_account = "外部提款"
+                elif entry.entry_type in ["TRANSFER_OUT"]:
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    if "轉出至" in entry.description:
+                        deposit_account = entry.description.replace("轉出至 ", "")
+                    else:
+                        deposit_account = "N/A"
+                elif entry.entry_type in ["TRANSFER_IN"]:
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                    if "從" in entry.description and "轉入" in entry.description:
+                        payment_account = entry.description.replace("從 ", "").replace(" 轉入", "")
+                    else:
+                        payment_account = "N/A"
+                elif entry.entry_type in ["PROFIT_WITHDRAW"]:
+                    payment_account = "系統利潤"
+                    deposit_account = "利潤提款"
+                
+                # 計算帳戶餘額變化（簡化版）
+                payment_account_balance = None
+                deposit_account_balance = None
+                
+                if entry.account:
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
+                        account_balance_before = entry.account.balance - entry.amount
+                        account_balance_after = entry.account.balance
+                        account_balance_change = entry.amount
+                        deposit_account_balance = {
+                            "before": account_balance_before,
+                            "change": account_balance_change,
+                            "after": account_balance_after
+                        }
+                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT"]:
+                        account_balance_before = entry.account.balance + entry.amount
+                        account_balance_after = entry.account.balance
+                        account_balance_change = -entry.amount
+                        payment_account_balance = {
+                            "before": account_balance_before,
+                            "change": account_balance_change,
+                            "after": account_balance_after
+                        }
+                
+                record = {
+                    "type": entry.entry_type,
+                    "date": entry.entry_date.isoformat(),
+                    "description": entry.description,
+                    "twd_change": twd_change,
+                    "rmb_change": rmb_change,
+                    "operator": entry.operator.username if entry.operator else "未知",
+                    "payment_account": payment_account,
+                    "deposit_account": deposit_account,
+                    "note": getattr(entry, 'note', None),
+                }
+                
+                # 添加帳戶餘額變化信息
+                if payment_account_balance:
+                    record["payment_account_balance"] = payment_account_balance
+                if deposit_account_balance:
+                    record["deposit_account_balance"] = deposit_account_balance
+                
+                unified_stream.append(record)
         
         # 按時間排序
         unified_stream.sort(key=lambda x: x['date'], reverse=True)
