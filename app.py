@@ -7405,7 +7405,7 @@ def get_cash_management_transactions():
                 if deposit_account_balance:
                     record["deposit_account_balance"] = deposit_account_balance
                 
-                # 如果是利潤提款，添加詳細利潤信息
+                # 如果是利潤相關記錄，添加詳細利潤信息
                 if entry.entry_type == "PROFIT_WITHDRAW":
                     # 安全地獲取利潤詳細信息（處理欄位可能不存在的情況）
                     profit_before = getattr(entry, 'profit_before', None)
@@ -7427,6 +7427,34 @@ def get_cash_management_transactions():
                         "change": profit_change,
                         "after": profit_after,
                         "description": "利潤提款"
+                    }
+                elif entry.entry_type == "PROFIT_EARNED":
+                    # 利潤入庫記錄處理
+                    profit_before = getattr(entry, 'profit_before', None)
+                    profit_after = getattr(entry, 'profit_after', None)
+                    profit_change = getattr(entry, 'profit_change', None)
+                    
+                    # 設置利潤入庫的顯示
+                    record["type"] = "利潤入庫"
+                    record["twd_change"] = 0  # 利潤入庫不直接影響TWD餘額
+                    record["rmb_change"] = 0  # 利潤入庫不直接影響RMB餘額
+                    
+                    # 設置出款戶和入款戶
+                    record["payment_account"] = "系統利潤"
+                    record["deposit_account"] = "利潤帳戶"
+                    
+                    # 利潤變動信息
+                    record["profit_before"] = profit_before
+                    record["profit_after"] = profit_after
+                    record["profit_change"] = profit_change
+                    record["profit"] = profit_change
+                    
+                    # 詳細的利潤變動記錄
+                    record["profit_change_detail"] = {
+                        "before": profit_before,
+                        "change": profit_change,
+                        "after": profit_after,
+                        "description": "售出利潤"
                     }
                 
                 unified_stream.append(record)
@@ -7744,6 +7772,9 @@ def get_cash_management_transactions_simple():
                 elif entry.entry_type in ["PROFIT_WITHDRAW"]:
                     payment_account = "系統利潤"
                     deposit_account = "利潤提款"
+                elif entry.entry_type in ["PROFIT_EARNED"]:
+                    payment_account = "系統利潤"
+                    deposit_account = "利潤帳戶"
                 
                 # 計算帳戶餘額變化（簡化版）
                 payment_account_balance = None
@@ -7786,6 +7817,32 @@ def get_cash_management_transactions_simple():
                     record["payment_account_balance"] = payment_account_balance
                 if deposit_account_balance:
                     record["deposit_account_balance"] = deposit_account_balance
+                
+                # 如果是利潤相關記錄，添加詳細利潤信息
+                if entry.entry_type == "PROFIT_EARNED":
+                    # 利潤入庫記錄處理
+                    profit_before = getattr(entry, 'profit_before', None)
+                    profit_after = getattr(entry, 'profit_after', None)
+                    profit_change = getattr(entry, 'profit_change', None)
+                    
+                    # 設置利潤入庫的顯示
+                    record["type"] = "利潤入庫"
+                    record["twd_change"] = 0  # 利潤入庫不直接影響TWD餘額
+                    record["rmb_change"] = 0  # 利潤入庫不直接影響RMB餘額
+                    
+                    # 利潤變動信息
+                    record["profit_before"] = profit_before
+                    record["profit_after"] = profit_after
+                    record["profit_change"] = profit_change
+                    record["profit"] = profit_change
+                    
+                    # 詳細的利潤變動記錄
+                    record["profit_change_detail"] = {
+                        "before": profit_before,
+                        "change": profit_change,
+                        "after": profit_after,
+                        "description": "售出利潤"
+                    }
                 
                 unified_stream.append(record)
         
