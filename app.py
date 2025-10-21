@@ -7128,7 +7128,7 @@ def get_cash_management_transactions():
         print(f"DEBUG: 現金管理API請求 - 頁碼: {page}, 每頁: {per_page}")
         
         # 優化：限制查詢數量，避免一次性載入所有數據
-        limit = per_page * 2  # 多查詢一些以確保有足夠數據
+        limit = per_page * 5  # 增加查詢數量以確保包含所有記錄類型
         
         # 獲取流水記錄數據（限制數量）
         purchases = db.session.execute(
@@ -7620,8 +7620,8 @@ def get_cash_management_transactions_simple():
         
         print(f"DEBUG: 簡化API請求 - 頁碼: {page}, 每頁: {per_page}")
         
-        # 只查詢最近的記錄
-        limit = per_page
+        # 增加查詢數量以確保包含所有記錄類型
+        limit = per_page * 3
         
         # 獲取最近的銷售記錄
         sales = db.session.execute(
