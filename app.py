@@ -1921,13 +1921,78 @@ def dashboard():
                 .all()
             )
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: 儀表板查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 儀表板查詢 PROFIT_WITHDRAW 記錄時缺少欄位，嘗試修復...")
                 db.session.rollback()
-                profit_withdrawals = []
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 儀表板添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 profit_before 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 儀表板添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 儀表板添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 儀表板添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 儀表板添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 儀表板欄位修復完成，重新查詢...")
+                    
+                    # 重新查詢
+                    profit_withdrawals = (
+                        db.session.execute(
+                            db.select(LedgerEntry)
+                            .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                        )
+                        .scalars()
+                        .all()
+                    )
+                except Exception as fix_error:
+                    print(f"❌ 儀表板修復欄位失敗: {fix_error}")
+                    db.session.rollback()
+                    profit_withdrawals = []
             else:
-                db.session.rollback()
-                raise e
+                print(f"❌ 儀表板查詢LedgerEntry失敗: {e}")
+                profit_withdrawals = []
         
         total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
         total_profit_twd -= total_profit_withdrawals
@@ -2155,13 +2220,78 @@ def admin_dashboard():
                 .all()
             )
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: 儀表板查詢 PROFIT_WITHDRAW 記錄時缺少欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 儀表板查詢 PROFIT_WITHDRAW 記錄時缺少欄位，嘗試修復...")
                 db.session.rollback()
-                profit_withdrawals = []
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 儀表板添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 profit_before 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 儀表板添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 儀表板添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 儀表板添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 儀表板添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 儀表板 to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 儀表板欄位修復完成，重新查詢...")
+                    
+                    # 重新查詢
+                    profit_withdrawals = (
+                        db.session.execute(
+                            db.select(LedgerEntry)
+                            .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                        )
+                        .scalars()
+                        .all()
+                    )
+                except Exception as fix_error:
+                    print(f"❌ 儀表板修復欄位失敗: {fix_error}")
+                    db.session.rollback()
+                    profit_withdrawals = []
             else:
-                db.session.rollback()
-                raise e
+                print(f"❌ 儀表板查詢LedgerEntry失敗: {e}")
+                profit_withdrawals = []
         
         total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
         total_profit_twd -= total_profit_withdrawals
@@ -2711,14 +2841,73 @@ def cash_management_operator():
                 .options(db.selectinload(LedgerEntry.account))
             ).scalars().all()
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 現金管理頁面 ledger_entries 表格缺少欄位，嘗試修復...")
                 db.session.rollback()  # 回滾失敗的事務
-                misc_entries = []
-                db.session.begin()  # 開始新事務
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    
+                    # 重新查詢
+                    misc_entries = db.session.execute(
+                        db.select(LedgerEntry)
+                        .options(db.selectinload(LedgerEntry.account))
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    misc_entries = []
             else:
-                db.session.rollback()  # 回滾失敗的事務
-                raise e
+                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
             cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
@@ -3044,14 +3233,73 @@ def cash_management():
                 .options(db.selectinload(LedgerEntry.account))
             ).scalars().all()
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 現金管理頁面 ledger_entries 表格缺少欄位，嘗試修復...")
                 db.session.rollback()  # 回滾失敗的事務
-                misc_entries = []
-                db.session.begin()  # 開始新事務
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    
+                    # 重新查詢
+                    misc_entries = db.session.execute(
+                        db.select(LedgerEntry)
+                        .options(db.selectinload(LedgerEntry.account))
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    misc_entries = []
             else:
-                db.session.rollback()  # 回滾失敗的事務
-                raise e
+                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
             cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
@@ -8239,14 +8487,73 @@ def get_cash_management_totals():
                 .options(db.selectinload(LedgerEntry.account))
             ).scalars().all()
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 現金管理頁面 ledger_entries 表格缺少欄位，嘗試修復...")
                 db.session.rollback()  # 回滾失敗的事務
-                misc_entries = []
-                db.session.begin()  # 開始新事務
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    
+                    # 重新查詢
+                    misc_entries = db.session.execute(
+                        db.select(LedgerEntry)
+                        .options(db.selectinload(LedgerEntry.account))
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    misc_entries = []
             else:
-                db.session.rollback()  # 回滾失敗的事務
-                raise e
+                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
             cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
@@ -8605,14 +8912,73 @@ def get_account_balances_for_dropdowns():
                 .options(db.selectinload(LedgerEntry.account))
             ).scalars().all()
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 現金管理頁面 ledger_entries 表格缺少欄位，嘗試修復...")
                 db.session.rollback()  # 回滾失敗的事務
-                misc_entries = []
-                db.session.begin()  # 開始新事務
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    
+                    # 重新查詢
+                    misc_entries = db.session.execute(
+                        db.select(LedgerEntry)
+                        .options(db.selectinload(LedgerEntry.account))
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    misc_entries = []
             else:
-                db.session.rollback()  # 回滾失敗的事務
-                raise e
+                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
             cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
@@ -8839,14 +9205,73 @@ def get_accurate_account_balances():
                 .options(db.selectinload(LedgerEntry.account))
             ).scalars().all()
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 現金管理頁面 ledger_entries 表格缺少欄位，嘗試修復...")
                 db.session.rollback()  # 回滾失敗的事務
-                misc_entries = []
-                db.session.begin()  # 開始新事務
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 檢查並添加利潤欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
+                        else:
+                            raise e
+                    
+                    # 檢查並添加轉帳欄位
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    try:
+                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
+                        else:
+                            raise e
+                    
+                    db.session.commit()
+                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    
+                    # 重新查詢
+                    misc_entries = db.session.execute(
+                        db.select(LedgerEntry)
+                        .options(db.selectinload(LedgerEntry.account))
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    misc_entries = []
             else:
-                db.session.rollback()  # 回滾失敗的事務
-                raise e
+                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
             cash_logs = db.session.execute(db.select(CashLog)).scalars().all()
