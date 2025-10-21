@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>快速API測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔧 快速API測試</h1>
+    
+    <button onclick="testAll()">測試所有API</button>
+    <button onclick="clearResults()">清除結果</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const baseUrl = window.location.origin;
+        
+        async function testAPI(name, url) {
+            const resultsDiv = document.getElementById('results');
+            const testDiv = document.createElement('div');
+            testDiv.className = 'test-result info';
+            testDiv.innerHTML = `<strong>${name}:</strong> 測試中...`;
+            resultsDiv.appendChild(testDiv);
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    testDiv.className = 'test-result success';
+                    const count = data.data?.transactions?.length || 0;
+                    testDiv.innerHTML = `<strong>${name}:</strong> ✅ 正常 (${count} 筆記錄)`;
+                } else {
+                    testDiv.className = 'test-result error';
+                    testDiv.innerHTML = `<strong>${name}:</strong> ❌ 錯誤 - ${data.message || response.status}`;
+                }
+            } catch (error) {
+                testDiv.className = 'test-result error';
+                testDiv.innerHTML = `<strong>${name}:</strong> ❌ 失敗 - ${error.message}`;
+            }
+        }
+        
+        async function testAll() {
+            clearResults();
+            
+            const apis = [
+                ['交易記錄API', `${baseUrl}/api/cash_management/transactions?page=1&per_page=5`],
+                ['簡化API', `${baseUrl}/api/cash_management/transactions_simple?page=1&per_page=5`],
+                ['利潤歷史API', `${baseUrl}/api/profit/history?page=1&per_page=5`]
+            ];
+            
+            for (const [name, url] of apis) {
+                await testAPI(name, url);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒
+            }
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資料庫修復測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="mb-4">🔧 資料庫修復測試</h1>
+                
+                <!-- 測試按鈕 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>測試功能</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <button id="testTransactions" class="btn btn-primary mb-2">
+                                    <i class="bi bi-list-ul"></i> 測試交易記錄API
+                                </button>
+                                <button id="testProfitHistory" class="btn btn-success mb-2">
+                                    <i class="bi bi-clock-history"></i> 測試利潤歷史API
+                                </button>
+                                <button id="testSimpleAPI" class="btn btn-info mb-2">
+                                    <i class="bi bi-lightning"></i> 測試簡化API
+                                </button>
+                            </div>
+                            <div class="col-md-6">
+                                <button id="clearResults" class="btn btn-outline-secondary mb-2">
+                                    <i class="bi bi-trash"></i> 清除結果
+                                </button>
+                                <button id="runAllTests" class="btn btn-warning mb-2">
+                                    <i class="bi bi-play-circle"></i> 執行所有測試
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 測試結果 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5>測試結果</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="testResults" class="alert alert-info">
+                            點擊上方按鈕開始測試...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const baseUrl = window.location.origin;
+        
+        // 測試交易記錄API
+        document.getElementById('testTransactions').addEventListener('click', async function() {
+            await testAPI('交易記錄API', `${baseUrl}/api/cash_management/transactions?page=1&per_page=5`);
+        });
+        
+        // 測試利潤歷史API
+        document.getElementById('testProfitHistory').addEventListener('click', async function() {
+            await testAPI('利潤歷史API', `${baseUrl}/api/profit/history?page=1&per_page=5`);
+        });
+        
+        // 測試簡化API
+        document.getElementById('testSimpleAPI').addEventListener('click', async function() {
+            await testAPI('簡化API', `${baseUrl}/api/cash_management/transactions_simple?page=1&per_page=5`);
+        });
+        
+        // 執行所有測試
+        document.getElementById('runAllTests').addEventListener('click', async function() {
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>執行所有測試中...';
+            
+            let allResults = '<h6>🧪 所有測試結果</h6>';
+            
+            // 測試交易記錄API
+            allResults += await testAPI('交易記錄API', `${baseUrl}/api/cash_management/transactions?page=1&per_page=5`, true);
+            
+            // 測試利潤歷史API
+            allResults += await testAPI('利潤歷史API', `${baseUrl}/api/profit/history?page=1&per_page=5`, true);
+            
+            // 測試簡化API
+            allResults += await testAPI('簡化API', `${baseUrl}/api/cash_management/transactions_simple?page=1&per_page=5`, true);
+            
+            resultsDiv.innerHTML = allResults;
+        });
+        
+        // 清除結果
+        document.getElementById('clearResults').addEventListener('click', function() {
+            document.getElementById('testResults').innerHTML = '點擊上方按鈕開始測試...';
+        });
+        
+        // 通用API測試函數
+        async function testAPI(apiName, url, returnResult = false) {
+            const resultsDiv = document.getElementById('testResults');
+            if (!returnResult) {
+                resultsDiv.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div>測試${apiName}中...`;
+            }
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                let html = '';
+                if (returnResult) {
+                    html = `<div class="mb-3"><h6>📊 ${apiName}</h6>`;
+                } else {
+                    html = `<h6>📊 ${apiName}測試結果</h6>`;
+                }
+                
+                html += `<p><strong>狀態碼:</strong> ${response.status}</p>`;
+                html += `<p><strong>API狀態:</strong> ${data.status}</p>`;
+                
+                if (data.status === 'success') {
+                    const transactions = data.data?.transactions || [];
+                    html += `<p><strong>記錄數量:</strong> ${transactions.length}</p>`;
+                    
+                    if (transactions.length > 0) {
+                        html += '<div class="alert alert-success">✅ API正常運作</div>';
+                        
+                        // 顯示前3筆記錄的摘要
+                        html += '<h6>📋 記錄摘要:</h6>';
+                        html += '<div class="table-responsive"><table class="table table-sm">';
+                        html += '<thead><tr><th>類型</th><th>描述</th><th>日期</th><th>金額</th></tr></thead><tbody>';
+                        
+                        transactions.slice(0, 3).forEach(record => {
+                            html += `<tr>
+                                <td>${record.type || record.transaction_type || '-'}</td>
+                                <td>${record.description || '-'}</td>
+                                <td>${record.date || record.created_at || '-'}</td>
+                                <td>${record.amount || record.tw_change || '-'}</td>
+                            </tr>`;
+                        });
+                        
+                        html += '</tbody></table></div>';
+                    } else {
+                        html += '<div class="alert alert-warning">⚠️ 沒有找到記錄</div>';
+                    }
+                } else {
+                    html += `<div class="alert alert-danger">❌ API錯誤: ${data.message || '未知錯誤'}</div>`;
+                }
+                
+                if (returnResult) {
+                    html += '</div>';
+                    return html;
+                } else {
+                    resultsDiv.innerHTML = html;
+                }
+            } catch (error) {
+                const errorHtml = returnResult ? 
+                    `<div class="mb-3"><h6>📊 ${apiName}</h6><div class="alert alert-danger">❌ 測試失敗: ${error.message}</div></div>` :
+                    `<div class="alert alert-danger">❌ 測試失敗: ${error.message}</div>`;
+                
+                if (returnResult) {
+                    return errorHtml;
+                } else {
+                    resultsDiv.innerHTML = errorHtml;
+                }
+            }
+        }
+    </script>
+</body>
+</html>

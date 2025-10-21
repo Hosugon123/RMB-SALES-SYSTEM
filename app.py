@@ -5307,17 +5307,23 @@ def api_profit_withdraw():
                 .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
             ).scalars().all()
         except Exception as e:
-            if "profit_before does not exist" in str(e):
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
                 print("警告: 利潤提款API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，嘗試修復...")
                 db.session.rollback()
                 
                 # 嘗試添加缺失的欄位
                 try:
+                    # 添加利潤欄位
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    
+                    # 添加轉帳欄位
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    
                     db.session.commit()
-                    print("✅ 成功添加利潤欄位，重新查詢...")
+                    print("✅ 成功添加所有缺失欄位，重新查詢...")
                     
                     # 重新查詢
                     previous_withdrawals = db.session.execute(
@@ -5455,17 +5461,23 @@ def api_profit_history():
                 print(f"DEBUG: 記錄 - 類型: {entry.entry_type}, 金額: {entry.amount}, 描述: {entry.description}")
                 print(f"DEBUG: 利潤欄位 - profit_before: {getattr(entry, 'profit_before', 'None')}, profit_after: {getattr(entry, 'profit_after', 'None')}, profit_change: {getattr(entry, 'profit_change', 'None')}")
         except Exception as e:
-            if "profit_before does not exist" in str(e):
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
                 print("警告: 利潤歷史API查詢 PROFIT_WITHDRAW 記錄時缺少欄位，嘗試修復...")
                 db.session.rollback()
                 
                 # 嘗試添加缺失的欄位
                 try:
+                    # 添加利潤欄位
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    
+                    # 添加轉帳欄位
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    
                     db.session.commit()
-                    print("✅ 成功添加利潤欄位，重新查詢...")
+                    print("✅ 成功添加所有缺失欄位，重新查詢...")
                     
                     # 重新查詢
                     profit_entries = (
@@ -7211,11 +7223,33 @@ def get_cash_management_transactions():
                 .options(db.selectinload(LedgerEntry.account))
             ).scalars().all()
         except Exception as e:
-            if "profit_before does not exist" in str(e):
-                print("警告: ledger_entries 表格缺少利潤欄位，跳過查詢")
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: ledger_entries 表格缺少欄位，嘗試修復...")
                 db.session.rollback()  # 回滾失敗的事務
-                misc_entries = []
-                db.session.begin()  # 開始新事務
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 添加利潤欄位
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    
+                    # 添加轉帳欄位
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    
+                    db.session.commit()
+                    print("✅ 成功添加缺失欄位，重新查詢...")
+                    
+                    # 重新查詢
+                    misc_entries = db.session.execute(
+                        db.select(LedgerEntry)
+                        .options(db.selectinload(LedgerEntry.account))
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 修復欄位失敗: {fix_error}")
+                    misc_entries = []
+                    db.session.begin()  # 開始新事務
             else:
                 db.session.rollback()  # 回滾失敗的事務
                 raise e
@@ -7738,8 +7772,37 @@ def get_cash_management_transactions_simple():
                 .limit(limit)
             ).scalars().all()
         except Exception as e:
-            print(f"DEBUG: 簡化API查詢LedgerEntry失敗: {e}")
-            misc_entries = []
+            if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
+                print("警告: 簡化API ledger_entries 表格缺少欄位，嘗試修復...")
+                db.session.rollback()
+                
+                # 嘗試添加缺失的欄位
+                try:
+                    # 添加利潤欄位
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
+                    
+                    # 添加轉帳欄位
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                    
+                    db.session.commit()
+                    print("✅ 簡化API成功添加缺失欄位，重新查詢...")
+                    
+                    # 重新查詢
+                    misc_entries = db.session.execute(
+                        db.select(LedgerEntry)
+                        .options(db.selectinload(LedgerEntry.account))
+                        .order_by(LedgerEntry.entry_date.desc())
+                        .limit(limit)
+                    ).scalars().all()
+                except Exception as fix_error:
+                    print(f"❌ 簡化API修復欄位失敗: {fix_error}")
+                    misc_entries = []
+            else:
+                print(f"DEBUG: 簡化API查詢LedgerEntry失敗: {e}")
+                misc_entries = []
         
         unified_stream = []
         
