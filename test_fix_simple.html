@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>修復測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔧 修復測試</h1>
+    
+    <button onclick="testAPI()">測試API</button>
+    <button onclick="clearResults()">清除結果</button>
+    
+    <div id="results"></div>
+
+    <script>
+        async function testAPI() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="result info">測試中...</div>';
+            
+            try {
+                const response = await fetch('/api/cash_management/transactions?page=1&per_page=5');
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    const count = data.data?.transactions?.length || 0;
+                    resultsDiv.innerHTML = `<div class="result success">✅ API正常 (${count} 筆記錄)</div>`;
+                } else {
+                    resultsDiv.innerHTML = `<div class="result error">❌ API錯誤: ${data.message || response.status}</div>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="result error">❌ 請求失敗: ${error.message}</div>`;
+            }
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+    </script>
+</body>
+</html>

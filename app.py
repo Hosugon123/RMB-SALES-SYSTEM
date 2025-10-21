@@ -7249,10 +7249,9 @@ def get_cash_management_transactions():
                 except Exception as fix_error:
                     print(f"❌ 修復欄位失敗: {fix_error}")
                     misc_entries = []
-                    db.session.begin()  # 開始新事務
             else:
-                db.session.rollback()  # 回滾失敗的事務
-                raise e
+                print(f"❌ 查詢LedgerEntry失敗: {e}")
+                misc_entries = []
         
         # 確保在乾淨的事務中查詢 cash_logs
         try:
@@ -7801,7 +7800,7 @@ def get_cash_management_transactions_simple():
                     print(f"❌ 簡化API修復欄位失敗: {fix_error}")
                     misc_entries = []
             else:
-                print(f"DEBUG: 簡化API查詢LedgerEntry失敗: {e}")
+                print(f"❌ 簡化API查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         
         unified_stream = []
