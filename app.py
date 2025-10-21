@@ -6699,6 +6699,10 @@ def api_settlement():
                     db.session.commit()
                     print("✅ 銷帳API欄位修復完成，重新創建記錄...")
                     
+                    # 重新更新客戶和帳戶餘額
+                    customer.total_receivables_twd -= amount
+                    account.balance += amount
+                    
                     # 重新創建 LedgerEntry 記錄
                     settlement_entry = LedgerEntry(
                         account_id=account.id,
@@ -6722,6 +6726,10 @@ def api_settlement():
                     
                     # 重新提交
                     db.session.commit()
+                    
+                    # 強制刷新對象狀態
+                    db.session.refresh(customer)
+                    db.session.refresh(account)
                 except Exception as fix_error:
                     print(f"❌ 銷帳API修復欄位失敗: {fix_error}")
                     raise fix_error
