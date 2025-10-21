@@ -6697,7 +6697,28 @@ def api_settlement():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 銷帳API欄位修復完成，重新提交...")
+                    print("✅ 銷帳API欄位修復完成，重新創建記錄...")
+                    
+                    # 重新創建 LedgerEntry 記錄
+                    settlement_entry = LedgerEntry(
+                        account_id=account.id,
+                        entry_type="SETTLEMENT",
+                        amount=amount,
+                        entry_date=datetime.utcnow(),
+                        description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+                        operator_id=current_user.id
+                    )
+                    db.session.add(settlement_entry)
+                    
+                    # 重新創建 CashLog 記錄
+                    settlement_cash_log = CashLog(
+                        type="SETTLEMENT",
+                        amount=amount,
+                        time=datetime.utcnow(),
+                        description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+                        operator_id=current_user.id
+                    )
+                    db.session.add(settlement_cash_log)
                     
                     # 重新提交
                     db.session.commit()
