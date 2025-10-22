@@ -22,6 +22,67 @@ def get_safe_operator_id():
     except Exception as e:
         print(f"⚠️ 獲取current_user.id失敗: {e}, 使用默認值1")
         return 1
+
+def fix_postgresql_columns():
+    """修復PostgreSQL缺少的欄位"""
+    try:
+        # 檢查是否為PostgreSQL
+        database_url = str(db.engine.url)
+        if 'postgresql' not in database_url:
+            return True
+        
+        print("🔧 檢查PostgreSQL欄位...")
+        
+        # 檢查ledger_entries表格欄位
+        columns_query = text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'ledger_entries' 
+            AND table_schema = 'public'
+            AND column_name IN ('from_account_id', 'to_account_id', 'profit_before', 'profit_after', 'profit_change')
+        """)
+        
+        result = db.session.execute(columns_query).fetchall()
+        existing_columns = [row[0] for row in result]
+        
+        # 需要添加的欄位
+        columns_to_add = [
+            ('from_account_id', 'INTEGER'),
+            ('to_account_id', 'INTEGER'),
+            ('profit_before', 'REAL'),
+            ('profit_after', 'REAL'),
+            ('profit_change', 'REAL')
+        ]
+        
+        missing_columns = [col for col, _ in columns_to_add if col not in existing_columns]
+        
+        if missing_columns:
+            print(f"🔧 發現缺少欄位: {missing_columns}，正在修復...")
+            
+            for column_name, column_type in columns_to_add:
+                if column_name in missing_columns:
+                    try:
+                        alter_query = text(f"""
+                            ALTER TABLE ledger_entries 
+                            ADD COLUMN {column_name} {column_type}
+                        """)
+                        db.session.execute(alter_query)
+                        db.session.commit()
+                        print(f"✅ 添加欄位: {column_name}")
+                    except Exception as e:
+                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
+                            print(f"ℹ️ 欄位已存在: {column_name}")
+                        else:
+                            print(f"❌ 添加欄位 {column_name} 失敗: {e}")
+                            db.session.rollback()
+        else:
+            print("✅ PostgreSQL欄位檢查通過")
+        
+        return True
+        
+    except Exception as e:
+        print(f"⚠️ PostgreSQL欄位修復失敗: {e}")
+        return False
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, date, timezone
@@ -6645,68 +6706,25 @@ def api_settlement():
         
         # 創建銷帳記錄（LedgerEntry）
         print(f"🔧 銷帳API: 創建LedgerEntry記錄...")
-        try:
-            # 安全獲取操作員ID
-            operator_id = get_safe_operator_id()
-            print(f"🔧 銷帳API: 操作員ID: {operator_id}")
-            
-            settlement_entry = LedgerEntry(
-                account_id=account.id,
-                entry_type="SETTLEMENT",
-                amount=amount,
-                entry_date=datetime.utcnow(),
-                description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                operator_id=operator_id
-            )
-            print(f"🔧 銷帳API: LedgerEntry物件創建成功: {settlement_entry}")
-            db.session.add(settlement_entry)
-            print(f"🔧 銷帳API: LedgerEntry已添加到session")
-        except Exception as e:
-            print(f"❌ 銷帳API: 創建LedgerEntry時發生錯誤: {e}")
-            print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
-            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
-                print("警告: 銷帳API創建LedgerEntry時缺少欄位，嘗試修復...")
-                db.session.rollback()
-                
-                # 嘗試添加缺失的欄位
-                try:
-                    # 檢查並添加轉帳欄位
-                    try:
-                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 銷帳API添加 from_account_id 欄位")
-                    except Exception as e:
-                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
-                            print("ℹ️ 銷帳API from_account_id 欄位已存在")
-                        else:
-                            raise e
-                    
-                    try:
-                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 銷帳API添加 to_account_id 欄位")
-                    except Exception as e:
-                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
-                            print("ℹ️ 銷帳API to_account_id 欄位已存在")
-                        else:
-                            raise e
-                    
-                    db.session.commit()
-                    print("✅ 銷帳API欄位修復完成，重新創建記錄...")
-                    
-                    # 重新創建記錄
-                    settlement_entry = LedgerEntry(
-                        account_id=account.id,
-                        entry_type="SETTLEMENT",
-                        amount=amount,
-                        entry_date=datetime.utcnow(),
-                        description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                        operator_id=operator_id
-                    )
-                    db.session.add(settlement_entry)
-                except Exception as fix_error:
-                    print(f"❌ 銷帳API修復欄位失敗: {fix_error}")
-                    raise fix_error
-            else:
-                raise e
+        
+        # 安全獲取操作員ID
+        operator_id = get_safe_operator_id()
+        print(f"🔧 銷帳API: 操作員ID: {operator_id}")
+        
+        # 確保PostgreSQL欄位存在
+        fix_postgresql_columns()
+        
+        settlement_entry = LedgerEntry(
+            account_id=account.id,
+            entry_type="SETTLEMENT",
+            amount=amount,
+            entry_date=datetime.utcnow(),
+            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+            operator_id=operator_id
+        )
+        print(f"🔧 銷帳API: LedgerEntry物件創建成功: {settlement_entry}")
+        db.session.add(settlement_entry)
+        print(f"🔧 銷帳API: LedgerEntry已添加到session")
         
         # 創建現金流水記錄（CashLog）- 暫時不設置 account_id
         print(f"🔧 銷帳API: 創建CashLog記錄...")
@@ -6726,78 +6744,10 @@ def api_settlement():
             print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
             raise e
         
-        # 提交事務前檢查欄位是否存在
+        # 提交事務
         print(f"🔧 銷帳API: 準備提交事務...")
-        try:
-            db.session.commit()
-            print(f"✅ 銷帳API: 事務提交成功")
-        except Exception as e:
-            print(f"❌ 銷帳API: 提交事務時發生錯誤: {e}")
-            print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
-            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
-                print("警告: 銷帳API提交時發現欄位缺失，嘗試修復...")
-                db.session.rollback()
-                
-                # 嘗試添加缺失的欄位
-                try:
-                    # 檢查並添加轉帳欄位
-                    try:
-                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 銷帳API添加 from_account_id 欄位")
-                    except Exception as e:
-                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
-                            print("ℹ️ 銷帳API from_account_id 欄位已存在")
-                        else:
-                            raise e
-                    
-                    try:
-                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 銷帳API添加 to_account_id 欄位")
-                    except Exception as e:
-                        if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
-                            print("ℹ️ 銷帳API to_account_id 欄位已存在")
-                        else:
-                            raise e
-                    
-                    db.session.commit()
-                    print("✅ 銷帳API欄位修復完成，重新創建記錄...")
-                    
-                    # 重新更新客戶和帳戶餘額
-                    customer.total_receivables_twd -= amount
-                    account.balance += amount
-                    
-                    # 重新創建 LedgerEntry 記錄
-                    settlement_entry = LedgerEntry(
-                        account_id=account.id,
-                        entry_type="SETTLEMENT",
-                        amount=amount,
-                        entry_date=datetime.utcnow(),
-                        description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                        operator_id=operator_id
-                    )
-                    db.session.add(settlement_entry)
-                    
-                    # 重新創建 CashLog 記錄
-                    settlement_cash_log = CashLog(
-                        type="SETTLEMENT",
-                        amount=amount,
-                        time=datetime.utcnow(),
-                        description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                        operator_id=operator_id
-                    )
-                    db.session.add(settlement_cash_log)
-                    
-                    # 重新提交
-                    db.session.commit()
-                    
-                    # 強制刷新對象狀態
-                    db.session.refresh(customer)
-                    db.session.refresh(account)
-                except Exception as fix_error:
-                    print(f"❌ 銷帳API修復欄位失敗: {fix_error}")
-                    raise fix_error
-            else:
-                raise e
+        db.session.commit()
+        print(f"✅ 銷帳API: 事務提交成功")
         
         # 強制刷新對象狀態
         print(f"🔧 銷帳API: 刷新對象狀態...")
@@ -10201,4 +10151,7 @@ def independent_balance():
 # 9. 啟動器
 # ===================================================================
 if __name__ == "__main__":
+    # 啟動時修復PostgreSQL欄位
+    with app.app_context():
+        fix_postgresql_columns()
     app.run(debug=True)
