@@ -6562,8 +6562,12 @@ def api_delete_account():
 @login_required
 def api_settlement():
     """處理應收帳款銷帳"""
+    print(f"\n🔧 銷帳API開始執行 - 時間: {datetime.utcnow()}")
+    print(f"🔧 請求數據: {request.get_json()}")
+    
     data = request.get_json()
     if not data:
+        print("❌ 銷帳API: 無效的請求格式")
         return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
 
     try:
@@ -6572,36 +6576,63 @@ def api_settlement():
         amount = float(data.get("amount"))
         account_id = int(data.get("account_id"))
         note = data.get("note", "")
+        
+        print(f"🔧 銷帳API參數解析:")
+        print(f"   - 客戶ID: {customer_id} (類型: {type(customer_id)})")
+        print(f"   - 銷帳金額: {amount} (類型: {type(amount)})")
+        print(f"   - 帳戶ID: {account_id} (類型: {type(account_id)})")
+        print(f"   - 備註: '{note}' (類型: {type(note)})")
 
         if not all([customer_id, amount > 0, account_id]):
+            print("❌ 銷帳API: 參數驗證失敗")
             return jsonify({"status": "error", "message": "客戶ID、銷帳金額和收款帳戶都必須正確填寫。"}), 400
 
         # 2. 查詢資料庫物件
+        print(f"🔧 銷帳API: 查詢資料庫物件...")
         customer = db.session.get(Customer, customer_id)
         account = db.session.get(CashAccount, account_id)
+        
+        print(f"🔧 銷帳API: 客戶查詢結果: {customer}")
+        print(f"🔧 銷帳API: 帳戶查詢結果: {account}")
 
         if not customer:
+            print("❌ 銷帳API: 找不到指定的客戶")
             return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 400
         if not account:
+            print(f"❌ 銷帳API: 找不到帳戶 ID {account_id}")
             return jsonify({"status": "error", "message": f"找不到帳戶 ID {account_id}，該帳戶可能已被刪除。"}), 400
         if not account.is_active:
+            print(f"❌ 銷帳API: 帳戶「{account.name}」已停用")
             return jsonify({"status": "error", "message": f"帳戶「{account.name}」已停用，無法使用。"}), 400
         if account.currency != "TWD":
+            print(f"❌ 銷帳API: 帳戶「{account.name}」幣種錯誤: {account.currency}")
             return jsonify({"status": "error", "message": f"帳戶「{account.name}」的幣種是 {account.currency}，不是台幣帳戶。"}), 400
         if amount > customer.total_receivables_twd:
+            print(f"❌ 銷帳API: 銷帳金額超過應收帳款 - 客戶應收: {customer.total_receivables_twd}, 銷帳: {amount}")
             return jsonify({
                 "status": "error", 
                 "message": f"銷帳金額超過應收帳款！客戶應收 {customer.total_receivables_twd:,.2f}，但銷帳 {amount:,.2f}。"
             }), 400
+        
+        print(f"✅ 銷帳API: 資料驗證通過")
+        print(f"   - 客戶: {customer.name}, 應收帳款: {customer.total_receivables_twd}")
+        print(f"   - 帳戶: {account.name}, 餘額: {account.balance}, 幣種: {account.currency}")
 
         # 3. 核心業務邏輯
+        print(f"🔧 銷帳API: 開始核心業務邏輯...")
+        
         # 更新客戶應收帳款
+        old_receivables = customer.total_receivables_twd
         customer.total_receivables_twd -= amount
+        print(f"🔧 銷帳API: 更新客戶應收帳款 - 原: {old_receivables}, 新: {customer.total_receivables_twd}")
         
         # 更新收款帳戶餘額
+        old_balance = account.balance
         account.balance += amount
+        print(f"🔧 銷帳API: 更新帳戶餘額 - 原: {old_balance}, 新: {account.balance}")
         
         # 創建銷帳記錄（LedgerEntry）
+        print(f"🔧 銷帳API: 創建LedgerEntry記錄...")
         try:
             settlement_entry = LedgerEntry(
                 account_id=account.id,
@@ -6611,8 +6642,12 @@ def api_settlement():
                 description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
                 operator_id=current_user.id
             )
+            print(f"🔧 銷帳API: LedgerEntry物件創建成功: {settlement_entry}")
             db.session.add(settlement_entry)
+            print(f"🔧 銷帳API: LedgerEntry已添加到session")
         except Exception as e:
+            print(f"❌ 銷帳API: 創建LedgerEntry時發生錯誤: {e}")
+            print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
             if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
                 print("警告: 銷帳API創建LedgerEntry時缺少欄位，嘗試修復...")
                 db.session.rollback()
@@ -6658,19 +6693,31 @@ def api_settlement():
                 raise e
         
         # 創建現金流水記錄（CashLog）- 暫時不設置 account_id
-        settlement_cash_log = CashLog(
-            type="SETTLEMENT",
-            amount=amount,
-            time=datetime.utcnow(),
-            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-            operator_id=current_user.id
-        )
-        db.session.add(settlement_cash_log)
+        print(f"🔧 銷帳API: 創建CashLog記錄...")
+        try:
+            settlement_cash_log = CashLog(
+                type="SETTLEMENT",
+                amount=amount,
+                time=datetime.utcnow(),
+                description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+                operator_id=current_user.id
+            )
+            print(f"🔧 銷帳API: CashLog物件創建成功: {settlement_cash_log}")
+            db.session.add(settlement_cash_log)
+            print(f"🔧 銷帳API: CashLog已添加到session")
+        except Exception as e:
+            print(f"❌ 銷帳API: 創建CashLog時發生錯誤: {e}")
+            print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
+            raise e
         
         # 提交事務前檢查欄位是否存在
+        print(f"🔧 銷帳API: 準備提交事務...")
         try:
             db.session.commit()
+            print(f"✅ 銷帳API: 事務提交成功")
         except Exception as e:
+            print(f"❌ 銷帳API: 提交事務時發生錯誤: {e}")
+            print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
             if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
                 print("警告: 銷帳API提交時發現欄位缺失，嘗試修復...")
                 db.session.rollback()
@@ -6737,21 +6784,27 @@ def api_settlement():
                 raise e
         
         # 強制刷新對象狀態
+        print(f"🔧 銷帳API: 刷新對象狀態...")
         db.session.refresh(customer)
         db.session.refresh(account)
+        print(f"🔧 銷帳API: 對象狀態刷新完成")
 
+        success_message = f"銷帳成功！客戶「{customer.name}」已收款 NT$ {amount:,.2f}，應收帳款餘額：NT$ {customer.total_receivables_twd:,.2f}。"
+        print(f"✅ 銷帳API: 操作完成 - {success_message}")
+        
         return jsonify({
             "status": "success",
-            "message": f"銷帳成功！客戶「{customer.name}」已收款 NT$ {amount:,.2f}，應收帳款餘額：NT$ {customer.total_receivables_twd:,.2f}。"
+            "message": success_message
         })
 
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
+        print(f"❌ 銷帳API: 資料格式錯誤: {e}")
+        print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
         return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"!! Error in api_settlement: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ 銷帳API: 發生未預期錯誤: {e}")
+        print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
         return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
 
 
