@@ -8,26 +8,26 @@
 
 import os
 import sys
-import sqlite3
+import psycopg2
 from datetime import datetime
 
 def connect_database():
     """連接資料庫"""
-    # 嘗試多個可能的資料庫路徑
-    possible_paths = [
-        'instance/sales_system.db',
-        'instance/sales_system_v4.db',
-        'sales_system.db',
-        'instance/database.db'
-    ]
+    # 從環境變數獲取 PostgreSQL 連接字串
+    database_url = os.getenv('DATABASE_URL')
     
-    for db_path in possible_paths:
-        if os.path.exists(db_path):
-            print(f"✅ 找到資料庫: {db_path}")
-            return sqlite3.connect(db_path)
+    if not database_url:
+        print("❌ 找不到 DATABASE_URL 環境變數")
+        return None
     
-    print("❌ 找不到資料庫檔案")
-    return None
+    try:
+        print(f"🔗 連接到 PostgreSQL 資料庫...")
+        conn = psycopg2.connect(database_url)
+        print("✅ 成功連接到 PostgreSQL 資料庫")
+        return conn
+    except Exception as e:
+        print(f"❌ 連接資料庫失敗: {e}")
+        return None
 
 def check_database_tables(conn):
     """檢查資料庫表格結構"""
@@ -41,14 +41,20 @@ def check_database_tables(conn):
         'cash_accounts', 
         'ledger_entries',
         'cash_logs',
-        'users'
+        'user'
     ]
     
     missing_tables = []
     
     for table in required_tables:
-        cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}';")
-        if not cursor.fetchone():
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = %s
+            );
+        """, (table,))
+        
+        if not cursor.fetchone()[0]:
             missing_tables.append(table)
             print(f"❌ 缺少表格: {table}")
         else:
@@ -63,7 +69,12 @@ def check_ledger_entries_structure(conn):
     print("\n🔍 檢查 ledger_entries 表格結構...")
     
     try:
-        cursor.execute("PRAGMA table_info(ledger_entries);")
+        cursor.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'ledger_entries'
+            ORDER BY ordinal_position;
+        """)
         columns = cursor.fetchall()
         
         required_columns = [
@@ -71,7 +82,7 @@ def check_ledger_entries_structure(conn):
             'description', 'entry_date', 'operator_id'
         ]
         
-        existing_columns = [col[1] for col in columns]
+        existing_columns = [col[0] for col in columns]
         
         print("現有欄位:", existing_columns)
         
@@ -101,12 +112,12 @@ def fix_ledger_entries_table(conn, missing_columns):
             print("創建 ledger_entries 表格...")
             cursor.execute("""
                 CREATE TABLE ledger_entries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     entry_type VARCHAR(50) NOT NULL,
                     account_id INTEGER,
                     amount FLOAT NOT NULL DEFAULT 0,
                     description VARCHAR(200),
-                    entry_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    entry_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     operator_id INTEGER NOT NULL,
                     profit_before FLOAT,
                     profit_after FLOAT,
@@ -114,7 +125,7 @@ def fix_ledger_entries_table(conn, missing_columns):
                     from_account_id INTEGER,
                     to_account_id INTEGER,
                     FOREIGN KEY (account_id) REFERENCES cash_accounts(id),
-                    FOREIGN KEY (operator_id) REFERENCES user(id),
+                    FOREIGN KEY (operator_id) REFERENCES "user"(id),
                     FOREIGN KEY (from_account_id) REFERENCES cash_accounts(id),
                     FOREIGN KEY (to_account_id) REFERENCES cash_accounts(id)
                 );
@@ -155,18 +166,24 @@ def check_cash_logs_table(conn):
     print("\n🔍 檢查 cash_logs 表格...")
     
     try:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cash_logs';")
-        if not cursor.fetchone():
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'cash_logs'
+            );
+        """)
+        
+        if not cursor.fetchone()[0]:
             print("❌ cash_logs 表格不存在，創建表格...")
             cursor.execute("""
                 CREATE TABLE cash_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    id SERIAL PRIMARY KEY,
+                    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     type VARCHAR(50),
                     description VARCHAR(200),
                     amount FLOAT,
                     operator_id INTEGER NOT NULL,
-                    FOREIGN KEY (operator_id) REFERENCES user(id)
+                    FOREIGN KEY (operator_id) REFERENCES "user"(id)
                 );
             """)
             conn.commit()
@@ -198,7 +215,7 @@ def check_sample_data(conn):
         print(f"現金帳戶數量: {account_count}")
         
         # 檢查用戶
-        cursor.execute("SELECT COUNT(*) FROM user;")
+        cursor.execute('SELECT COUNT(*) FROM "user";')
         user_count = cursor.fetchone()[0]
         print(f"用戶數量: {user_count}")
         
@@ -221,20 +238,23 @@ def create_sample_data(conn):
     try:
         # 創建管理員用戶
         cursor.execute("""
-            INSERT OR IGNORE INTO user (id, username, password_hash, is_admin) 
-            VALUES (1, 'admin', 'pbkdf2:sha256:600000$admin$hash', 1);
+            INSERT INTO "user" (id, username, password_hash, is_admin) 
+            VALUES (1, 'admin', 'pbkdf2:sha256:600000$admin$hash', true)
+            ON CONFLICT (id) DO NOTHING;
         """)
         
         # 創建範例客戶
         cursor.execute("""
-            INSERT OR IGNORE INTO customers (id, name, total_receivables_twd) 
-            VALUES (1, '測試客戶', 1000.00);
+            INSERT INTO customers (id, name, total_receivables_twd) 
+            VALUES (1, '測試客戶', 1000.00)
+            ON CONFLICT (id) DO NOTHING;
         """)
         
         # 創建範例現金帳戶
         cursor.execute("""
-            INSERT OR IGNORE INTO cash_accounts (id, name, balance, currency, is_active, holder_id) 
-            VALUES (1, '台幣帳戶', 5000.00, 'TWD', 1, 1);
+            INSERT INTO cash_accounts (id, name, balance, currency, is_active, holder_id) 
+            VALUES (1, '台幣帳戶', 5000.00, 'TWD', true, 1)
+            ON CONFLICT (id) DO NOTHING;
         """)
         
         conn.commit()
