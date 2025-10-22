@@ -11,6 +11,17 @@ from flask_login import (
     login_required,
     current_user,
 )
+
+def get_safe_operator_id():
+    """安全獲取操作員ID，避免current_user訪問失敗"""
+    try:
+        if current_user and hasattr(current_user, 'id') and current_user.is_authenticated:
+            return current_user.id
+        else:
+            return 1  # 默認系統用戶ID
+    except Exception as e:
+        print(f"⚠️ 獲取current_user.id失敗: {e}, 使用默認值1")
+        return 1
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, date, timezone
@@ -509,7 +520,7 @@ class ProfitService:
                 return {"success": False, "message": "帳戶不存在"}
             
             if operator_id is None:
-                operator_id = current_user.id if current_user and current_user.is_authenticated else 1
+                operator_id = get_safe_operator_id()
             
             # 記錄變動前餘額
             balance_before = account.profit_balance
@@ -562,7 +573,7 @@ class ProfitService:
                 return {"success": False, "message": f"利潤餘額不足，當前餘額: {account.profit_balance:.2f}"}
             
             if operator_id is None:
-                operator_id = current_user.id if current_user and current_user.is_authenticated else 1
+                operator_id = get_safe_operator_id()
             
             # 記錄變動前餘額
             balance_before = account.profit_balance
@@ -610,7 +621,7 @@ class ProfitService:
                 return {"success": False, "message": "帳戶不存在"}
             
             if operator_id is None:
-                operator_id = current_user.id if current_user and current_user.is_authenticated else 1
+                operator_id = get_safe_operator_id()
             
             # 記錄變動前餘額
             balance_before = account.profit_balance
@@ -1168,7 +1179,7 @@ class FIFOService:
                 operator_id = None
                 try:
                     from flask_login import current_user
-                    operator_id = current_user.id if current_user and hasattr(current_user, 'id') else 1
+                    operator_id = get_safe_operator_id()
                 except:
                     operator_id = 1
                 
@@ -1293,7 +1304,7 @@ class FIFOService:
                     # 創建提款流水記錄（使用系統用戶ID，避免current_user問題）
                     try:
                         # 嘗試獲取當前用戶ID，如果失敗則使用默認值
-                        operator_id = current_user.id if current_user and hasattr(current_user, 'id') else 1
+                        operator_id = get_safe_operator_id()
                     except:
                         operator_id = 1  # 默認系統用戶ID
                     
@@ -1376,7 +1387,7 @@ class FIFOService:
                 # 獲取操作者ID
                 operator_id = None
                 try:
-                    operator_id = current_user.id if current_user and hasattr(current_user, 'id') else 1
+                    operator_id = get_safe_operator_id()
                 except:
                     operator_id = 1
                 
@@ -2640,7 +2651,7 @@ def api_sales_entry():
             exchange_rate=exchange_rate,
             twd_amount=twd_amount,
             is_settled=False,
-            operator_id=current_user.id,  # <--- V4.0 核心功能！記錄操作者
+            operator_id=get_safe_operator_id(),  # <--- V4.0 核心功能！記錄操作者
         )
         db.session.add(new_sale)
         db.session.flush()  # 先獲取ID，但不提交
@@ -2671,7 +2682,7 @@ def api_sales_entry():
                             note=f"RMB {new_sale.rmb_amount}，匯率 {new_sale.twd_amount/new_sale.rmb_amount:.4f}",
                             related_transaction_id=new_sale.id,
                             related_transaction_type="SALES",
-                            operator_id=current_user.id
+                            operator_id=get_safe_operator_id()
                         )
                         
                         # 同時記錄到LedgerEntry中，用於利潤管理歷史
@@ -2705,7 +2716,7 @@ def api_sales_entry():
                                     entry_type="PROFIT_EARNED",
                                     amount=profit_amount,
                                     description=f"售出利潤：{customer.name}",
-                                    operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
                                     profit_before=current_total_profit,
                                     profit_after=current_total_profit + profit_amount,
                                     profit_change=profit_amount
@@ -2727,7 +2738,7 @@ def api_sales_entry():
                                             entry_type="PROFIT_EARNED",
                                             amount=profit_amount,
                                             description=f"售出利潤：{customer.name}",
-                                            operator_id=current_user.id,
+                                            operator_id=get_safe_operator_id(),
                                             profit_before=current_total_profit,
                                             profit_after=current_total_profit + profit_amount,
                                             profit_change=profit_amount
@@ -3930,7 +3941,7 @@ def api_card_purchase():
             twd_equivalent=twd_equivalent,
             calculated_rate=calculated_rate,
             rmb_with_fee=rmb_with_fee,
-            operator_id=current_user.id
+            operator_id=get_safe_operator_id()
         )
         
         db.session.add(new_purchase)
@@ -3940,7 +3951,7 @@ def api_card_purchase():
             type="CARD_PURCHASE",
             description=f"刷卡記帳：{supplier}，RMB ¥{rmb_amount:,.2f}，TWD {twd_equivalent:,.2f}，匯率 {calculated_rate:.4f}",
             amount=twd_equivalent,
-            operator_id=current_user.id
+            operator_id=get_safe_operator_id()
         )
         db.session.add(cash_log)
 
@@ -4082,7 +4093,7 @@ def api_buy_in():
                 exchange_rate=exchange_rate,
                 twd_cost=twd_cost,
                 payment_status=payment_status,
-                operator_id=current_user.id,  # <--- V4.0 核心功能！
+                                    operator_id=get_safe_operator_id(),  # <--- V4.0 核心功能！
             )
             db.session.add(new_purchase)
             db.session.flush()  # 立即獲取ID，以便創建FIFO庫存
@@ -4222,7 +4233,7 @@ def settle_pending_payment_api():
                 account_id=payment_account.id,
                 amount=-settlement_amount,  # 負數表示支出
                 description=description,
-                operator_id=current_user.id
+                operator_id=get_safe_operator_id()
             )
             db.session.add(ledger_entry)
         except Exception as e:
@@ -4242,7 +4253,7 @@ def settle_pending_payment_api():
                         account_id=payment_account.id,
                         amount=-settlement_amount,  # 負數表示支出
                         description=description,
-                        operator_id=current_user.id
+                        operator_id=get_safe_operator_id()
                     )
                     db.session.add(ledger_entry)
                 except Exception as fix_error:
@@ -4285,7 +4296,7 @@ def settle_pending_payment_api():
                 deleted_data=json.dumps(deleted_data, ensure_ascii=False),
                 operation_type='SETTLE_PENDING_PAYMENT',
                 description=f'待付款項銷帳：買入記錄 #{pending_payment.purchase_record_id}，銷帳金額 NT$ {settlement_amount:,.2f}',
-                operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
                 request=request,
                 balance_changes=balance_changes
             )
@@ -4372,7 +4383,7 @@ def process_payment_api():
                 description=description,
                 amount=payment_amount,
                 account_id=twd_account_id,
-                operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
             )
             db.session.add(ledger_entry)
         except Exception as e:
@@ -4393,7 +4404,7 @@ def process_payment_api():
                         description=description,
                         amount=payment_amount,
                         account_id=twd_account_id,
-                        operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
                     )
                     db.session.add(ledger_entry)
                 except Exception as fix_error:
@@ -4692,8 +4703,9 @@ def api_user_reverse_sale(sales_record_id):
         print(f"找到銷售記錄: 客戶ID={sales_record.customer_id}, RMB={sales_record.rmb_amount}")
         
         # 檢查用戶權限（只能取消自己的記錄或管理員可以取消所有記錄）
-        if not current_user.is_admin and sales_record.operator_id != current_user.id:
-            print(f"權限檢查失敗: 用戶ID={current_user.id}, 記錄操作者ID={sales_record.operator_id}")
+        current_operator_id = get_safe_operator_id()
+        if not current_user.is_admin and sales_record.operator_id != current_operator_id:
+            print(f"權限檢查失敗: 用戶ID={current_operator_id}, 記錄操作者ID={sales_record.operator_id}")
             return jsonify({
                 'status': 'error',
                 'message': '您只能取消自己的銷售記錄'
@@ -4980,7 +4992,7 @@ def admin_update_cash_account():
                                 account_id=account.id,
                                 amount=amount,  # 提款金額
                                 description=description,
-                                operator_id=current_user.id,
+                                operator_id=get_safe_operator_id(),
                             )
                         except Exception as e:
                             if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
@@ -5000,7 +5012,7 @@ def admin_update_cash_account():
                                         account_id=account.id,
                                         amount=amount,  # 提款金額
                                         description=description,
-                                        operator_id=current_user.id,
+                                        operator_id=get_safe_operator_id(),
                                     )
                                 except Exception as fix_error:
                                     print(f"❌ 提款操作修復欄位失敗: {fix_error}")
@@ -5074,7 +5086,7 @@ def admin_update_cash_account():
                                 rmb_amount=amount,
                                 exchange_rate=cost_rate,
                                 twd_cost=twd_cost,
-                                operator_id=current_user.id
+                                operator_id=get_safe_operator_id()
                             )
                             # 標記描述，便於前端與清單顯示
                             try:
@@ -5112,7 +5124,7 @@ def admin_update_cash_account():
                             account_id=account.id,
                             amount=amount,
                             description=description,
-                            operator_id=current_user.id,
+                            operator_id=get_safe_operator_id(),
                         )
                         db.session.add(entry)
                         db.session.commit()
@@ -5134,7 +5146,7 @@ def admin_update_cash_account():
                                     account_id=account.id,
                                     amount=amount,
                                     description=description,
-                                    operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
                                 )
                                 db.session.add(entry)
                                 db.session.commit()
@@ -5263,7 +5275,7 @@ def admin_update_cash_account():
                             account_id=None,  # 轉帳記錄不需要單一帳戶ID
                             amount=amount,
                             description=f"從 {from_account.name} 轉入至 {to_account.name}",
-                            operator_id=current_user.id,
+                            operator_id=get_safe_operator_id(),
                             from_account_id=from_account.id,
                             to_account_id=to_account.id,
                         )
@@ -5286,7 +5298,7 @@ def admin_update_cash_account():
                                     account_id=None,  # 轉帳記錄不需要單一帳戶ID
                                     amount=amount,
                                     description=f"從 {from_account.name} 轉入至 {to_account.name}",
-                                    operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
                                     from_account_id=from_account.id,
                                     to_account_id=to_account.id,
                                 )
@@ -5438,7 +5450,7 @@ def record_purchase_api():
             rmb_amount=rmb_amount,
             exchange_rate=exchange_rate,
             twd_cost=twd_cost,
-            operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
         )
         db.session.add(new_purchase)
 
@@ -5705,7 +5717,7 @@ def api_profit_add():
             note=note,
             related_transaction_id=related_transaction_id,
             related_transaction_type=related_transaction_type,
-            operator_id=current_user.id
+            operator_id=get_safe_operator_id()
         )
         
         if result["success"]:
@@ -5830,7 +5842,7 @@ def api_profit_withdraw():
                 entry_type="PROFIT_WITHDRAW",
                 amount=-amount,  # 負數表示扣除
                 description=f"{description} - {note}" if note else description,
-                operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
                 profit_before=current_profit,
                 profit_after=current_profit - amount,
                 profit_change=-amount
@@ -5854,7 +5866,7 @@ def api_profit_withdraw():
                         entry_type="PROFIT_WITHDRAW",
                         amount=-amount,  # 負數表示扣除
                         description=f"{description} - {note}" if note else description,
-                        operator_id=current_user.id,
+                                    operator_id=get_safe_operator_id(),
                         profit_before=current_profit,
                         profit_after=current_profit - amount,
                         profit_change=-amount
@@ -5902,7 +5914,7 @@ def api_profit_adjust():
             new_balance=new_balance,
             description=description,
             note=note,
-            operator_id=current_user.id
+            operator_id=get_safe_operator_id()
         )
         
         if result["success"]:
@@ -6634,13 +6646,17 @@ def api_settlement():
         # 創建銷帳記錄（LedgerEntry）
         print(f"🔧 銷帳API: 創建LedgerEntry記錄...")
         try:
+            # 安全獲取操作員ID
+            operator_id = get_safe_operator_id()
+            print(f"🔧 銷帳API: 操作員ID: {operator_id}")
+            
             settlement_entry = LedgerEntry(
                 account_id=account.id,
                 entry_type="SETTLEMENT",
                 amount=amount,
                 entry_date=datetime.utcnow(),
                 description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                operator_id=current_user.id
+                operator_id=operator_id
             )
             print(f"🔧 銷帳API: LedgerEntry物件創建成功: {settlement_entry}")
             db.session.add(settlement_entry)
@@ -6683,7 +6699,7 @@ def api_settlement():
                         amount=amount,
                         entry_date=datetime.utcnow(),
                         description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                        operator_id=current_user.id
+                        operator_id=operator_id
                     )
                     db.session.add(settlement_entry)
                 except Exception as fix_error:
@@ -6700,7 +6716,7 @@ def api_settlement():
                 amount=amount,
                 time=datetime.utcnow(),
                 description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                operator_id=current_user.id
+                operator_id=operator_id
             )
             print(f"🔧 銷帳API: CashLog物件創建成功: {settlement_cash_log}")
             db.session.add(settlement_cash_log)
@@ -6757,7 +6773,7 @@ def api_settlement():
                         amount=amount,
                         entry_date=datetime.utcnow(),
                         description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                        operator_id=current_user.id
+                        operator_id=operator_id
                     )
                     db.session.add(settlement_entry)
                     
@@ -6767,7 +6783,7 @@ def api_settlement():
                         amount=amount,
                         time=datetime.utcnow(),
                         description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
-                        operator_id=current_user.id
+                        operator_id=operator_id
                     )
                     db.session.add(settlement_cash_log)
                     

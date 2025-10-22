@@ -114,7 +114,7 @@ def get_cash_accounts(conn):
 def get_users(conn):
     """獲取用戶列表"""
     try:
-        cursor = conn.execute("SELECT id, username FROM users ORDER BY id")
+        cursor = conn.execute("SELECT id, username FROM user ORDER BY id")
         users = cursor.fetchall()
         return users
     except Exception as e:
@@ -179,7 +179,7 @@ def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id
         
         # 3. 檢查操作員
         print("\n3️⃣ 檢查操作員...")
-        cursor = conn.execute("SELECT id, username FROM users WHERE id = ?", (operator_id,))
+        cursor = conn.execute("SELECT id, username FROM user WHERE id = ?", (operator_id,))
         operator = cursor.fetchone()
         
         if not operator:

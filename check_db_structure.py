@@ -31,21 +31,21 @@ def check_database():
             for col in columns:
                 print(f"  - {col[1]} ({col[2]})")
         
-        # 檢查是否有users表格
-        if 'users' in tables:
-            print(f"\nusers表格存在，檢查數據:")
-            cursor.execute("SELECT COUNT(*) FROM users")
+        # 檢查是否有user表格
+        if 'user' in tables:
+            print(f"\nuser表格存在，檢查數據:")
+            cursor.execute("SELECT COUNT(*) FROM user")
             count = cursor.fetchone()[0]
             print(f"  用戶數量: {count}")
             
             if count > 0:
-                cursor.execute("SELECT id, username FROM users LIMIT 5")
+                cursor.execute("SELECT id, username FROM user LIMIT 5")
                 users = cursor.fetchall()
                 for user in users:
                     print(f"  - ID: {user[0]}, 用戶名: {user[1]}")
         else:
-            print(f"\n❌ users表格不存在！這是銷帳API失敗的原因。")
-            print("銷帳API需要users表格來記錄操作員信息。")
+            print(f"\n❌ user表格不存在！這是銷帳API失敗的原因。")
+            print("銷帳API需要user表格來記錄操作員信息。")
         
         conn.close()
         
