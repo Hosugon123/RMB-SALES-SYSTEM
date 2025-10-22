@@ -33,17 +33,17 @@ def deploy_fix():
         print("4. 推送到遠端...")
         subprocess.run(['git', 'push', 'origin', 'main'], check=True)
         
-        print("✅ 部署完成！")
+        print("部署完成！")
         print("請等待Render自動部署完成（通常需要2-3分鐘）")
         print("然後可以訪問: https://rmb-sales-system-test1.onrender.com/admin/cash_management")
         
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"❌ 部署失敗: {e}")
+        print(f"部署失敗: {e}")
         return False
     except Exception as e:
-        print(f"❌ 部署失敗: {e}")
+        print(f"部署失敗: {e}")
         return False
 
 def main():
