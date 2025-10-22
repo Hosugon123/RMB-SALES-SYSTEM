@@ -2965,7 +2965,11 @@ def cash_management_operator():
         try:
             misc_entries = db.session.execute(
                 db.select(LedgerEntry)
-                .options(db.selectinload(LedgerEntry.account))
+                .options(
+                    db.selectinload(LedgerEntry.account),
+                    db.selectinload(LedgerEntry.from_account),
+                    db.selectinload(LedgerEntry.to_account)
+                )
             ).scalars().all()
         except Exception as e:
             if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
@@ -3357,7 +3361,11 @@ def cash_management():
         try:
             misc_entries = db.session.execute(
                 db.select(LedgerEntry)
-                .options(db.selectinload(LedgerEntry.account))
+                .options(
+                    db.selectinload(LedgerEntry.account),
+                    db.selectinload(LedgerEntry.from_account),
+                    db.selectinload(LedgerEntry.to_account)
+                )
             ).scalars().all()
         except Exception as e:
             if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
@@ -3541,6 +3549,28 @@ def cash_management():
                         else:
                             payment_account = "N/A"
                             deposit_account = "N/A"
+                elif entry.entry_type in ["TRANSFER_IN"]:
+                    # 轉入記錄：從其他帳戶轉入
+                    if entry.from_account:
+                        payment_account = entry.from_account.name
+                    else:
+                        # 從描述中提取轉出帳戶名稱
+                        if "從" in entry.description:
+                            payment_account = entry.description.split("從")[1].split("轉入")[0].strip()
+                        else:
+                            payment_account = "其他帳戶"
+                    deposit_account = entry.account.name if entry.account else "N/A"
+                elif entry.entry_type in ["TRANSFER_OUT"]:
+                    # 轉出記錄：轉出到其他帳戶
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    if entry.to_account:
+                        deposit_account = entry.to_account.name
+                    else:
+                        # 從描述中提取轉入帳戶名稱
+                        if "轉出至" in entry.description:
+                            deposit_account = entry.description.split("轉出至")[1].strip()
+                        else:
+                            deposit_account = "其他帳戶"
                 elif entry.entry_type in ["SETTLEMENT"]:
                     # 銷帳：客戶 -> 帳戶
                     payment_account = "客戶付款"
@@ -7895,7 +7925,11 @@ def get_cash_management_transactions():
         try:
             misc_entries = db.session.execute(
                 db.select(LedgerEntry)
-                .options(db.selectinload(LedgerEntry.account))
+                .options(
+                    db.selectinload(LedgerEntry.account),
+                    db.selectinload(LedgerEntry.from_account),
+                    db.selectinload(LedgerEntry.to_account)
+                )
             ).scalars().all()
         except Exception as e:
             if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
@@ -8847,7 +8881,11 @@ def get_cash_management_totals():
         try:
             misc_entries = db.session.execute(
                 db.select(LedgerEntry)
-                .options(db.selectinload(LedgerEntry.account))
+                .options(
+                    db.selectinload(LedgerEntry.account),
+                    db.selectinload(LedgerEntry.from_account),
+                    db.selectinload(LedgerEntry.to_account)
+                )
             ).scalars().all()
         except Exception as e:
             if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
@@ -9272,7 +9310,11 @@ def get_account_balances_for_dropdowns():
         try:
             misc_entries = db.session.execute(
                 db.select(LedgerEntry)
-                .options(db.selectinload(LedgerEntry.account))
+                .options(
+                    db.selectinload(LedgerEntry.account),
+                    db.selectinload(LedgerEntry.from_account),
+                    db.selectinload(LedgerEntry.to_account)
+                )
             ).scalars().all()
         except Exception as e:
             if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
@@ -9565,7 +9607,11 @@ def get_accurate_account_balances():
         try:
             misc_entries = db.session.execute(
                 db.select(LedgerEntry)
-                .options(db.selectinload(LedgerEntry.account))
+                .options(
+                    db.selectinload(LedgerEntry.account),
+                    db.selectinload(LedgerEntry.from_account),
+                    db.selectinload(LedgerEntry.to_account)
+                )
             ).scalars().all()
         except Exception as e:
             if "profit_before does not exist" in str(e) or "from_account_id does not exist" in str(e):
