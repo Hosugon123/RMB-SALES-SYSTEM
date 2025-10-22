@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 """
-銷帳錯誤本地調試工具
-
-這個工具可以幫助您快速診斷銷帳API的500錯誤，無需重複部署。
-它會模擬銷帳API的執行過程，並提供詳細的錯誤信息。
-
-使用方法：
-1. python debug_settlement_error.py
-2. 按照提示輸入客戶ID、銷帳金額、帳戶ID等參數
-3. 查看詳細的調試信息和錯誤原因
+銷帳錯誤簡化調試工具 (避免Unicode問題)
 """
 
 import sqlite3
@@ -18,12 +10,8 @@ import json
 from datetime import datetime
 import traceback
 
-# 添加當前目錄到Python路徑，以便導入app模組
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 def connect_to_database():
     """連接到資料庫"""
-    # 嘗試多個可能的資料庫文件
     possible_paths = [
         "./instance/sales_system.db",
         "./instance/sales_system_v4.db", 
@@ -32,53 +20,52 @@ def connect_to_database():
     
     for db_path in possible_paths:
         if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
-            print(f"🔍 找到資料庫文件: {db_path} (大小: {os.path.getsize(db_path)} bytes)")
+            print(f"找到資料庫文件: {db_path} (大小: {os.path.getsize(db_path)} bytes)")
             break
     else:
-        print(f"❌ 找不到有效的資料庫文件")
-        print(f"   檢查的路徑: {possible_paths}")
+        print("找不到有效的資料庫文件")
+        print(f"檢查的路徑: {possible_paths}")
         return None
     
     try:
         conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row  # 讓查詢結果可以通過列名訪問
-        print(f"✅ 成功連接到資料庫: {db_path}")
+        conn.row_factory = sqlite3.Row
+        print(f"成功連接到資料庫: {db_path}")
         return conn
     except Exception as e:
-        print(f"❌ 連接資料庫失敗: {e}")
+        print(f"連接資料庫失敗: {e}")
         return None
 
 def check_database_schema(conn):
     """檢查資料庫結構"""
-    print("\n🔍 檢查資料庫結構...")
+    print("\n檢查資料庫結構...")
     
-    # 檢查關鍵表格是否存在
     tables = ['customers', 'cash_accounts', 'ledger_entries', 'cash_logs', 'users']
     
     for table in tables:
         try:
             cursor = conn.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
             if cursor.fetchone():
-                print(f"✅ 表格 {table} 存在")
+                print(f"表格 {table} 存在")
             else:
-                print(f"❌ 表格 {table} 不存在")
+                print(f"表格 {table} 不存在")
         except Exception as e:
-            print(f"❌ 檢查表格 {table} 時出錯: {e}")
+            print(f"檢查表格 {table} 時出錯: {e}")
     
     # 檢查ledger_entries的欄位
     try:
         cursor = conn.execute("PRAGMA table_info(ledger_entries)")
         columns = [row[1] for row in cursor.fetchall()]
-        print(f"📋 ledger_entries 欄位: {columns}")
+        print(f"ledger_entries 欄位: {columns}")
         
         required_columns = ['id', 'entry_type', 'account_id', 'amount', 'description', 'entry_date', 'operator_id']
         missing_columns = [col for col in required_columns if col not in columns]
         if missing_columns:
-            print(f"⚠️ 缺少必要欄位: {missing_columns}")
+            print(f"缺少必要欄位: {missing_columns}")
         else:
-            print("✅ ledger_entries 結構正常")
+            print("ledger_entries 結構正常")
     except Exception as e:
-        print(f"❌ 檢查ledger_entries結構時出錯: {e}")
+        print(f"檢查ledger_entries結構時出錯: {e}")
 
 def get_customers(conn):
     """獲取客戶列表"""
@@ -92,7 +79,7 @@ def get_customers(conn):
         customers = cursor.fetchall()
         return customers
     except Exception as e:
-        print(f"❌ 獲取客戶列表失敗: {e}")
+        print(f"獲取客戶列表失敗: {e}")
         return []
 
 def get_cash_accounts(conn):
@@ -108,22 +95,22 @@ def get_cash_accounts(conn):
         accounts = cursor.fetchall()
         return accounts
     except Exception as e:
-        print(f"❌ 獲取現金帳戶列表失敗: {e}")
+        print(f"獲取現金帳戶列表失敗: {e}")
         return []
 
 def get_users(conn):
     """獲取用戶列表"""
     try:
-        cursor = conn.execute("SELECT id, username FROM users ORDER BY id")
+        cursor = conn.execute("SELECT id, username FROM user ORDER BY id")
         users = cursor.fetchall()
         return users
     except Exception as e:
-        print(f"❌ 獲取用戶列表失敗: {e}")
+        print(f"獲取用戶列表失敗: {e}")
         return []
 
 def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id):
     """模擬銷帳操作"""
-    print(f"\n🔄 模擬銷帳操作...")
+    print(f"\n模擬銷帳操作...")
     print(f"   客戶ID: {customer_id}")
     print(f"   銷帳金額: {amount}")
     print(f"   帳戶ID: {account_id}")
@@ -135,23 +122,23 @@ def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id
         conn.execute("BEGIN TRANSACTION")
         
         # 1. 檢查客戶
-        print("\n1️⃣ 檢查客戶...")
+        print("\n1. 檢查客戶...")
         cursor = conn.execute("SELECT id, name, total_receivables_twd FROM customers WHERE id = ?", (customer_id,))
         customer = cursor.fetchone()
         
         if not customer:
-            print("❌ 找不到指定的客戶")
+            print("找不到指定的客戶")
             return False, "找不到指定的客戶"
         
-        print(f"✅ 客戶: {customer['name']}, 應收帳款: {customer['total_receivables_twd']}")
+        print(f"客戶: {customer['name']}, 應收帳款: {customer['total_receivables_twd']}")
         
         if amount > customer['total_receivables_twd']:
             error_msg = f"銷帳金額超過應收帳款！客戶應收 {customer['total_receivables_twd']:,.2f}，但銷帳 {amount:,.2f}"
-            print(f"❌ {error_msg}")
+            print(f"錯誤: {error_msg}")
             return False, error_msg
         
         # 2. 檢查帳戶
-        print("\n2️⃣ 檢查帳戶...")
+        print("\n2. 檢查帳戶...")
         cursor = conn.execute("""
             SELECT ca.id, ca.name, ca.balance, ca.currency, ca.is_active, h.name as holder_name
             FROM cash_accounts ca
@@ -162,49 +149,49 @@ def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id
         
         if not account:
             error_msg = f"找不到帳戶 ID {account_id}，該帳戶可能已被刪除"
-            print(f"❌ {error_msg}")
+            print(f"錯誤: {error_msg}")
             return False, error_msg
         
-        print(f"✅ 帳戶: {account['name']} ({account['holder_name']}), 餘額: {account['balance']}, 幣種: {account['currency']}, 狀態: {'啟用' if account['is_active'] else '停用'}")
+        print(f"帳戶: {account['name']} ({account['holder_name']}), 餘額: {account['balance']}, 幣種: {account['currency']}, 狀態: {'啟用' if account['is_active'] else '停用'}")
         
         if not account['is_active']:
             error_msg = f"帳戶「{account['name']}」已停用，無法使用"
-            print(f"❌ {error_msg}")
+            print(f"錯誤: {error_msg}")
             return False, error_msg
         
         if account['currency'] != "TWD":
             error_msg = f"帳戶「{account['name']}」的幣種是 {account['currency']}，不是台幣帳戶"
-            print(f"❌ {error_msg}")
+            print(f"錯誤: {error_msg}")
             return False, error_msg
         
         # 3. 檢查操作員
-        print("\n3️⃣ 檢查操作員...")
-        cursor = conn.execute("SELECT id, username FROM users WHERE id = ?", (operator_id,))
+        print("\n3. 檢查操作員...")
+        cursor = conn.execute("SELECT id, username FROM user WHERE id = ?", (operator_id,))
         operator = cursor.fetchone()
         
         if not operator:
             error_msg = f"找不到操作員 ID {operator_id}"
-            print(f"❌ {error_msg}")
+            print(f"錯誤: {error_msg}")
             return False, error_msg
         
-        print(f"✅ 操作員: {operator['username']}")
+        print(f"操作員: {operator['username']}")
         
         # 4. 模擬更新客戶應收帳款
-        print("\n4️⃣ 更新客戶應收帳款...")
+        print("\n4. 更新客戶應收帳款...")
         new_receivables = customer['total_receivables_twd'] - amount
         print(f"   原應收帳款: {customer['total_receivables_twd']:,.2f}")
         print(f"   銷帳金額: {amount:,.2f}")
         print(f"   新應收帳款: {new_receivables:,.2f}")
         
         # 5. 模擬更新帳戶餘額
-        print("\n5️⃣ 更新帳戶餘額...")
+        print("\n5. 更新帳戶餘額...")
         new_balance = account['balance'] + amount
         print(f"   原帳戶餘額: {account['balance']:,.2f}")
         print(f"   增加金額: {amount:,.2f}")
         print(f"   新帳戶餘額: {new_balance:,.2f}")
         
         # 6. 檢查LedgerEntry創建
-        print("\n6️⃣ 檢查LedgerEntry創建...")
+        print("\n6. 檢查LedgerEntry創建...")
         try:
             # 檢查欄位是否存在
             cursor = conn.execute("PRAGMA table_info(ledger_entries)")
@@ -215,17 +202,17 @@ def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id
             missing_columns = [col for col in required_columns if col not in columns]
             
             if missing_columns:
-                print(f"❌ 缺少必要欄位: {missing_columns}")
+                print(f"缺少必要欄位: {missing_columns}")
                 return False, f"LedgerEntry表格缺少必要欄位: {missing_columns}"
             
-            print("✅ LedgerEntry結構檢查通過")
+            print("LedgerEntry結構檢查通過")
             
         except Exception as e:
-            print(f"❌ 檢查LedgerEntry結構時出錯: {e}")
+            print(f"檢查LedgerEntry結構時出錯: {e}")
             return False, f"檢查LedgerEntry結構時出錯: {e}"
         
         # 7. 檢查CashLog創建
-        print("\n7️⃣ 檢查CashLog創建...")
+        print("\n7. 檢查CashLog創建...")
         try:
             cursor = conn.execute("PRAGMA table_info(cash_logs)")
             columns = [row[1] for row in cursor.fetchall()]
@@ -235,17 +222,17 @@ def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id
             missing_columns = [col for col in required_columns if col not in columns]
             
             if missing_columns:
-                print(f"❌ 缺少必要欄位: {missing_columns}")
+                print(f"缺少必要欄位: {missing_columns}")
                 return False, f"CashLog表格缺少必要欄位: {missing_columns}"
             
-            print("✅ CashLog結構檢查通過")
+            print("CashLog結構檢查通過")
             
         except Exception as e:
-            print(f"❌ 檢查CashLog結構時出錯: {e}")
+            print(f"檢查CashLog結構時出錯: {e}")
             return False, f"檢查CashLog結構時出錯: {e}"
         
         # 8. 模擬實際創建記錄
-        print("\n8️⃣ 模擬創建記錄...")
+        print("\n8. 模擬創建記錄...")
         
         # 創建LedgerEntry
         try:
@@ -256,10 +243,10 @@ def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id
             """, ("SETTLEMENT", account_id, amount, description, datetime.utcnow().isoformat(), operator_id))
             
             ledger_id = cursor.lastrowid
-            print(f"✅ LedgerEntry創建成功，ID: {ledger_id}")
+            print(f"LedgerEntry創建成功，ID: {ledger_id}")
             
         except Exception as e:
-            print(f"❌ 創建LedgerEntry失敗: {e}")
+            print(f"創建LedgerEntry失敗: {e}")
             print(f"   錯誤詳情: {traceback.format_exc()}")
             return False, f"創建LedgerEntry失敗: {e}"
         
@@ -272,45 +259,45 @@ def simulate_settlement(conn, customer_id, amount, account_id, note, operator_id
             """, ("SETTLEMENT", amount, datetime.utcnow().isoformat(), description, operator_id))
             
             cash_log_id = cursor.lastrowid
-            print(f"✅ CashLog創建成功，ID: {cash_log_id}")
+            print(f"CashLog創建成功，ID: {cash_log_id}")
             
         except Exception as e:
-            print(f"❌ 創建CashLog失敗: {e}")
+            print(f"創建CashLog失敗: {e}")
             print(f"   錯誤詳情: {traceback.format_exc()}")
             return False, f"創建CashLog失敗: {e}"
         
         # 9. 模擬更新客戶和帳戶
-        print("\n9️⃣ 模擬更新客戶和帳戶...")
+        print("\n9. 模擬更新客戶和帳戶...")
         
         try:
             # 更新客戶應收帳款
             conn.execute("UPDATE customers SET total_receivables_twd = ? WHERE id = ?", (new_receivables, customer_id))
-            print("✅ 客戶應收帳款更新成功")
+            print("客戶應收帳款更新成功")
             
             # 更新帳戶餘額
             conn.execute("UPDATE cash_accounts SET balance = ? WHERE id = ?", (new_balance, account_id))
-            print("✅ 帳戶餘額更新成功")
+            print("帳戶餘額更新成功")
             
         except Exception as e:
-            print(f"❌ 更新客戶或帳戶失敗: {e}")
+            print(f"更新客戶或帳戶失敗: {e}")
             print(f"   錯誤詳情: {traceback.format_exc()}")
             return False, f"更新客戶或帳戶失敗: {e}"
         
         # 10. 提交事務
-        print("\n🔟 提交事務...")
+        print("\n10. 提交事務...")
         try:
             conn.commit()
-            print("✅ 事務提交成功")
+            print("事務提交成功")
             return True, "銷帳操作模擬成功"
             
         except Exception as e:
-            print(f"❌ 提交事務失敗: {e}")
+            print(f"提交事務失敗: {e}")
             print(f"   錯誤詳情: {traceback.format_exc()}")
             conn.rollback()
             return False, f"提交事務失敗: {e}"
         
     except Exception as e:
-        print(f"❌ 模擬銷帳操作時發生未預期錯誤: {e}")
+        print(f"模擬銷帳操作時發生未預期錯誤: {e}")
         print(f"   錯誤詳情: {traceback.format_exc()}")
         conn.rollback()
         return False, f"模擬銷帳操作時發生未預期錯誤: {e}"
@@ -330,30 +317,30 @@ def main():
         check_database_schema(conn)
         
         # 獲取客戶列表
-        print("\n📋 可用的客戶（有應收帳款的）:")
+        print("\n可用的客戶（有應收帳款的）:")
         customers = get_customers(conn)
         if not customers:
-            print("❌ 沒有找到有應收帳款的客戶")
+            print("沒有找到有應收帳款的客戶")
             return
         
         for i, customer in enumerate(customers, 1):
             print(f"   {i}. ID: {customer['id']}, 名稱: {customer['name']}, 應收帳款: NT$ {customer['total_receivables_twd']:,.2f}")
         
         # 獲取帳戶列表
-        print("\n💰 可用的台幣帳戶:")
+        print("\n可用的台幣帳戶:")
         accounts = get_cash_accounts(conn)
         if not accounts:
-            print("❌ 沒有找到可用的台幣帳戶")
+            print("沒有找到可用的台幣帳戶")
             return
         
         for i, account in enumerate(accounts, 1):
             print(f"   {i}. ID: {account['id']}, 名稱: {account['name']} ({account['holder_name']}), 餘額: NT$ {account['balance']:,.2f}")
         
         # 獲取用戶列表
-        print("\n👤 可用的操作員:")
+        print("\n可用的操作員:")
         users = get_users(conn)
         if not users:
-            print("❌ 沒有找到可用的操作員")
+            print("沒有找到可用的操作員")
             return
         
         for i, user in enumerate(users, 1):
@@ -370,7 +357,7 @@ def main():
             note = input("備註 (可選): ").strip()
             operator_id = int(input("操作員ID: "))
         except ValueError as e:
-            print(f"❌ 輸入格式錯誤: {e}")
+            print(f"輸入格式錯誤: {e}")
             return
         
         # 執行模擬
@@ -378,13 +365,13 @@ def main():
         
         print("\n" + "=" * 50)
         if success:
-            print("✅ 模擬結果: 成功")
+            print("模擬結果: 成功")
             print(f"   消息: {message}")
         else:
-            print("❌ 模擬結果: 失敗")
+            print("模擬結果: 失敗")
             print(f"   錯誤: {message}")
         
-        print("\n💡 調試建議:")
+        print("\n調試建議:")
         if not success:
             if "找不到指定的客戶" in message:
                 print("   - 檢查客戶ID是否正確")
@@ -411,7 +398,7 @@ def main():
     
     finally:
         conn.close()
-        print("\n🔚 調試完成")
+        print("\n調試完成")
 
 if __name__ == "__main__":
     main()
