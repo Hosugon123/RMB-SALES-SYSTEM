@@ -17,18 +17,12 @@ depends_on = None
 
 
 def upgrade():
-    # 檢查欄位是否已存在，避免重複添加
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    existing_columns = {col['name'] for col in inspector.get_columns('ledger_entries')}
-    
-    # 添加轉帳相關欄位（僅在不存在時添加）
-    if 'from_account_id' not in existing_columns:
-        op.add_column('ledger_entries', sa.Column('from_account_id', sa.Integer(), nullable=True))
-    if 'to_account_id' not in existing_columns:
-        op.add_column('ledger_entries', sa.Column('to_account_id', sa.Integer(), nullable=True))
+    # 欄位已存在，跳過添加操作以避免 DuplicateColumn 錯誤
+    # from_account_id 和 to_account_id 欄位已由 fix_postgresql_columns.py 創建
     
     # 檢查外鍵約束是否已存在
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
     existing_fks = {fk['name'] for fk in inspector.get_foreign_keys('ledger_entries')}
     
     # 添加外鍵約束（僅在不存在時添加）
@@ -50,11 +44,5 @@ def downgrade():
     if 'fk_ledger_entries_from_account' in existing_fks:
         op.drop_constraint('fk_ledger_entries_from_account', 'ledger_entries', type_='foreignkey')
     
-    # 檢查欄位是否存在，避免重複刪除
-    existing_columns = {col['name'] for col in inspector.get_columns('ledger_entries')}
-    
-    # 移除欄位（僅在存在時刪除）
-    if 'to_account_id' in existing_columns:
-        op.drop_column('ledger_entries', 'to_account_id')
-    if 'from_account_id' in existing_columns:
-        op.drop_column('ledger_entries', 'from_account_id')
+    # 欄位由 fix_postgresql_columns.py 管理，不在此處刪除
+    # 避免與其他系統組件產生衝突
