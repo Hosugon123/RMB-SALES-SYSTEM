@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>售出訂單建立測試</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .debug {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 售出訂單建立測試</h1>
+
+    <div class="card">
+        <h2>📝 測試表單</h2>
+        <form id="salesForm">
+            <div class="form-group">
+                <label for="customer_name">客戶名稱:</label>
+                <input type="text" id="customer_name" name="customer_name" value="測試客戶" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="rmb_sell_amount">售出金額 (RMB):</label>
+                <input type="number" id="rmb_sell_amount" name="rmb_sell_amount" value="1000" step="0.01" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="exchange_rate">售出匯率:</label>
+                <input type="number" id="exchange_rate" name="exchange_rate" value="4.5" step="0.0001" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="order_date">訂單日期:</label>
+                <input type="date" id="order_date" name="order_date" value="2025-10-23" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="rmb_account_id">RMB出貨帳戶:</label>
+                <select id="rmb_account_id" name="rmb_account_id" required>
+                    <option value="">請選擇RMB帳戶</option>
+                    <option value="1">測試RMB帳戶1</option>
+                    <option value="2">測試RMB帳戶2</option>
+                </select>
+            </div>
+            
+            <button type="submit">🚀 建立測試訂單</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>📊 測試結果</h2>
+        <div id="result"></div>
+    </div>
+
+    <div class="card">
+        <h2>🔍 調試信息</h2>
+        <div id="debug"></div>
+    </div>
+
+    <script>
+        document.getElementById('salesForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('result');
+            const debugDiv = document.getElementById('debug');
+            
+            resultDiv.innerHTML = '<p>⏳ 正在建立訂單...</p>';
+            debugDiv.innerHTML = '<p>⏳ 正在收集調試信息...</p>';
+            
+            try {
+                const formData = new FormData(this);
+                formData.append('action', 'create_order');
+                
+                // 顯示表單數據
+                debugDiv.innerHTML = '<h3>📤 發送的表單數據:</h3>';
+                for (let [key, value] of formData.entries()) {
+                    debugDiv.innerHTML += `${key}: ${value}\n`;
+                }
+                
+                const response = await fetch('/sales_action', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                debugDiv.innerHTML += `\n<h3>📥 服務器響應:</h3>`;
+                debugDiv.innerHTML += `狀態碼: ${response.status}\n`;
+                debugDiv.innerHTML += `響應內容: ${JSON.stringify(result, null, 2)}\n`;
+                
+                if (result.status === 'success') {
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            <h3>✅ 訂單建立成功！</h3>
+                            <p>訂單ID: ${result.transaction.id}</p>
+                            <p>客戶: ${result.transaction.username}</p>
+                            <p>RMB金額: ${result.transaction.rmb_order_amount}</p>
+                            <p>台幣金額: ${result.transaction.twd_expected_payment}</p>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="result error">
+                            <h3>❌ 訂單建立失敗</h3>
+                            <p>錯誤信息: ${result.message}</p>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <h3>❌ 請求失敗</h3>
+                        <p>錯誤信息: ${error.message}</p>
+                    </div>
+                `;
+                
+                debugDiv.innerHTML += `\n<h3>❌ 錯誤詳情:</h3>`;
+                debugDiv.innerHTML += `${error.stack}\n`;
+            }
+        });
+        
+        // 頁面載入時獲取可用的RMB帳戶
+        window.addEventListener('load', async function() {
+            try {
+                const response = await fetch('/api/cash-accounts');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const rmbAccounts = data.data.filter(account => account.currency === 'RMB');
+                    const select = document.getElementById('rmb_account_id');
+                    
+                    // 清空現有選項
+                    select.innerHTML = '<option value="">請選擇RMB帳戶</option>';
+                    
+                    // 添加RMB帳戶選項
+                    rmbAccounts.forEach(account => {
+                        const option = document.createElement('option');
+                        option.value = account.id;
+                        option.textContent = `${account.name} (餘額: ${account.balance})`;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('獲取RMB帳戶失敗:', error);
+            }
+        });
+    </script>
+</body>
+</html>

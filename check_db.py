@@ -1,56 +1,19 @@
-#!/usr/bin/env python3
-"""
-檢查資料庫結構
-"""
-
 import sqlite3
-import os
 
-def check_database():
-    db_path = 'instance/sales_system_v4.db'
-    
-    if not os.path.exists(db_path):
-        print(f"資料庫檔案不存在: {db_path}")
-        return
-    
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # 獲取所有資料表
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = cursor.fetchall()
-        
-        print("=== 資料庫資料表 ===")
-        for table in tables:
-            table_name = table[0]
-            print(f"\n📊 資料表: {table_name}")
-            
-            # 獲取資料表結構
-            cursor.execute(f"PRAGMA table_info({table_name});")
-            columns = cursor.fetchall()
-            
-            print("   欄位:")
-            for col in columns:
-                print(f"   - {col[1]} ({col[2]})")
-            
-            # 獲取資料筆數
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
-            count = cursor.fetchone()[0]
-            print(f"   資料筆數: {count}")
-            
-            # 如果有資料，顯示前幾筆範例
-            if count > 0:
-                cursor.execute(f"SELECT * FROM {table_name} LIMIT 3;")
-                rows = cursor.fetchall()
-                print("   範例資料:")
-                for i, row in enumerate(rows, 1):
-                    print(f"   {i}: {row}")
-        
-        conn.close()
-        
-    except Exception as e:
-        print(f"檢查資料庫時發生錯誤: {e}")
+# 連接正確的資料庫文件
+conn = sqlite3.connect('instance/sales_system_v4.db')
+cursor = conn.cursor()
 
-if __name__ == "__main__":
-    check_database()
+# 檢查SalesRecord表
+cursor.execute("SELECT COUNT(*) FROM sales_records")
+count = cursor.fetchone()[0]
+print(f"SalesRecord表記錄數: {count}")
+
+# 檢查最近的記錄
+cursor.execute("SELECT id, customer_id, rmb_amount, created_at FROM sales_records ORDER BY id DESC LIMIT 5")
+records = cursor.fetchall()
+print("最近的5筆記錄:")
+for record in records:
+    print(f"  ID: {record[0]}, 客戶ID: {record[1]}, RMB: {record[2]}, 時間: {record[3]}")
+
+conn.close()

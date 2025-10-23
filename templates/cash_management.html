@@ -1389,19 +1389,38 @@ document.addEventListener('DOMContentLoaded', function () {
             const date = tx.date ? new Date(tx.date).toLocaleString('zh-TW') : '-';
             const type = tx.type || 'N/A';
             const desc = tx.description || '-';
+            
+            // 處理應收帳款餘額變化顯示
+            let receivableBalanceHtml = '-';
+            if (tx.receivable_balance) {
+                const balance = tx.receivable_balance;
+                const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const after = (balance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+                const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
+                
+                receivableBalanceHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border-left: 4px solid #2196f3;">' +
+                    '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #2196f3; padding-bottom: 4px; margin-bottom: 4px;">' + (balance.description || '應收帳款') + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '</div>';
+            }
             const rmbDelta = (tx.rmb_amount !== undefined ? tx.rmb_amount : (tx.rmbChange !== undefined ? tx.rmbChange : tx.rmb_change));
             const twdDelta = (tx.amount !== undefined ? tx.amount : (tx.twd_amount !== undefined ? tx.twd_amount : (tx.twdChange !== undefined ? tx.twdChange : tx.twd_change)));
             const rmbStr = (rmbDelta === undefined || rmbDelta === null) ? '-' : `¥ ${parseFloat(rmbDelta).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
             const twdStr = (twdDelta === undefined || twdDelta === null) ? '-' : `NT$ ${parseFloat(twdDelta).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-
-            // 依照表頭順序：日期時間、類型、描述、RMB、TWD（不包含利潤與操作人員）
+            
+            // 生成表格行HTML
             tableHtml += `
                 <tr>
                     <td><small>${date}</small></td>
-                    <td><span class="badge bg-primary">${type}</span></td>
+                    <td><span class="badge bg-${type === '售出' ? 'success' : type === '銷帳' ? 'primary' : 'secondary'}">${type}</span></td>
                     <td><small>${desc}</small></td>
-                    <td class="text-end"><small>${rmbStr}</small></td>
-                    <td class="text-end"><small>${twdStr}</small></td>
+                    <td class="text-end text-success"><small>${rmbStr}</small></td>
+                    <td class="text-end text-primary"><small>${twdStr}</small></td>
+                    <td class="text-end">${receivableBalanceHtml}</td>
                 </tr>
             `;
         });
@@ -2531,7 +2550,25 @@ window.renderMovements = function(transactions) {
 
         // 新增：入款戶餘額變化顯示
         let depositAccountBalanceHtml = '-';
-        if (m.deposit_account_balance) {
+        
+        // 如果是售出記錄且有客戶應收帳款餘額變化，顯示客戶個人應收帳款變化（與客戶交易紀錄頁面完全一致的樣式）
+        if (m.type === '售出' && m.customer_receivable_balance) {
+            const customerBalance = m.customer_receivable_balance;
+            const before = (customerBalance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const change = (customerBalance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const after = (customerBalance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+            const changeColor = (customerBalance.change || 0) > 0 ? 'text-success' : (customerBalance.change || 0) < 0 ? 'text-danger' : 'text-muted';
+            const changeSymbol = (customerBalance.change || 0) > 0 ? '+' : '';
+            
+            // 使用與客戶交易紀錄頁面完全一致的樣式
+            depositAccountBalanceHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border-left: 4px solid #2196f3;">' +
+                '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #2196f3; padding-bottom: 4px; margin-bottom: 4px;">' + (customerBalance.description || '應收帳款') + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                '</div>';
+        } else if (m.deposit_account_balance) {
+            // 其他記錄使用原來的顯示方式
             const balance = m.deposit_account_balance;
             const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
             const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});

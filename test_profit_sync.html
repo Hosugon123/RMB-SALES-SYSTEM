@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利潤同步測試</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .result {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 10px;
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .result .label {
+            font-weight: bold;
+            color: #666;
+        }
+        .result .value {
+            color: #333;
+        }
+        .success {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+        .warning {
+            color: #FF9800;
+            font-weight: bold;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .history-table th, .history-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .history-table th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .history-table tr:hover {
+            background-color: #f5f5f5;
+        }
+        .amount-positive {
+            color: #4CAF50;
+        }
+        .amount-negative {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 利潤系統同步測試</h1>
+
+    <div class="card">
+        <h2>📊 三個利潤數字對比</h2>
+        <div id="profitComparison">
+            <button onclick="loadProfitData()">重新載入利潤數據</button>
+            <div id="comparisonResults"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📝 利潤更動紀錄（最新10筆）</h2>
+        <div id="profitHistory">
+            <button onclick="loadProfitHistory()">載入利潤歷史</button>
+            <div id="historyResults"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🔍 診斷信息</h2>
+        <div id="diagnostics"></div>
+    </div>
+
+    <script>
+        async function loadProfitData() {
+            const resultsDiv = document.getElementById('comparisonResults');
+            resultsDiv.innerHTML = '<p>載入中...</p>';
+
+            try {
+                // 1. 獲取儀表板利潤（通過總利潤API）
+                const totalProfitResponse = await fetch('/api/total-profit');
+                const totalProfitData = await totalProfitResponse.json();
+                const dashboardProfit = totalProfitData.data.total_profit_twd;
+
+                // 2. 獲取利潤歷史（第一筆即最新餘額）
+                const historyResponse = await fetch('/api/profit/history?page=1&per_page=1');
+                const historyData = await historyResponse.json();
+                const latestBalance = historyData.data.transactions.length > 0 
+                    ? historyData.data.transactions[0].balance_after 
+                    : 0;
+
+                // 3. 獲取利潤歷史（所有記錄）來手動計算
+                const allHistoryResponse = await fetch('/api/profit/history?page=1&per_page=100');
+                const allHistoryData = await allHistoryResponse.json();
+                let manualBalance = 0;
+                if (allHistoryData.data.transactions.length > 0) {
+                    // 按時間順序累積計算
+                    const sortedTransactions = allHistoryData.data.transactions.sort((a, b) => 
+                        new Date(a.created_at) - new Date(b.created_at)
+                    );
+                    for (const tx of sortedTransactions) {
+                        manualBalance += tx.amount;
+                    }
+                }
+
+                // 4. 顯示對比結果
+                let html = '<div style="margin-top: 20px;">';
+                html += '<div class="result">';
+                html += '<div class="label">儀表板/總利潤API:</div>';
+                html += `<div class="value">NT$ ${dashboardProfit.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</div>`;
+                html += '</div>';
+                
+                html += '<div class="result">';
+                html += '<div class="label">利潤管理總額:</div>';
+                html += `<div class="value">NT$ ${dashboardProfit.toLocaleString('zh-TW', {minimumFractionDigits: 2})} (使用相同API)</div>`;
+                html += '</div>';
+                
+                html += '<div class="result">';
+                html += '<div class="label">利潤更動紀錄餘額:</div>';
+                html += `<div class="value">NT$ ${latestBalance.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</div>`;
+                html += '</div>';
+
+                html += '<div class="result">';
+                html += '<div class="label">手動計算餘額:</div>';
+                html += `<div class="value">NT$ ${manualBalance.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</div>`;
+                html += '</div>';
+
+                // 檢查是否一致
+                const diff1 = Math.abs(dashboardProfit - latestBalance);
+                const diff2 = Math.abs(dashboardProfit - manualBalance);
+                const diff3 = Math.abs(latestBalance - manualBalance);
+                
+                html += '<div class="result">';
+                html += '<div class="label">一致性檢查:</div>';
+                if (diff1 > 0.01 || diff2 > 0.01 || diff3 > 0.01) {
+                    html += `<div class="value error">❌ 不一致！</div>`;
+                    html += `<div class="value error">儀表板 vs 利潤紀錄: NT$ ${diff1.toFixed(2)}</div>`;
+                    html += `<div class="value error">儀表板 vs 手動計算: NT$ ${diff2.toFixed(2)}</div>`;
+                    html += `<div class="value error">利潤紀錄 vs 手動計算: NT$ ${diff3.toFixed(2)}</div>`;
+                } else {
+                    html += '<div class="value success">✅ 所有數字一致</div>';
+                }
+                html += '</div>';
+
+                html += '<div class="result">';
+                html += '<div class="label">總收入:</div>';
+                html += `<div class="value">NT$ ${totalProfitData.data.total_revenue_twd.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</div>`;
+                html += '</div>';
+
+                html += '<div class="result">';
+                html += '<div class="label">總成本:</div>';
+                html += `<div class="value">NT$ ${totalProfitData.data.total_cost_twd.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</div>`;
+                html += '</div>';
+
+                html += '<div class="result">';
+                html += '<div class="label">總提款:</div>';
+                html += `<div class="value">NT$ ${totalProfitData.data.total_profit_withdrawals.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</div>`;
+                html += '</div>';
+
+                html += '</div>';
+                resultsDiv.innerHTML = html;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">載入失敗: ${error.message}</p>`;
+                console.error('載入利潤數據失敗:', error);
+            }
+        }
+
+        async function loadProfitHistory() {
+            const resultsDiv = document.getElementById('historyResults');
+            resultsDiv.innerHTML = '<p>載入中...</p>';
+
+            try {
+                const response = await fetch('/api/profit/history?page=1&per_page=10');
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.data.transactions.length > 0) {
+                    let html = '<table class="history-table">';
+                    html += '<thead><tr>';
+                    html += '<th>時間</th>';
+                    html += '<th>描述</th>';
+                    html += '<th>金額</th>';
+                    html += '<th>變動前餘額</th>';
+                    html += '<th>變動後餘額</th>';
+                    html += '<th>操作者</th>';
+                    html += '</tr></thead><tbody>';
+
+                    data.data.transactions.forEach(tx => {
+                        const amountClass = tx.amount >= 0 ? 'amount-positive' : 'amount-negative';
+                        const date = new Date(tx.created_at).toLocaleString('zh-TW');
+                        
+                        html += '<tr>';
+                        html += `<td>${date}</td>`;
+                        html += `<td>${tx.description}</td>`;
+                        html += `<td class="${amountClass}">${tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</td>`;
+                        html += `<td>NT$ ${tx.balance_before.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</td>`;
+                        html += `<td>NT$ ${tx.balance_after.toLocaleString('zh-TW', {minimumFractionDigits: 2})}</td>`;
+                        html += `<td>${tx.operator_name}</td>`;
+                        html += '</tr>';
+                    });
+
+                    html += '</tbody></table>';
+                    resultsDiv.innerHTML = html;
+                } else {
+                    resultsDiv.innerHTML = '<p>沒有利潤記錄</p>';
+                }
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="error">載入失敗: ${error.message}</p>`;
+                console.error('載入利潤歷史失敗:', error);
+            }
+        }
+
+        // 頁面載入時自動執行
+        window.addEventListener('load', () => {
+            loadProfitData();
+            loadProfitHistory();
+        });
+    </script>
+</body>
+</html>

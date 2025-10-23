@@ -20,7 +20,7 @@ def get_safe_operator_id():
         else:
             return 1  # 默認系統用戶ID
     except Exception as e:
-        print(f"⚠️ 獲取current_user.id失敗: {e}, 使用默認值1")
+        print(f"[WARNING] 獲取current_user.id失敗: {e}, 使用默認值1")
         return 1
 
 def fix_postgresql_columns():
@@ -31,7 +31,7 @@ def fix_postgresql_columns():
         if 'postgresql' not in database_url:
             return True
         
-        print("🔧 檢查PostgreSQL欄位...")
+        print("[FIX] 檢查PostgreSQL欄位...")
         
         # 檢查ledger_entries表格欄位
         columns_query = text("""
@@ -57,7 +57,7 @@ def fix_postgresql_columns():
         missing_columns = [col for col, _ in columns_to_add if col not in existing_columns]
         
         if missing_columns:
-            print(f"🔧 發現缺少欄位: {missing_columns}，正在修復...")
+            print(f"[FIX] 發現缺少欄位: {missing_columns}，正在修復...")
             
             for column_name, column_type in columns_to_add:
                 if column_name in missing_columns:
@@ -68,20 +68,20 @@ def fix_postgresql_columns():
                         """)
                         db.session.execute(alter_query)
                         db.session.commit()
-                        print(f"✅ 添加欄位: {column_name}")
+                        print(f"[OK] 添加欄位: {column_name}")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print(f"ℹ️ 欄位已存在: {column_name}")
                         else:
-                            print(f"❌ 添加欄位 {column_name} 失敗: {e}")
+                            print(f"[ERROR] 添加欄位 {column_name} 失敗: {e}")
                             db.session.rollback()
         else:
-            print("✅ PostgreSQL欄位檢查通過")
+            print("[OK] PostgreSQL欄位檢查通過")
         
         return True
         
     except Exception as e:
-        print(f"⚠️ PostgreSQL欄位修復失敗: {e}")
+        print(f"[WARNING] PostgreSQL欄位修復失敗: {e}")
         return False
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -954,11 +954,14 @@ class FIFOService:
                 # 更新庫存剩餘數量
                 inventory.remaining_rmb -= allocate_from_this_batch
                 
-                # 關鍵修正：從銷售記錄指定的出貨帳戶扣款RMB
-                if sales_record.rmb_account:
-                    sales_account = sales_record.rmb_account
-                    sales_account.balance -= allocate_from_this_batch
-                    print(f"從出貨帳戶 {sales_account.name} 扣款: -{allocate_from_this_batch} RMB")
+                # 關鍵修正：從庫存來源帳戶扣款RMB（不是從銷售記錄的出貨帳戶）
+                if inventory.purchase_record.deposit_account:
+                    source_account = inventory.purchase_record.deposit_account
+                    old_balance = source_account.balance
+                    source_account.balance -= allocate_from_this_batch
+                    print(f"[MONEY] 從庫存來源帳戶 {source_account.name} 扣款: {old_balance:.2f} -> {source_account.balance:.2f} (-{allocate_from_this_batch:.2f} RMB)")
+                else:
+                    print(f"[WARNING] 警告：庫存記錄沒有關聯的存款帳戶，無法扣款！")
                 
                 # 累計成本
                 total_cost += allocation.allocated_cost_twd
@@ -1388,7 +1391,7 @@ class FIFOService:
                                 db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                                 db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                                 db.session.commit()
-                                print("✅ 儲值頁面欄位修復完成，重新創建記錄...")
+                                print("[OK] 儲值頁面欄位修復完成，重新創建記錄...")
                                 
                                 # 重新創建記錄
                                 entry = LedgerEntry(
@@ -1400,7 +1403,7 @@ class FIFOService:
                                 )
                                 db.session.add(entry)
                             except Exception as fix_error:
-                                print(f"❌ 儲值頁面修復欄位失敗: {fix_error}")
+                                print(f"[ERROR] 儲值頁面修復欄位失敗: {fix_error}")
                                 raise fix_error
                         else:
                             raise e
@@ -2029,7 +2032,7 @@ def dashboard():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 儀表板添加 profit_before 欄位")
+                        print("[OK] 儀表板添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 profit_before 欄位已存在")
@@ -2038,7 +2041,7 @@ def dashboard():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 儀表板添加 profit_after 欄位")
+                        print("[OK] 儀表板添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 profit_after 欄位已存在")
@@ -2047,7 +2050,7 @@ def dashboard():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 儀表板添加 profit_change 欄位")
+                        print("[OK] 儀表板添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 profit_change 欄位已存在")
@@ -2057,7 +2060,7 @@ def dashboard():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 儀表板添加 from_account_id 欄位")
+                        print("[OK] 儀表板添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 from_account_id 欄位已存在")
@@ -2066,7 +2069,7 @@ def dashboard():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 儀表板添加 to_account_id 欄位")
+                        print("[OK] 儀表板添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 to_account_id 欄位已存在")
@@ -2074,7 +2077,7 @@ def dashboard():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 儀表板欄位修復完成，重新查詢...")
+                    print("[OK] 儀表板欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     profit_withdrawals = (
@@ -2086,14 +2089,14 @@ def dashboard():
                         .all()
                     )
                 except Exception as fix_error:
-                    print(f"❌ 儀表板修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 儀表板修復欄位失敗: {fix_error}")
                     db.session.rollback()
                     profit_withdrawals = []
             else:
-                print(f"❌ 儀表板查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 儀表板查詢LedgerEntry失敗: {e}")
                 profit_withdrawals = []
         
-        total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
+        total_profit_withdrawals = sum(abs(entry.amount) for entry in profit_withdrawals)  # 提款記錄的amount是負數
         total_profit_twd -= total_profit_withdrawals
         
         print(f"DEBUG: 普通用戶儀表板利潤計算 - 銷售利潤: {total_profit_twd + total_profit_withdrawals:.2f}, 利潤提款: {total_profit_withdrawals:.2f}, 最終利潤: {total_profit_twd:.2f}")
@@ -2328,7 +2331,7 @@ def admin_dashboard():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 儀表板添加 profit_before 欄位")
+                        print("[OK] 儀表板添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 profit_before 欄位已存在")
@@ -2337,7 +2340,7 @@ def admin_dashboard():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 儀表板添加 profit_after 欄位")
+                        print("[OK] 儀表板添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 profit_after 欄位已存在")
@@ -2346,7 +2349,7 @@ def admin_dashboard():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 儀表板添加 profit_change 欄位")
+                        print("[OK] 儀表板添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 profit_change 欄位已存在")
@@ -2356,7 +2359,7 @@ def admin_dashboard():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 儀表板添加 from_account_id 欄位")
+                        print("[OK] 儀表板添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 from_account_id 欄位已存在")
@@ -2365,7 +2368,7 @@ def admin_dashboard():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 儀表板添加 to_account_id 欄位")
+                        print("[OK] 儀表板添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 儀表板 to_account_id 欄位已存在")
@@ -2373,7 +2376,7 @@ def admin_dashboard():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 儀表板欄位修復完成，重新查詢...")
+                    print("[OK] 儀表板欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     profit_withdrawals = (
@@ -2385,14 +2388,14 @@ def admin_dashboard():
                         .all()
                     )
                 except Exception as fix_error:
-                    print(f"❌ 儀表板修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 儀表板修復欄位失敗: {fix_error}")
                     db.session.rollback()
                     profit_withdrawals = []
             else:
-                print(f"❌ 儀表板查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 儀表板查詢LedgerEntry失敗: {e}")
                 profit_withdrawals = []
         
-        total_profit_withdrawals = sum(entry.amount for entry in profit_withdrawals)
+        total_profit_withdrawals = sum(abs(entry.amount) for entry in profit_withdrawals)  # 提款記錄的amount是負數
         total_profit_twd -= total_profit_withdrawals
         
         print(f"DEBUG: 管理員儀表板利潤計算 - 銷售利潤: {total_profit_twd + total_profit_withdrawals:.2f}, 利潤提款: {total_profit_withdrawals:.2f}, 最終利潤: {total_profit_twd:.2f}")
@@ -2567,6 +2570,7 @@ def sales_entry():
         offset = (page - 1) * per_page
         
         # 查詢當前頁的銷售記錄
+        print(f"[DEBUG] DEBUG: 查詢未結清銷售記錄 - 頁面: {page}, 每頁: {per_page}, 偏移: {offset}")
         recent_unsettled_sales = (
             db.session.execute(
                 db.select(SalesRecord)
@@ -2578,6 +2582,9 @@ def sales_entry():
             .scalars()
             .all()
         )
+        print(f"[DEBUG] DEBUG: 查詢到 {len(recent_unsettled_sales)} 筆未結清銷售記錄")
+        for sale in recent_unsettled_sales:
+            print(f"  - ID: {sale.id}, 客戶: {sale.customer.name if sale.customer else 'N/A'}, RMB: {sale.rmb_amount}, 時間: {sale.created_at}")
         
         # 4. 為每個銷售記錄計算利潤信息
         for sale in recent_unsettled_sales:
@@ -2625,19 +2632,60 @@ def api_sales_entry():
     處理來自「售出錄入頁面」的訂單創建請求。
     """
     data = request.get_json()
+    print(f"[DEBUG] DEBUG: 收到api_sales_entry請求，數據: {data}")
+    
     if not data:
         return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
 
     try:
-        # 1. 獲取並驗證資料
-        customer_id = data.get("customer_id")
-        customer_name_manual = data.get("customer_name_manual")
-        rmb_account_id = int(data.get("rmb_account_id"))
-        rmb_amount = float(data.get("rmb_amount"))
-        exchange_rate = float(data.get("exchange_rate"))
+        # 1. 獲取並驗證資料 - 使用更穩健的參數解析邏輯
+        print(f"DEBUG: 開始解析請求參數...")
+        
+        # 安全地獲取字符串參數
+        customer_id = data.get("customer_id", "").strip() if data.get("customer_id") else ""
+        customer_name_manual = data.get("customer_name_manual", "").strip() if data.get("customer_name_manual") else ""
+        
+        print(f"DEBUG: 客戶參數 - customer_id: '{customer_id}', customer_name_manual: '{customer_name_manual}'")
+        
+        # 安全地轉換數值參數，處理空字符串和無效格式
+        def safe_convert_to_int(value, field_name):
+            """安全地將值轉換為整數"""
+            if not value or value == "":
+                return None
+            try:
+                # 先轉換為字符串，去除空白
+                str_value = str(value).strip()
+                if not str_value:
+                    return None
+                return int(str_value)
+            except (ValueError, TypeError) as e:
+                print(f"DEBUG: {field_name} 轉換失敗: '{value}' -> {e}")
+                return None
+        
+        def safe_convert_to_float(value, field_name):
+            """安全地將值轉換為浮點數"""
+            if not value or value == "":
+                return None
+            try:
+                # 先轉換為字符串，去除空白
+                str_value = str(value).strip()
+                if not str_value:
+                    return None
+                return float(str_value)
+            except (ValueError, TypeError) as e:
+                print(f"DEBUG: {field_name} 轉換失敗: '{value}' -> {e}")
+                return None
+        
+        # 轉換數值參數
+        rmb_account_id = safe_convert_to_int(data.get("rmb_account_id"), "rmb_account_id")
+        rmb_amount = safe_convert_to_float(data.get("rmb_amount"), "rmb_amount")
+        exchange_rate = safe_convert_to_float(data.get("exchange_rate"), "exchange_rate")
+        
+        print(f"DEBUG: 數值參數 - rmb_account_id: {rmb_account_id}, rmb_amount: {rmb_amount}, exchange_rate: {exchange_rate}")
 
         # 驗證客戶信息：必須有客戶ID或客戶名稱
         if not customer_id and not customer_name_manual:
+            print(f"DEBUG: 客戶信息驗證失敗 - 兩個客戶欄位都為空")
             return (
                 jsonify(
                     {
@@ -2648,38 +2696,67 @@ def api_sales_entry():
                 400,
             )
 
-        if not all([rmb_account_id, rmb_amount > 0, exchange_rate > 0]):
+        # 詳細驗證每個欄位，提供具體的錯誤信息
+        validation_errors = []
+        
+        if not rmb_account_id:
+            validation_errors.append("RMB出貨帳戶")
+        elif rmb_account_id <= 0:
+            validation_errors.append("RMB出貨帳戶ID必須大於0")
+            
+        if not rmb_amount:
+            validation_errors.append("售出金額")
+        elif rmb_amount <= 0:
+            validation_errors.append("售出金額必須大於0")
+            
+        if not exchange_rate:
+            validation_errors.append("匯率")
+        elif exchange_rate <= 0:
+            validation_errors.append("匯率必須大於0")
+            
+        if validation_errors:
+            print(f"DEBUG: 欄位驗證失敗 - 錯誤: {validation_errors}")
+            print(f"DEBUG: 原始數據: {data}")
             return (
                 jsonify(
                     {
                         "status": "error",
-                        "message": "出貨帳戶、金額和匯率都必須正確填寫。",
+                        "message": f"以下欄位有問題: {', '.join(validation_errors)}。",
                     }
                 ),
                 400,
             )
+        
+        print(f"DEBUG: 所有參數驗證通過，開始業務邏輯處理...")
 
         # 2. 處理客戶信息
         customer = None
         if customer_id:
-            # 使用現有客戶ID
-            customer = db.session.get(Customer, int(customer_id))
+            # 使用現有客戶ID - customer_id 已經在安全轉換函數中處理為 int 類型
+            customer = db.session.get(Customer, customer_id)
             if not customer:
+                print(f"DEBUG: 找不到客戶 ID: {customer_id}")
                 return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 404
         else:
             # 使用手動輸入的客戶名稱
             customer_name = customer_name_manual.strip()
             if not customer_name:
+                print(f"DEBUG: 客戶名稱為空")
                 return jsonify({"status": "error", "message": "客戶名稱不能為空。"}), 400
             
             # 查找或創建客戶
             customer = Customer.query.filter_by(name=customer_name).first()
             if not customer:
+                print(f"DEBUG: 創建新客戶: {customer_name}")
                 customer = Customer(name=customer_name)
                 db.session.add(customer)
                 db.session.flush()  # 獲取ID
+            else:
+                print(f"DEBUG: 找到現有客戶: {customer_name} (ID: {customer.id})")
         
+        # rmb_account_id 已經在安全轉換函數中處理為 int 類型
         rmb_account = db.session.get(CashAccount, rmb_account_id)
+        print(f"DEBUG: 查找RMB帳戶 ID: {rmb_account_id}")
 
         if not customer:
             return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 404
@@ -2705,6 +2782,8 @@ def api_sales_entry():
         # 注意：RMB帳戶餘額不在此處扣款，而是在FIFO庫存分配時從實際庫存來源帳戶扣款
 
         # 創建銷售紀錄
+        print(f"[DEBUG] DEBUG: 創建SalesRecord - 客戶: {customer.name}, RMB帳戶: {rmb_account.name}")
+        
         new_sale = SalesRecord(
             customer_id=customer.id,
             rmb_account_id=rmb_account.id,
@@ -2712,10 +2791,26 @@ def api_sales_entry():
             exchange_rate=exchange_rate,
             twd_amount=twd_amount,
             is_settled=False,
-            operator_id=get_safe_operator_id(),  # <--- V4.0 核心功能！記錄操作者
+            operator_id=get_safe_operator_id(),
         )
+        print(f"[DEBUG] DEBUG: SalesRecord創建完成 - ID: {new_sale.id if hasattr(new_sale, 'id') else 'N/A'}")
         db.session.add(new_sale)
         db.session.flush()  # 先獲取ID，但不提交
+        print(f"[DEBUG] DEBUG: SalesRecord已添加到資料庫，ID: {new_sale.id}")
+        
+        # 檢查是否有ID衝突
+        try:
+            # 檢查是否有其他記錄使用了相同的ID
+            existing_sale = db.session.execute(
+                db.select(SalesRecord).filter(SalesRecord.id == new_sale.id)
+            ).scalar_one_or_none()
+            if existing_sale and existing_sale.id != new_sale.id:
+                print(f"[WARNING] DEBUG: 檢測到ID衝突！新記錄ID: {new_sale.id}, 現有記錄ID: {existing_sale.id}")
+                # 強制重新分配ID
+                db.session.flush()
+                print(f"[OK] DEBUG: 重新分配ID後: {new_sale.id}")
+        except Exception as e:
+            print(f"DEBUG: 檢查ID衝突時發生錯誤: {e}")
         
         # 4. 更新FIFO庫存（關鍵修正！）
         try:
@@ -2792,7 +2887,7 @@ def api_sales_entry():
                                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                                         db.session.commit()
-                                        print("✅ 銷售記錄欄位修復完成，重新創建記錄...")
+                                        print("[OK] 銷售記錄欄位修復完成，重新創建記錄...")
                                         
                                         # 重新創建記錄
                                         profit_entry = LedgerEntry(
@@ -2805,31 +2900,33 @@ def api_sales_entry():
                                             profit_change=profit_amount
                                         )
                                     except Exception as fix_error:
-                                        print(f"❌ 銷售記錄修復欄位失敗: {fix_error}")
+                                        print(f"[ERROR] 銷售記錄修復欄位失敗: {fix_error}")
                                         raise fix_error
                                 else:
                                     raise e
                             db.session.add(profit_entry)
                             db.session.flush()  # 確保記錄被添加到會話中
-                            print(f"✅ 記錄售出利潤到LedgerEntry成功: {profit_amount:.2f} TWD")
+                            print(f"[OK] 記錄售出利潤到LedgerEntry成功: {profit_amount:.2f} TWD")
                             print(f"DEBUG: 利潤記錄 - 前: {current_total_profit:.2f}, 後: {current_total_profit + profit_amount:.2f}, 變動: {profit_amount:.2f}")
                             print(f"DEBUG: LedgerEntry ID: {profit_entry.id}")
                         except Exception as ledger_error:
-                            print(f"⚠️ 記錄售出利潤到LedgerEntry失敗: {ledger_error}")
+                            print(f"[WARNING] 記錄售出利潤到LedgerEntry失敗: {ledger_error}")
                             import traceback
                             traceback.print_exc()
                         
                         if profit_result["success"]:
-                            print(f"✅ 自動記錄銷售利潤成功: {profit_amount:.2f} TWD")
+                            print(f"[OK] 自動記錄銷售利潤成功: {profit_amount:.2f} TWD")
                         else:
-                            print(f"⚠️ 自動記錄銷售利潤失敗: {profit_result['message']}")
+                            print(f"[WARNING] 自動記錄銷售利潤失敗: {profit_result['message']}")
                     else:
-                        print("⚠️ 找不到RMB帳戶，跳過利潤記錄")
+                        print("[WARNING] 找不到RMB帳戶，跳過利潤記錄")
                 except Exception as profit_error:
-                    print(f"⚠️ 記錄銷售利潤時發生錯誤: {profit_error}")
+                    print(f"[WARNING] 記錄銷售利潤時發生錯誤: {profit_error}")
                     # 不影響銷售記錄的創建
         except Exception as e:
-            print(f"FIFO庫存分配失敗: {e}")
+            print(f"[ERROR] FIFO庫存分配失敗: {e}")
+            import traceback
+            traceback.print_exc()
             # 如果FIFO分配失敗，回滾整個交易
             db.session.rollback()
             return jsonify({
@@ -2839,14 +2936,65 @@ def api_sales_entry():
         
         # 提交所有更改
         db.session.commit()
+        print(f"[OK] DEBUG: 資料庫提交成功，SalesRecord ID: {new_sale.id}")
+        
+        # 立即驗證記錄是否真的被保存
+        try:
+            immediate_check = db.session.execute(
+                db.select(SalesRecord).filter(SalesRecord.id == new_sale.id)
+            ).scalar_one_or_none()
+            if immediate_check:
+                print(f"[OK] DEBUG: 立即驗證成功，記錄確實存在，ID: {immediate_check.id}")
+            else:
+                print(f"ERROR DEBUG: 立即驗證失敗，記錄不存在，ID: {new_sale.id}")
+        except Exception as immediate_error:
+            print(f"ERROR DEBUG: 立即驗證時發生錯誤: {immediate_error}")
 
         # 觸發全局數據同步（重新整理整個資料庫）
         try:
             from global_sync import sync_entire_database
             sync_entire_database(db.session)
-            print(" 銷售記錄創建後全局數據同步完成")
+            print("[OK] 銷售記錄創建後全局數據同步完成")
         except Exception as sync_error:
-            print(f"全局數據同步失敗（不影響銷售記錄）: {sync_error}")
+            print(f"[WARNING] 全局數據同步失敗（不影響銷售記錄）: {sync_error}")
+
+        # 驗證記錄是否正確保存
+        try:
+            # 使用查詢而不是 get，避免事務隔離問題
+            saved_sale = db.session.execute(
+                db.select(SalesRecord).filter(SalesRecord.id == new_sale.id)
+            ).scalar_one_or_none()
+            
+            if saved_sale:
+                print(f"[OK] DEBUG: 驗證成功，售出記錄已保存:")
+                print(f"  ID: {saved_sale.id}")
+                print(f"  客戶: {saved_sale.customer.name if saved_sale.customer else 'N/A'}")
+                print(f"  RMB帳戶: {saved_sale.rmb_account.name if saved_sale.rmb_account else 'N/A'}")
+                print(f"  是否結清: {saved_sale.is_settled}")
+                print(f"  建立時間: {saved_sale.created_at}")
+            else:
+                print(f"ERROR DEBUG: 售出記錄保存後找不到，ID: {new_sale.id}")
+                # 嘗試查詢所有最近的售出記錄
+                recent_sales = db.session.execute(
+                    db.select(SalesRecord).order_by(SalesRecord.created_at.desc()).limit(10)
+                ).scalars().all()
+                print(f"DEBUG: 最近10筆售出記錄: {[s.id for s in recent_sales]}")
+                
+                # 檢查是否有相同ID的記錄
+                same_id_sales = db.session.execute(
+                    db.select(SalesRecord).filter(SalesRecord.id == new_sale.id)
+                ).scalars().all()
+                print(f"DEBUG: 查詢ID {new_sale.id} 的記錄數量: {len(same_id_sales)}")
+                
+                # 檢查所有售出記錄的ID範圍
+                all_sales = db.session.execute(
+                    db.select(SalesRecord.id).order_by(SalesRecord.id.desc()).limit(20)
+                ).scalars().all()
+                print(f"DEBUG: 最近20筆售出記錄ID: {all_sales}")
+        except Exception as verify_error:
+            print(f"ERROR DEBUG: 驗證售出記錄時發生錯誤: {verify_error}")
+            import traceback
+            traceback.print_exc()
 
         return jsonify(
             {
@@ -2981,7 +3129,7 @@ def cash_management_operator():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                        print("[OK] 現金管理頁面添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
@@ -2990,7 +3138,7 @@ def cash_management_operator():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                        print("[OK] 現金管理頁面添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
@@ -2999,7 +3147,7 @@ def cash_management_operator():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                        print("[OK] 現金管理頁面添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
@@ -3009,7 +3157,7 @@ def cash_management_operator():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
@@ -3018,7 +3166,7 @@ def cash_management_operator():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
@@ -3026,7 +3174,7 @@ def cash_management_operator():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    print("[OK] 現金管理頁面欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -3034,10 +3182,10 @@ def cash_management_operator():
                         .options(db.selectinload(LedgerEntry.account))
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 現金管理頁面修復欄位失敗: {fix_error}")
                     misc_entries = []
             else:
-                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 現金管理頁面查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
@@ -3377,7 +3525,7 @@ def cash_management():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                        print("[OK] 現金管理頁面添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
@@ -3386,7 +3534,7 @@ def cash_management():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                        print("[OK] 現金管理頁面添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
@@ -3395,7 +3543,7 @@ def cash_management():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                        print("[OK] 現金管理頁面添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
@@ -3405,7 +3553,7 @@ def cash_management():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
@@ -3414,7 +3562,7 @@ def cash_management():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
@@ -3422,7 +3570,7 @@ def cash_management():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    print("[OK] 現金管理頁面欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -3430,10 +3578,10 @@ def cash_management():
                         .options(db.selectinload(LedgerEntry.account))
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 現金管理頁面修復欄位失敗: {fix_error}")
                     misc_entries = []
             else:
-                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 現金管理頁面查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
@@ -4337,7 +4485,7 @@ def settle_pending_payment_api():
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                     db.session.commit()
-                    print("✅ 待付款項銷帳欄位修復完成，重新創建記錄...")
+                    print("[OK] 待付款項銷帳欄位修復完成，重新創建記錄...")
                     
                     # 重新創建記錄
                     ledger_entry = LedgerEntry(
@@ -4348,7 +4496,7 @@ def settle_pending_payment_api():
                     )
                     db.session.add(ledger_entry)
                 except Exception as fix_error:
-                    print(f"❌ 待付款項銷帳修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 待付款項銷帳修復欄位失敗: {fix_error}")
                     raise fix_error
             else:
                 raise e
@@ -4487,7 +4635,7 @@ def process_payment_api():
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                     db.session.commit()
-                    print("✅ 客戶銷帳欄位修復完成，重新創建記錄...")
+                    print("[OK] 客戶銷帳欄位修復完成，重新創建記錄...")
                     
                     # 重新創建記錄
                     ledger_entry = LedgerEntry(
@@ -4499,7 +4647,7 @@ def process_payment_api():
                     )
                     db.session.add(ledger_entry)
                 except Exception as fix_error:
-                    print(f"❌ 客戶銷帳修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 客戶銷帳修復欄位失敗: {fix_error}")
                     raise fix_error
             else:
                 raise e
@@ -5095,7 +5243,7 @@ def admin_update_cash_account():
                                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                                     db.session.commit()
-                                    print("✅ 提款操作欄位修復完成，重新創建記錄...")
+                                    print("[OK] 提款操作欄位修復完成，重新創建記錄...")
                                     
                                     # 重新創建記錄
                                     entry = LedgerEntry(
@@ -5106,7 +5254,7 @@ def admin_update_cash_account():
                                         operator_id=get_safe_operator_id(),
                                     )
                                 except Exception as fix_error:
-                                    print(f"❌ 提款操作修復欄位失敗: {fix_error}")
+                                    print(f"[ERROR] 提款操作修復欄位失敗: {fix_error}")
                                     raise fix_error
                             else:
                                 raise e
@@ -5229,7 +5377,7 @@ def admin_update_cash_account():
                                 db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                                 db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                                 db.session.commit()
-                                print("✅ 存款操作欄位修復完成，重新創建記錄...")
+                                print("[OK] 存款操作欄位修復完成，重新創建記錄...")
                                 
                                 # 重新創建記錄
                                 entry = LedgerEntry(
@@ -5242,7 +5390,7 @@ def admin_update_cash_account():
                                 db.session.add(entry)
                                 db.session.commit()
                             except Exception as fix_error:
-                                print(f"❌ 存款操作修復欄位失敗: {fix_error}")
+                                print(f"[ERROR] 存款操作修復欄位失敗: {fix_error}")
                                 raise fix_error
                         else:
                             raise e
@@ -5381,7 +5529,7 @@ def admin_update_cash_account():
                                 db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                                 db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                                 db.session.commit()
-                                print("✅ 轉帳操作欄位修復完成，重新創建記錄...")
+                                print("[OK] 轉帳操作欄位修復完成，重新創建記錄...")
                                 
                                 # 重新創建記錄
                                 transfer_entry = LedgerEntry(
@@ -5395,7 +5543,7 @@ def admin_update_cash_account():
                                 )
                                 db.session.add(transfer_entry)
                             except Exception as fix_error:
-                                print(f"❌ 轉帳操作修復欄位失敗: {fix_error}")
+                                print(f"[ERROR] 轉帳操作修復欄位失敗: {fix_error}")
                                 raise fix_error
                         else:
                             raise e
@@ -5858,7 +6006,7 @@ def api_profit_withdraw():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 利潤提款API添加 profit_before 欄位")
+                        print("[OK] 利潤提款API添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤提款API profit_before 欄位已存在")
@@ -5867,7 +6015,7 @@ def api_profit_withdraw():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 利潤提款API添加 profit_after 欄位")
+                        print("[OK] 利潤提款API添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤提款API profit_after 欄位已存在")
@@ -5876,7 +6024,7 @@ def api_profit_withdraw():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 利潤提款API添加 profit_change 欄位")
+                        print("[OK] 利潤提款API添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤提款API profit_change 欄位已存在")
@@ -5886,7 +6034,7 @@ def api_profit_withdraw():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 利潤提款API添加 from_account_id 欄位")
+                        print("[OK] 利潤提款API添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤提款API from_account_id 欄位已存在")
@@ -5895,7 +6043,7 @@ def api_profit_withdraw():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 利潤提款API添加 to_account_id 欄位")
+                        print("[OK] 利潤提款API添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤提款API to_account_id 欄位已存在")
@@ -5903,7 +6051,7 @@ def api_profit_withdraw():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 利潤提款API欄位修復完成，重新查詢...")
+                    print("[OK] 利潤提款API欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     previous_withdrawals = db.session.execute(
@@ -5911,7 +6059,7 @@ def api_profit_withdraw():
                         .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 修復欄位失敗: {fix_error}")
                     db.session.rollback()
                     previous_withdrawals = []
             else:
@@ -5950,7 +6098,7 @@ def api_profit_withdraw():
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
                     db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
                     db.session.commit()
-                    print("✅ 利潤提款欄位修復完成，重新創建記錄...")
+                    print("[OK] 利潤提款欄位修復完成，重新創建記錄...")
                     
                     # 重新創建記錄
                     entry = LedgerEntry(
@@ -5965,7 +6113,7 @@ def api_profit_withdraw():
                     db.session.add(entry)
                     db.session.commit()
                 except Exception as fix_error:
-                    print(f"❌ 利潤提款修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 利潤提款修復欄位失敗: {fix_error}")
                     raise fix_error
             else:
                 raise e
@@ -6080,7 +6228,7 @@ def api_profit_history():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 利潤歷史API添加 profit_before 欄位")
+                        print("[OK] 利潤歷史API添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤歷史API profit_before 欄位已存在")
@@ -6089,7 +6237,7 @@ def api_profit_history():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 利潤歷史API添加 profit_after 欄位")
+                        print("[OK] 利潤歷史API添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤歷史API profit_after 欄位已存在")
@@ -6098,7 +6246,7 @@ def api_profit_history():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 利潤歷史API添加 profit_change 欄位")
+                        print("[OK] 利潤歷史API添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤歷史API profit_change 欄位已存在")
@@ -6108,7 +6256,7 @@ def api_profit_history():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 利潤歷史API添加 from_account_id 欄位")
+                        print("[OK] 利潤歷史API添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤歷史API from_account_id 欄位已存在")
@@ -6117,7 +6265,7 @@ def api_profit_history():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 利潤歷史API添加 to_account_id 欄位")
+                        print("[OK] 利潤歷史API添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 利潤歷史API to_account_id 欄位已存在")
@@ -6125,7 +6273,7 @@ def api_profit_history():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 利潤歷史API欄位修復完成，重新查詢...")
+                    print("[OK] 利潤歷史API欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     profit_entries = (
@@ -6147,7 +6295,7 @@ def api_profit_history():
                         .all()
                     )
                 except Exception as fix_error:
-                    print(f"❌ 修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 修復欄位失敗: {fix_error}")
                     profit_entries = []
             else:
                 db.session.rollback()
@@ -6191,6 +6339,93 @@ def api_profit_history():
             print(f"DEBUG: 計算當前總利潤失敗: {e}")
             current_total_profit = 0.0
         
+        # 獲取所有利潤記錄並按時間正序排列，用於正確計算累積餘額
+        all_profit_entries_ordered = (
+            db.session.execute(
+                db.select(LedgerEntry)
+                .filter(
+                    (LedgerEntry.entry_type == "PROFIT_WITHDRAW") |
+                    (LedgerEntry.entry_type == "PROFIT_DEDUCT") |
+                    (LedgerEntry.entry_type == "PROFIT_EARNED") |
+                    (LedgerEntry.description.like("%利潤提款%")) |
+                    (LedgerEntry.description.like("%利潤扣除%")) |
+                    (LedgerEntry.description.like("%售出利潤%"))
+                )
+                .order_by(LedgerEntry.entry_date.asc())  # 按時間正序
+            )
+            .scalars()
+            .all()
+        )
+        
+        # 計算每筆記錄的正確餘額（按時間順序累積）
+        entry_balances = {}  # 用字典存儲每筆記錄的餘額
+        
+        # 先計算當前總利潤作為基準
+        fifo_total_profit = 0.0
+        for sale in all_sales:
+            profit_info = FIFOService.calculate_profit_for_sale(sale)
+            if profit_info:
+                fifo_total_profit += profit_info.get('profit_twd', 0.0)
+        
+        # 扣除利潤提款
+        profit_withdraw_entries = (
+            db.session.execute(
+                db.select(LedgerEntry)
+                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+            )
+            .scalars()
+            .all()
+        )
+        total_profit_withdrawals = sum(abs(entry.amount) for entry in profit_withdraw_entries)
+        current_total_profit = fifo_total_profit - total_profit_withdrawals
+        
+        # 從當前總利潤開始，逆向計算每筆記錄的餘額
+        running_balance = current_total_profit
+        
+        # 按時間倒序處理記錄，從最新到最舊
+        for entry in reversed(all_profit_entries_ordered):
+            # 判斷是否為提款或扣除
+            is_withdrawal = (
+                entry.entry_type == "PROFIT_WITHDRAW" or
+                entry.entry_type == "PROFIT_DEDUCT" or
+                "利潤提款" in (entry.description or "") or
+                "利潤扣除" in (entry.description or "")
+            )
+            
+            # 計算變動前餘額（逆向計算）
+            if is_withdrawal:
+                # 提款記錄：變動前餘額 = 當前餘額 + 提款金額
+                balance_before = running_balance + abs(entry.amount)
+                balance_after = running_balance
+            else:
+                # 利潤入庫：變動前餘額 = 當前餘額 - 利潤金額
+                balance_before = running_balance - abs(entry.amount)
+                balance_after = running_balance
+            
+            # 更新運行餘額（逆向）
+            running_balance = balance_before
+            
+            # 存儲這筆記錄的餘額信息
+            entry_balances[entry.id] = {
+                'balance_before': balance_before,
+                'balance_after': balance_after
+            }
+            
+            # 同時更新資料庫中的profit_before和profit_after欄位
+            if hasattr(entry, 'profit_before'):
+                entry.profit_before = balance_before
+                entry.profit_after = balance_after
+                entry.profit_change = balance_after - balance_before
+        
+        # 提交餘額更新
+        try:
+            db.session.commit()
+            print(f"DEBUG: 已更新所有利潤記錄的餘額欄位")
+        except Exception as commit_error:
+            print(f"WARNING: 更新餘額欄位失敗: {commit_error}")
+            db.session.rollback()
+        
+        # 構建返回數據（使用計算好的餘額）
         for entry in profit_entries:
             print(f"DEBUG: 處理記錄 - 類型: {entry.entry_type}, 描述: {entry.description}, 金額: {entry.amount}")
             
@@ -6203,30 +6438,17 @@ def api_profit_history():
             )
             
             # 根據記錄類型確定金額正負
-            display_amount = entry.amount
-            if is_withdrawal and entry.amount > 0:
-                display_amount = -entry.amount  # 提款和扣除應該顯示為負數
+            if is_withdrawal:
+                display_amount = -abs(entry.amount)  # 提款和扣除顯示為負數
+            else:
+                display_amount = abs(entry.amount)  # 利潤入庫顯示為正數
             
             print(f"DEBUG: 記錄處理結果 - 是否提款: {is_withdrawal}, 顯示金額: {display_amount}")
             
-            # 如果profit_before和profit_after為空，嘗試計算
-            balance_before = getattr(entry, 'profit_before', None)
-            balance_after = getattr(entry, 'profit_after', None)
-            
-            if balance_before is None or balance_after is None:
-                # 使用當前總利潤作為基準，根據記錄類型計算
-                if entry.entry_type == "PROFIT_EARNED":
-                    # 利潤入庫：餘額增加
-                    balance_after = current_total_profit
-                    balance_before = balance_after - entry.amount
-                elif entry.entry_type == "PROFIT_WITHDRAW":
-                    # 利潤提款：餘額減少
-                    balance_before = current_total_profit + abs(entry.amount)
-                    balance_after = current_total_profit
-                else:
-                    # 其他情況：使用當前總利潤
-                    balance_before = current_total_profit
-                    balance_after = current_total_profit
+            # 從字典中獲取正確的餘額
+            balance_info = entry_balances.get(entry.id, {})
+            balance_before = balance_info.get('balance_before', 0.0)
+            balance_after = balance_info.get('balance_after', 0.0)
             
             transactions.append({
                 "id": entry.id,
@@ -6665,12 +6887,12 @@ def api_delete_account():
 @login_required
 def api_settlement():
     """處理應收帳款銷帳"""
-    print(f"\n🔧 銷帳API開始執行 - 時間: {datetime.utcnow()}")
-    print(f"🔧 請求數據: {request.get_json()}")
+    print(f"\n[FIX] 銷帳API開始執行 - 時間: {datetime.utcnow()}")
+    print(f"[FIX] 請求數據: {request.get_json()}")
     
     data = request.get_json()
     if not data:
-        print("❌ 銷帳API: 無效的請求格式")
+        print("[ERROR] 銷帳API: 無效的請求格式")
         return jsonify({"status": "error", "message": "無效的請求格式。"}), 400
 
     try:
@@ -6680,66 +6902,66 @@ def api_settlement():
         account_id = int(data.get("account_id"))
         note = data.get("note", "")
         
-        print(f"🔧 銷帳API參數解析:")
+        print(f"[FIX] 銷帳API參數解析:")
         print(f"   - 客戶ID: {customer_id} (類型: {type(customer_id)})")
         print(f"   - 銷帳金額: {amount} (類型: {type(amount)})")
         print(f"   - 帳戶ID: {account_id} (類型: {type(account_id)})")
         print(f"   - 備註: '{note}' (類型: {type(note)})")
 
         if not all([customer_id, amount > 0, account_id]):
-            print("❌ 銷帳API: 參數驗證失敗")
+            print("[ERROR] 銷帳API: 參數驗證失敗")
             return jsonify({"status": "error", "message": "客戶ID、銷帳金額和收款帳戶都必須正確填寫。"}), 400
 
         # 2. 查詢資料庫物件
-        print(f"🔧 銷帳API: 查詢資料庫物件...")
+        print(f"[FIX] 銷帳API: 查詢資料庫物件...")
         customer = db.session.get(Customer, customer_id)
         account = db.session.get(CashAccount, account_id)
         
-        print(f"🔧 銷帳API: 客戶查詢結果: {customer}")
-        print(f"🔧 銷帳API: 帳戶查詢結果: {account}")
+        print(f"[FIX] 銷帳API: 客戶查詢結果: {customer}")
+        print(f"[FIX] 銷帳API: 帳戶查詢結果: {account}")
 
         if not customer:
-            print("❌ 銷帳API: 找不到指定的客戶")
+            print("[ERROR] 銷帳API: 找不到指定的客戶")
             return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 400
         if not account:
-            print(f"❌ 銷帳API: 找不到帳戶 ID {account_id}")
+            print(f"[ERROR] 銷帳API: 找不到帳戶 ID {account_id}")
             return jsonify({"status": "error", "message": f"找不到帳戶 ID {account_id}，該帳戶可能已被刪除。"}), 400
         if not account.is_active:
-            print(f"❌ 銷帳API: 帳戶「{account.name}」已停用")
+            print(f"[ERROR] 銷帳API: 帳戶「{account.name}」已停用")
             return jsonify({"status": "error", "message": f"帳戶「{account.name}」已停用，無法使用。"}), 400
         if account.currency != "TWD":
-            print(f"❌ 銷帳API: 帳戶「{account.name}」幣種錯誤: {account.currency}")
+            print(f"[ERROR] 銷帳API: 帳戶「{account.name}」幣種錯誤: {account.currency}")
             return jsonify({"status": "error", "message": f"帳戶「{account.name}」的幣種是 {account.currency}，不是台幣帳戶。"}), 400
         if amount > customer.total_receivables_twd:
-            print(f"❌ 銷帳API: 銷帳金額超過應收帳款 - 客戶應收: {customer.total_receivables_twd}, 銷帳: {amount}")
+            print(f"[ERROR] 銷帳API: 銷帳金額超過應收帳款 - 客戶應收: {customer.total_receivables_twd}, 銷帳: {amount}")
             return jsonify({
                 "status": "error", 
                 "message": f"銷帳金額超過應收帳款！客戶應收 {customer.total_receivables_twd:,.2f}，但銷帳 {amount:,.2f}。"
             }), 400
         
-        print(f"✅ 銷帳API: 資料驗證通過")
+        print(f"[OK] 銷帳API: 資料驗證通過")
         print(f"   - 客戶: {customer.name}, 應收帳款: {customer.total_receivables_twd}")
         print(f"   - 帳戶: {account.name}, 餘額: {account.balance}, 幣種: {account.currency}")
 
         # 3. 核心業務邏輯
-        print(f"🔧 銷帳API: 開始核心業務邏輯...")
+        print(f"[FIX] 銷帳API: 開始核心業務邏輯...")
         
         # 更新客戶應收帳款
         old_receivables = customer.total_receivables_twd
         customer.total_receivables_twd -= amount
-        print(f"🔧 銷帳API: 更新客戶應收帳款 - 原: {old_receivables}, 新: {customer.total_receivables_twd}")
+        print(f"[FIX] 銷帳API: 更新客戶應收帳款 - 原: {old_receivables}, 新: {customer.total_receivables_twd}")
         
         # 更新收款帳戶餘額
         old_balance = account.balance
         account.balance += amount
-        print(f"🔧 銷帳API: 更新帳戶餘額 - 原: {old_balance}, 新: {account.balance}")
+        print(f"[FIX] 銷帳API: 更新帳戶餘額 - 原: {old_balance}, 新: {account.balance}")
         
         # 創建銷帳記錄（LedgerEntry）
-        print(f"🔧 銷帳API: 創建LedgerEntry記錄...")
+        print(f"[FIX] 銷帳API: 創建LedgerEntry記錄...")
         
         # 安全獲取操作員ID
         operator_id = get_safe_operator_id()
-        print(f"🔧 銷帳API: 操作員ID: {operator_id}")
+        print(f"[FIX] 銷帳API: 操作員ID: {operator_id}")
         
         # 確保PostgreSQL欄位存在
         fix_postgresql_columns()
@@ -6752,12 +6974,12 @@ def api_settlement():
             description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
             operator_id=operator_id
         )
-        print(f"🔧 銷帳API: LedgerEntry物件創建成功: {settlement_entry}")
+        print(f"[FIX] 銷帳API: LedgerEntry物件創建成功: {settlement_entry}")
         db.session.add(settlement_entry)
-        print(f"🔧 銷帳API: LedgerEntry已添加到session")
+        print(f"[FIX] 銷帳API: LedgerEntry已添加到session")
         
         # 創建現金流水記錄（CashLog）- 暫時不設置 account_id
-        print(f"🔧 銷帳API: 創建CashLog記錄...")
+        print(f"[FIX] 銷帳API: 創建CashLog記錄...")
         try:
             settlement_cash_log = CashLog(
                 type="SETTLEMENT",
@@ -6766,27 +6988,27 @@ def api_settlement():
                 description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
                 operator_id=operator_id
             )
-            print(f"🔧 銷帳API: CashLog物件創建成功: {settlement_cash_log}")
+            print(f"[FIX] 銷帳API: CashLog物件創建成功: {settlement_cash_log}")
             db.session.add(settlement_cash_log)
-            print(f"🔧 銷帳API: CashLog已添加到session")
+            print(f"[FIX] 銷帳API: CashLog已添加到session")
         except Exception as e:
-            print(f"❌ 銷帳API: 創建CashLog時發生錯誤: {e}")
-            print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
+            print(f"[ERROR] 銷帳API: 創建CashLog時發生錯誤: {e}")
+            print(f"[ERROR] 銷帳API: 錯誤詳情: {traceback.format_exc()}")
             raise e
         
         # 提交事務
-        print(f"🔧 銷帳API: 準備提交事務...")
+        print(f"[FIX] 銷帳API: 準備提交事務...")
         db.session.commit()
-        print(f"✅ 銷帳API: 事務提交成功")
+        print(f"[OK] 銷帳API: 事務提交成功")
         
         # 強制刷新對象狀態
-        print(f"🔧 銷帳API: 刷新對象狀態...")
+        print(f"[FIX] 銷帳API: 刷新對象狀態...")
         db.session.refresh(customer)
         db.session.refresh(account)
-        print(f"🔧 銷帳API: 對象狀態刷新完成")
+        print(f"[FIX] 銷帳API: 對象狀態刷新完成")
 
         success_message = f"銷帳成功！客戶「{customer.name}」已收款 NT$ {amount:,.2f}，應收帳款餘額：NT$ {customer.total_receivables_twd:,.2f}。"
-        print(f"✅ 銷帳API: 操作完成 - {success_message}")
+        print(f"[OK] 銷帳API: 操作完成 - {success_message}")
         
         return jsonify({
             "status": "success",
@@ -6794,13 +7016,13 @@ def api_settlement():
         })
 
     except (ValueError, TypeError) as e:
-        print(f"❌ 銷帳API: 資料格式錯誤: {e}")
-        print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
+        print(f"[ERROR] 銷帳API: 資料格式錯誤: {e}")
+        print(f"[ERROR] 銷帳API: 錯誤詳情: {traceback.format_exc()}")
         return jsonify({"status": "error", "message": "輸入的資料格式不正確。"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"❌ 銷帳API: 發生未預期錯誤: {e}")
-        print(f"❌ 銷帳API: 錯誤詳情: {traceback.format_exc()}")
+        print(f"[ERROR] 銷帳API: 發生未預期錯誤: {e}")
+        print(f"[ERROR] 銷帳API: 錯誤詳情: {traceback.format_exc()}")
         return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
 
 
@@ -6979,6 +7201,36 @@ def api_customer_transactions(customer_id):
             profit_info = FIFOService.calculate_profit_for_sale(sale)
             profit_twd = profit_info['profit_twd'] if profit_info else 0
             
+            # 計算該筆銷售的應收帳款餘額變化
+            # 需要計算在該筆銷售之前，該客戶的應收帳款餘額
+            try:
+                # 獲取該筆銷售之前的所有銷售記錄
+                previous_sales = (
+                    db.session.execute(
+                        db.select(SalesRecord)
+                        .filter(
+                            SalesRecord.customer_id == customer_id,
+                            SalesRecord.created_at < sale.created_at
+                        )
+                        .order_by(SalesRecord.created_at.desc())
+                    )
+                    .scalars()
+                    .all()
+                )
+                
+                # 計算該筆銷售之前的應收帳款餘額
+                receivable_before = sum(s.twd_amount for s in previous_sales)
+                receivable_after = receivable_before + sale.twd_amount
+                receivable_change = sale.twd_amount
+                
+                print(f"DEBUG: 客戶 {customer.name} 銷售 {sale.id} 應收帳款變化 - 變動前: {receivable_before:.2f}, 變動: {receivable_change:.2f}, 變動後: {receivable_after:.2f}")
+                
+            except Exception as e:
+                print(f"DEBUG: 計算客戶 {customer.name} 銷售 {sale.id} 應收帳款變化失敗: {e}")
+                receivable_before = 0
+                receivable_after = sale.twd_amount
+                receivable_change = sale.twd_amount
+            
             transactions.append({
                 'id': sale.id,
                 'type': '售出',
@@ -6988,7 +7240,14 @@ def api_customer_transactions(customer_id):
                 'twd_amount': sale.twd_amount,
                 'profit_twd': profit_twd,
                 'status': '已售出',
-                'category': 'sales'
+                'category': 'sales',
+                # 新增：應收帳款餘額變化
+                'receivable_balance': {
+                    'before': round(receivable_before, 2),
+                    'change': round(receivable_change, 2),
+                    'after': round(receivable_after, 2),
+                    'description': f'客戶「{customer.name}」應收帳款'
+                }
             })
         
         # 添加銷帳記錄
@@ -7033,23 +7292,33 @@ def api_customer_transactions(customer_id):
 @admin_required
 def sales_action():
     action = request.form.get("action")
+    
+    print(f"[DEBUG] DEBUG: 收到sales_action請求，action={action}")
+    print(f"[DEBUG] DEBUG: 表單數據: {dict(request.form)}")
 
     try:
         if action == "create_order":
             customer_name = request.form.get("customer_name")
             customer_id = request.form.get("user_id")
+            
+            print(f"[DEBUG] DEBUG: 客戶信息 - customer_name={customer_name}, customer_id={customer_id}")
 
             target_customer = None
             if customer_id:
                 target_customer = db.session.get(Customer, int(customer_id))
+                print(f"[DEBUG] DEBUG: 通過ID找到客戶: {target_customer.name if target_customer else 'None'}")
             elif customer_name:
                 target_customer = Customer.query.filter_by(name=customer_name).first()
+                print(f"[DEBUG] DEBUG: 通過名稱找到客戶: {target_customer.name if target_customer else 'None'}")
                 if not target_customer:
+                    print(f"[DEBUG] DEBUG: 客戶不存在，創建新客戶: {customer_name}")
                     target_customer = Customer(name=customer_name, is_active=True)
                     db.session.add(target_customer)
                     db.session.flush()  # 取得 ID
+                    print(f"[DEBUG] DEBUG: 新客戶已創建，ID: {target_customer.id}")
 
             if not target_customer:
+                print(f"[ERROR] ERROR: 無法找到或創建客戶")
                 return (
                     jsonify({"status": "error", "message": "客戶名稱或ID為必填"}),
                     400,
@@ -7058,27 +7327,105 @@ def sales_action():
             rmb = float(request.form.get("rmb_sell_amount"))
             rate = float(request.form.get("exchange_rate"))
             order_date_str = request.form.get("order_date")
+            rmb_account_id = request.form.get("rmb_account_id")
             twd = rmb * rate
+            
+            print(f"[DEBUG] DEBUG: 銷售數據 - RMB={rmb}, 匯率={rate}, 台幣={twd}")
+            print(f"[DEBUG] DEBUG: 訂單日期={order_date_str}, RMB帳戶ID={rmb_account_id}")
+            
+            # 驗證RMB帳戶
+            if not rmb_account_id:
+                print(f"[ERROR] ERROR: RMB出貨帳戶為空")
+                return (
+                    jsonify({"status": "error", "message": "RMB出貨帳戶為必填"}),
+                    400,
+                )
+            
+            rmb_account = db.session.get(CashAccount, int(rmb_account_id))
+            if not rmb_account:
+                print(f"[ERROR] ERROR: 找不到RMB帳戶 ID {rmb_account_id}")
+                return (
+                    jsonify({"status": "error", "message": "找不到指定的RMB帳戶"}),
+                    400,
+                )
+            
+            print(f"[DEBUG] DEBUG: 找到RMB帳戶: {rmb_account.name}")
 
             # 更新客戶應收帳款
             target_customer.total_receivables_twd += twd
+            print(f"[DEBUG] DEBUG: 更新客戶應收帳款，新餘額: {target_customer.total_receivables_twd}")
 
             new_sale = SalesRecord(
                 customer_id=target_customer.id,
+                rmb_account_id=rmb_account.id,  # 設置RMB出貨帳戶
                 rmb_amount=rmb,
                 exchange_rate=rate,
                 twd_amount=twd,
-                sale_date=date.fromisoformat(order_date_str),
-                status="PENDING",  # 假設初始狀態為 PENDING
+                is_settled=False,  # 設置為未結清狀態
+                operator_id=get_safe_operator_id(),  # 記錄操作者
             )
+            
+            print(f"[DEBUG] DEBUG: 創建SalesRecord:")
+            print(f"  客戶ID: {new_sale.customer_id}")
+            print(f"  RMB帳戶ID: {new_sale.rmb_account_id}")
+            print(f"  RMB金額: {new_sale.rmb_amount}")
+            print(f"  台幣金額: {new_sale.twd_amount}")
+            print(f"  是否結清: {new_sale.is_settled}")
+            print(f"  操作者ID: {new_sale.operator_id}")
+            
             db.session.add(new_sale)
+            print(f"[DEBUG] DEBUG: SalesRecord已添加到資料庫")
             
             # 分配FIFO庫存
             try:
                 db.session.flush()  # 獲取 new_sale.id
+                print(f"[DEBUG] DEBUG: SalesRecord ID已獲取: {new_sale.id}")
+                
                 FIFOService.allocate_inventory_for_sale(new_sale)
+                print(f"[DEBUG] DEBUG: FIFO庫存分配完成")
+                
+                # 計算並記錄利潤
+                profit_info = FIFOService.calculate_profit_for_sale(new_sale)
+                print(f"[DEBUG] DEBUG: 利潤計算結果: {profit_info}")
+                
+                if profit_info and profit_info.get('profit_twd', 0) > 0:
+                    profit_amount = profit_info.get('profit_twd', 0)
+                    print(f"[DEBUG] DEBUG: 計算到利潤 {profit_amount} TWD")
+                    
+                    # 記錄到ProfitService
+                    profit_result = ProfitService.add_profit(
+                        account_id=rmb_account.id,
+                        amount=profit_amount,
+                        transaction_type="PROFIT_EARNED",
+                        description=f"售出利潤：{target_customer.name}",
+                        note=f"RMB {new_sale.rmb_amount}，匯率 {new_sale.exchange_rate:.4f}",
+                        related_transaction_id=new_sale.id,
+                        related_transaction_type="SALES",
+                        operator_id=get_safe_operator_id()
+                    )
+                    print(f"[DEBUG] DEBUG: 利潤記錄結果: {profit_result}")
+                else:
+                    print(f"[WARNING] WARNING: 沒有計算到利潤或利潤為0")
+                
                 db.session.commit()
+                print(f"[OK] DEBUG: 資料庫提交成功")
+                
+                # 驗證記錄是否正確保存
+                saved_sale = db.session.get(SalesRecord, new_sale.id)
+                if saved_sale:
+                    print(f"[OK] DEBUG: 驗證成功，售出記錄已保存:")
+                    print(f"  ID: {saved_sale.id}")
+                    print(f"  客戶: {saved_sale.customer.name if saved_sale.customer else 'N/A'}")
+                    print(f"  RMB帳戶: {saved_sale.rmb_account.name if saved_sale.rmb_account else 'N/A'}")
+                    print(f"  是否結清: {saved_sale.is_settled}")
+                    print(f"  建立時間: {saved_sale.created_at}")
+                else:
+                    print(f"[ERROR] ERROR: 售出記錄保存後找不到")
+                
             except Exception as e:
+                print(f"[ERROR] ERROR: 庫存分配或利潤計算失敗: {e}")
+                import traceback
+                traceback.print_exc()
                 db.session.rollback()
                 return jsonify({"status": "error", "message": f"庫存分配失敗: {e}"}), 500
 
@@ -7087,7 +7434,7 @@ def sales_action():
                 "username": target_customer.name,
                 "rmb_order_amount": "%.2f" % new_sale.rmb_amount,
                 "twd_expected_payment": "%.2f" % new_sale.twd_amount,
-                "order_time": new_sale.sale_date.isoformat(),
+                "order_time": new_sale.created_at.isoformat(),
             }
             return jsonify(
                 {
@@ -7742,7 +8089,7 @@ def import_data_page():
             <strong>說明：</strong>此工具會將您的本地數據庫數據導入到Render的雲端數據庫中，確保兩邊數據同步。
         </div>
         
-        <button onclick="importData()" id="importBtn">🚀 開始導入數據</button>
+        <button onclick="importData()" id="importBtn">[START] 開始導入數據</button>
         
         <div id="status"></div>
         <div id="result"></div>
@@ -7837,7 +8184,7 @@ def import_data_page():
             } finally {
                 // 重新啟用按鈕
                 importBtn.disabled = false;
-                importBtn.textContent = '🚀 開始導入數據';
+                importBtn.textContent = '[START] 開始導入數據';
             }
         }
     </script>
@@ -7913,13 +8260,23 @@ def get_cash_management_transactions():
             db.select(SalesRecord)
             .options(
                 db.selectinload(SalesRecord.customer),
-                db.selectinload(SalesRecord.rmb_account)
+                db.selectinload(SalesRecord.rmb_account),
+                db.selectinload(SalesRecord.operator)  # 新增：載入操作者關聯
             )
             .order_by(SalesRecord.created_at.desc())
             .limit(limit)
         ).scalars().all()
         
         print(f"DEBUG: 查詢到 {len(purchases)} 筆買入記錄, {len(sales)} 筆銷售記錄")
+        print(f"DEBUG: SalesRecord 查詢到的總記錄數: {len(sales)}")
+        
+        # 詳細調試：顯示查詢到的售出記錄
+        if sales:
+            print(f"DEBUG: 查詢到的售出記錄ID列表: {[s.id for s in sales]}")
+            for s in sales[:3]:  # 顯示前3筆記錄的詳細信息
+                print(f"DEBUG: 售出記錄 {s.id} - 客戶: {s.customer.name if s.customer else 'N/A'}, 建立時間: {s.created_at}")
+        else:
+            print("DEBUG: 沒有查詢到任何售出記錄")
         
         # 安全地查詢 LedgerEntry，處理可能缺少的欄位
         try:
@@ -7941,7 +8298,7 @@ def get_cash_management_transactions():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 添加 profit_before 欄位")
+                        print("[OK] 添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ profit_before 欄位已存在")
@@ -7950,7 +8307,7 @@ def get_cash_management_transactions():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 添加 profit_after 欄位")
+                        print("[OK] 添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ profit_after 欄位已存在")
@@ -7959,7 +8316,7 @@ def get_cash_management_transactions():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 添加 profit_change 欄位")
+                        print("[OK] 添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ profit_change 欄位已存在")
@@ -7969,7 +8326,7 @@ def get_cash_management_transactions():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 添加 from_account_id 欄位")
+                        print("[OK] 添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ from_account_id 欄位已存在")
@@ -7978,7 +8335,7 @@ def get_cash_management_transactions():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 添加 to_account_id 欄位")
+                        print("[OK] 添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ to_account_id 欄位已存在")
@@ -7986,7 +8343,7 @@ def get_cash_management_transactions():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 欄位修復完成，重新查詢...")
+                    print("[OK] 欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -7994,11 +8351,11 @@ def get_cash_management_transactions():
                         .options(db.selectinload(LedgerEntry.account))
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 修復欄位失敗: {fix_error}")
                     db.session.rollback()
                     misc_entries = []
             else:
-                print(f"❌ 查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         
         # 確保在乾淨的事務中查詢 cash_logs
@@ -8067,14 +8424,37 @@ def get_cash_management_transactions():
                     }
                 })
 
-        # 優化：批量計算所有銷售的利潤，避免重複計算
+        # 優化：批量計算所有銷售的利潤，使用與利潤管理頁面一致的計算方式
         print("DEBUG: 開始批量計算銷售利潤...")
         
         # 預計算所有銷售的利潤
         sales_profits = {}
-        running_profit = 0.0
         
-        # 按時間順序處理銷售記錄
+        # 計算當前總利潤（與利潤管理頁面一致）
+        current_total_profit = 0.0
+        all_sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        
+        for sale in all_sales:
+            try:
+                profit_info = FIFOService.calculate_profit_for_sale(sale)
+                if profit_info:
+                    current_total_profit += profit_info.get('profit_twd', 0.0)
+            except Exception as e:
+                print(f"DEBUG: 計算總利潤時銷售{sale.id}失敗: {e}")
+        
+        # 扣除利潤提款記錄
+        try:
+            profit_withdrawals = db.session.execute(
+                db.select(LedgerEntry)
+                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+            ).scalars().all()
+            total_withdrawals = sum(abs(entry.amount) for entry in profit_withdrawals)
+            current_total_profit -= total_withdrawals
+            print(f"DEBUG: 當前總利潤: {current_total_profit:.2f}, 利潤提款: {total_withdrawals:.2f}")
+        except Exception as e:
+            print(f"DEBUG: 查詢利潤提款失敗: {e}")
+        
+        # 按時間順序處理銷售記錄，計算每筆的利潤變動
         sorted_sales = sorted(sales, key=lambda x: x.created_at)
         
         for s in sorted_sales:
@@ -8083,10 +8463,9 @@ def get_cash_management_transactions():
                     profit_info = FIFOService.calculate_profit_for_sale(s)
                     profit = profit_info['profit_twd'] if profit_info else 0
                     
-                    # 計算變動前的利潤（累積）
-                    profit_before = running_profit
-                    running_profit += profit
-                    profit_after = running_profit
+                    # 計算變動前的利潤（從總利潤中減去當前銷售的利潤）
+                    profit_before = current_total_profit - profit
+                    profit_after = current_total_profit
                     
                     sales_profits[s.id] = {
                         'profit': profit,
@@ -8098,57 +8477,204 @@ def get_cash_management_transactions():
                     print(f"DEBUG: 計算銷售{s.id}利潤失敗: {e}")
                     sales_profits[s.id] = {
                         'profit': 0,
-                        'profit_before': running_profit,
-                        'profit_after': running_profit
+                        'profit_before': current_total_profit,
+                        'profit_after': current_total_profit
                     }
         
         print(f"DEBUG: 批量計算完成，處理了 {len(sales_profits)} 筆銷售記錄")
         
         # 處理售出記錄
-        for s in sales:
-            if s.customer:
+        print(f"DEBUG: 開始處理 {len(sales)} 筆銷售記錄")
+        sales_processed_count = 0
+        sales_error_count = 0
+        
+        for i, s in enumerate(sales):
+            print(f"DEBUG: 處理銷售記錄 {i+1}/{len(sales)} - ID: {getattr(s, 'id', 'N/A')}")
+            
+            # 使用 try-except 包住整個 SalesRecord 處理邏輯
+            try:
+                # 安全地獲取基本屬性
+                sale_id = getattr(s, 'id', 'N/A')
+                customer_name = "未知客戶"
+                rmb_account_name = "N/A"
+                operator_name = "未知"
+                created_at = getattr(s, 'created_at', None)
+                is_settled = getattr(s, 'is_settled', None)
+                rmb_amount = getattr(s, 'rmb_amount', 0)
+                twd_amount = getattr(s, 'twd_amount', 0)
+                
+                print(f"DEBUG: 銷售記錄 {sale_id} 基本屬性 - RMB: {rmb_amount}, TWD: {twd_amount}, 結清: {is_settled}")
+                
+                # 安全地獲取關聯數據
+                try:
+                    if hasattr(s, 'customer') and s.customer:
+                        customer_name = getattr(s.customer, 'name', '未知客戶')
+                    print(f"DEBUG: 客戶: {customer_name}")
+                except Exception as e:
+                    print(f"DEBUG: [WARNING] 獲取客戶信息失敗: {e}")
+                
+                try:
+                    if hasattr(s, 'rmb_account') and s.rmb_account:
+                        rmb_account_name = getattr(s.rmb_account, 'name', 'N/A')
+                        rmb_balance = getattr(s.rmb_account, 'balance', 0)
+                    else:
+                        rmb_balance = 0
+                    print(f"DEBUG: RMB帳戶: {rmb_account_name}, 餘額: {rmb_balance}")
+                except Exception as e:
+                    print(f"DEBUG: [WARNING] 獲取RMB帳戶信息失敗: {e}")
+                    rmb_balance = 0
+                
+                try:
+                    if hasattr(s, 'operator') and s.operator:
+                        operator_name = getattr(s.operator, 'username', '未知')
+                    print(f"DEBUG: 操作者: {operator_name}")
+                except Exception as e:
+                    print(f"DEBUG: [WARNING] 獲取操作者信息失敗: {e}")
+                
                 # 使用預計算的利潤數據
-                profit_data = sales_profits.get(s.id, {'profit': 0, 'profit_before': 0, 'profit_after': 0})
-                profit = profit_data['profit']
-                profit_before = profit_data['profit_before']
-                profit_after = profit_data['profit_after']
+                profit_data = sales_profits.get(sale_id, {'profit': 0, 'profit_before': 0, 'profit_after': 0})
+                profit = profit_data.get('profit', 0)
+                profit_before = profit_data.get('profit_before', 0)
+                profit_after = profit_data.get('profit_after', 0)
                 
-                # 計算RMB帳戶餘額變化
-                rmb_balance_before = s.rmb_account.balance + s.rmb_amount if s.rmb_account else 0
-                rmb_balance_after = s.rmb_account.balance if s.rmb_account else 0
-                rmb_balance_change = -s.rmb_amount
+                print(f"DEBUG: 利潤數據 - 利潤: {profit}, 變動前: {profit_before}, 變動後: {profit_after}")
                 
-                unified_stream.append({
+                # 安全地計算RMB帳戶餘額變化
+                try:
+                    if rmb_balance is not None and rmb_amount is not None:
+                        rmb_balance_before = rmb_balance + rmb_amount
+                        rmb_balance_after = rmb_balance
+                    else:
+                        rmb_balance_before = rmb_amount if rmb_amount else 0
+                        rmb_balance_after = 0
+                    
+                    rmb_balance_change = -rmb_amount if rmb_amount else 0
+                    
+                    print(f"DEBUG: RMB餘額變化 - 變動前: {rmb_balance_before}, 變動後: {rmb_balance_after}, 變動: {rmb_balance_change}")
+                except Exception as e:
+                    print(f"DEBUG: [WARNING] 計算RMB餘額變化失敗: {e}")
+                    rmb_balance_before = rmb_amount if rmb_amount else 0
+                    rmb_balance_after = 0
+                    rmb_balance_change = -rmb_amount if rmb_amount else 0
+                
+                # 安全地處理日期
+                try:
+                    if created_at:
+                        date_str = created_at.isoformat()
+                    else:
+                        date_str = "未知時間"
+                except Exception as e:
+                    print(f"DEBUG: [WARNING] 處理日期失敗: {e}")
+                    date_str = "未知時間"
+                
+                # 計算客戶個人應收帳款餘額變化（使用與客戶交易紀錄頁面相同的邏輯）
+                try:
+                    # 獲取客戶對象
+                    customer = None
+                    if hasattr(s, 'customer') and s.customer:
+                        customer = s.customer
+                    
+                    if customer:
+                        # 獲取該筆銷售之前的所有銷售記錄（與客戶交易紀錄頁面相同的邏輯）
+                        previous_sales = (
+                            db.session.execute(
+                                db.select(SalesRecord)
+                                .filter(
+                                    SalesRecord.customer_id == customer.id,
+                                    SalesRecord.created_at < s.created_at
+                                )
+                                .order_by(SalesRecord.created_at.desc())
+                            )
+                            .scalars()
+                            .all()
+                        )
+                        
+                        # 計算該筆銷售之前的應收帳款餘額（與客戶交易紀錄頁面相同的邏輯）
+                        customer_receivable_before = sum(sale.twd_amount for sale in previous_sales)
+                        customer_receivable_after = customer_receivable_before + twd_amount
+                        customer_receivable_change = twd_amount
+                        
+                        print(f"DEBUG: 客戶 {customer.name} 銷售 {sale_id} 應收帳款變化 - 變動前: {customer_receivable_before:.2f}, 變動: {customer_receivable_change:.2f}, 變動後: {customer_receivable_after:.2f}")
+                    else:
+                        customer_receivable_before = 0
+                        customer_receivable_after = twd_amount if twd_amount else 0
+                        customer_receivable_change = twd_amount if twd_amount else 0
+                        print(f"DEBUG: 客戶對象不存在，使用預設值")
+                        
+                except Exception as e:
+                    print(f"DEBUG: [WARNING] 計算客戶應收帳款變化失敗: {e}")
+                    customer_receivable_before = 0
+                    customer_receivable_after = twd_amount if twd_amount else 0
+                    customer_receivable_change = twd_amount if twd_amount else 0
+                
+                # 構建銷售記錄字典 - 完全與 LedgerEntry PROFIT_EARNED 結構一致
+                sales_record = {
                     "type": "售出",
-                    "date": s.created_at.isoformat(),
-                    "description": f"售予 {s.customer.name}",
+                    "date": date_str,
+                    "description": f"售予 {customer_name}",
                     "twd_change": 0,  # 售出時TWD變動為0，不直接影響總台幣金額
-                    "rmb_change": -s.rmb_amount,  # RMB變動：售出金額
-                    "operator": s.operator.username if s.operator else "未知",
-                    "profit": profit,
-                    "payment_account": s.rmb_account.name if s.rmb_account else "N/A",  # 出款戶：RMB帳戶
+                    "rmb_change": round(-rmb_amount if rmb_amount else 0, 2),  # RMB變動：售出金額
+                    "operator": operator_name,
+                    "payment_account": rmb_account_name,  # 出款戶：RMB帳戶
                     "deposit_account": "應收帳款",  # 入款戶：應收帳款
-                    "note": s.note if hasattr(s, 'note') and s.note else None,
-                    # 出款戶餘額變化（RMB帳戶）：售出金額
-                    "payment_account_balance": {
-                        "before": rmb_balance_before,
-                        "change": rmb_balance_change,  # -s.rmb_amount
-                        "after": rmb_balance_after
-                    },
-                    # 入款戶餘額變化（應收帳款）：應收帳款之變動
-                    "deposit_account_balance": {
-                        "before": 0,  # 應收帳款變動前
-                        "change": s.twd_amount,  # 應收帳款增加（台幣金額）
-                        "after": s.twd_amount  # 應收帳款變動後
-                    },
-                    # 利潤變動記錄
-                    "profit_change": profit,  # 利潤之變動
+                    "note": getattr(s, 'note', None) if hasattr(s, 'note') else None,
+                    
+                    # 利潤變動信息 - 與 LedgerEntry PROFIT_EARNED 完全一致
+                    "profit_before": round(profit_before, 2),
+                    "profit_after": round(profit_after, 2),
+                    "profit_change": round(profit, 2),
+                    "profit": round(profit, 2),  # 保持向後兼容
+                    
+                    # 詳細的利潤變動記錄 - 與 LedgerEntry PROFIT_EARNED 完全一致
                     "profit_change_detail": {
-                        "before": profit_before,
-                        "change": profit,
-                        "after": profit_after
+                        "before": round(profit_before, 2),
+                        "change": round(profit, 2),
+                        "after": round(profit_after, 2),
+                        "description": "售出利潤"
+                    },
+                    
+                    # 新增：客戶個人應收帳款餘額變化
+                    "customer_receivable_balance": {
+                        "before": round(customer_receivable_before, 2),
+                        "change": round(customer_receivable_change, 2),
+                        "after": round(customer_receivable_after, 2),
+                        "customer_name": customer_name,
+                        "description": f"客戶「{customer_name}」應收帳款"
                     }
-                })
+                }
+                
+                # 添加到統一流水
+                unified_stream.append(sales_record)
+                sales_processed_count += 1
+                print(f"DEBUG: [OK] 銷售記錄 {sale_id} 已添加到unified_stream")
+                
+            except Exception as e:
+                sales_error_count += 1
+                print(f"DEBUG: [ERROR] 處理銷售記錄 {getattr(s, 'id', 'N/A')} 時發生錯誤: {e}")
+                print(f"DEBUG: [ERROR] 錯誤詳情: {type(e).__name__}: {str(e)}")
+                import traceback
+                print(f"DEBUG: [ERROR] 錯誤堆疊: {traceback.format_exc()}")
+                
+                # 即使發生錯誤，也嘗試添加一個基本的記錄
+                try:
+                    basic_record = {
+                        "type": "售出",
+                        "date": getattr(s, 'created_at', None).isoformat() if hasattr(s, 'created_at') and getattr(s, 'created_at', None) else "未知時間",
+                        "description": f"售出記錄 ID: {getattr(s, 'id', 'N/A')} (處理錯誤)",
+                        "twd_change": 0,
+                        "rmb_change": -getattr(s, 'rmb_amount', 0) if hasattr(s, 'rmb_amount') else 0,
+                        "operator": "系統",
+                        "profit": 0,
+                        "payment_account": "N/A",
+                        "deposit_account": "應收帳款",
+                        "note": f"處理錯誤: {str(e)}"
+                    }
+                    unified_stream.append(basic_record)
+                    print(f"DEBUG: [OK] 銷售記錄 {getattr(s, 'id', 'N/A')} 已添加基本記錄到unified_stream")
+                except Exception as basic_error:
+                    print(f"DEBUG: [ERROR] 添加基本記錄也失敗: {basic_error}")
+        
+        print(f"DEBUG: 銷售記錄處理完成 - 成功: {sales_processed_count}, 錯誤: {sales_error_count}")
 
         # 處理其他記帳記錄（包含利潤提款）
         for entry in misc_entries:
@@ -8320,17 +8846,17 @@ def get_cash_management_transactions():
                     record["payment_account"] = "系統利潤"
                     record["deposit_account"] = "利潤帳戶"
                     
-                    # 利潤變動信息
-                    record["profit_before"] = profit_before
-                    record["profit_after"] = profit_after
-                    record["profit_change"] = profit_change
-                    record["profit"] = profit_change
+                    # 利潤變動信息 - 使用 round() 確保精確度
+                    record["profit_before"] = round(profit_before, 2) if profit_before is not None else 0
+                    record["profit_after"] = round(profit_after, 2) if profit_after is not None else 0
+                    record["profit_change"] = round(profit_change, 2) if profit_change is not None else 0
+                    record["profit"] = round(profit_change, 2) if profit_change is not None else 0
                     
-                    # 詳細的利潤變動記錄
+                    # 詳細的利潤變動記錄 - 使用 round() 確保精確度
                     record["profit_change_detail"] = {
-                        "before": profit_before,
-                        "change": profit_change,
-                        "after": profit_after,
+                        "before": round(profit_before, 2) if profit_before is not None else 0,
+                        "change": round(profit_change, 2) if profit_change is not None else 0,
+                        "after": round(profit_after, 2) if profit_after is not None else 0,
                         "description": "售出利潤"
                     }
                 
@@ -8460,6 +8986,13 @@ def get_cash_management_transactions():
         # 重新按日期倒序排列（新的在前）
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
         
+        # 統計各類型記錄數量
+        sales_count = sum(1 for record in unified_stream if record.get("type") == "售出")
+        profit_count = sum(1 for record in unified_stream if record.get("type") == "利潤入庫")
+        other_count = len(unified_stream) - sales_count - profit_count
+        
+        print(f"DEBUG: 流水記錄統計 - 總計: {len(unified_stream)}, 售出: {sales_count}, 利潤入庫: {profit_count}, 其他: {other_count}")
+        
         # 計算分頁
         total_records = len(unified_stream)
         total_pages = (total_records + per_page - 1) // per_page
@@ -8541,7 +9074,7 @@ def get_cash_management_transactions_simple():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 簡化API添加 profit_before 欄位")
+                        print("[OK] 簡化API添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 簡化API profit_before 欄位已存在")
@@ -8550,7 +9083,7 @@ def get_cash_management_transactions_simple():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 簡化API添加 profit_after 欄位")
+                        print("[OK] 簡化API添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 簡化API profit_after 欄位已存在")
@@ -8559,7 +9092,7 @@ def get_cash_management_transactions_simple():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 簡化API添加 profit_change 欄位")
+                        print("[OK] 簡化API添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 簡化API profit_change 欄位已存在")
@@ -8569,7 +9102,7 @@ def get_cash_management_transactions_simple():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 簡化API添加 from_account_id 欄位")
+                        print("[OK] 簡化API添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 簡化API from_account_id 欄位已存在")
@@ -8578,7 +9111,7 @@ def get_cash_management_transactions_simple():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 簡化API添加 to_account_id 欄位")
+                        print("[OK] 簡化API添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 簡化API to_account_id 欄位已存在")
@@ -8586,7 +9119,7 @@ def get_cash_management_transactions_simple():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 簡化API欄位修復完成，重新查詢...")
+                    print("[OK] 簡化API欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -8596,11 +9129,11 @@ def get_cash_management_transactions_simple():
                         .limit(limit)
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 簡化API修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 簡化API修復欄位失敗: {fix_error}")
                     db.session.rollback()
                     misc_entries = []
             else:
-                print(f"❌ 簡化API查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 簡化API查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         
         unified_stream = []
@@ -8897,7 +9430,7 @@ def get_cash_management_totals():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                        print("[OK] 現金管理頁面添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
@@ -8906,7 +9439,7 @@ def get_cash_management_totals():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                        print("[OK] 現金管理頁面添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
@@ -8915,7 +9448,7 @@ def get_cash_management_totals():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                        print("[OK] 現金管理頁面添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
@@ -8925,7 +9458,7 @@ def get_cash_management_totals():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
@@ -8934,7 +9467,7 @@ def get_cash_management_totals():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
@@ -8942,7 +9475,7 @@ def get_cash_management_totals():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    print("[OK] 現金管理頁面欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -8950,10 +9483,10 @@ def get_cash_management_totals():
                         .options(db.selectinload(LedgerEntry.account))
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 現金管理頁面修復欄位失敗: {fix_error}")
                     misc_entries = []
             else:
-                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 現金管理頁面查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
@@ -9326,7 +9859,7 @@ def get_account_balances_for_dropdowns():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                        print("[OK] 現金管理頁面添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
@@ -9335,7 +9868,7 @@ def get_account_balances_for_dropdowns():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                        print("[OK] 現金管理頁面添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
@@ -9344,7 +9877,7 @@ def get_account_balances_for_dropdowns():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                        print("[OK] 現金管理頁面添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
@@ -9354,7 +9887,7 @@ def get_account_balances_for_dropdowns():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
@@ -9363,7 +9896,7 @@ def get_account_balances_for_dropdowns():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
@@ -9371,7 +9904,7 @@ def get_account_balances_for_dropdowns():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    print("[OK] 現金管理頁面欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -9379,10 +9912,10 @@ def get_account_balances_for_dropdowns():
                         .options(db.selectinload(LedgerEntry.account))
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 現金管理頁面修復欄位失敗: {fix_error}")
                     misc_entries = []
             else:
-                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 現金管理頁面查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
@@ -9623,7 +10156,7 @@ def get_accurate_account_balances():
                     # 檢查並添加利潤欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_before FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_before 欄位")
+                        print("[OK] 現金管理頁面添加 profit_before 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_before 欄位已存在")
@@ -9632,7 +10165,7 @@ def get_accurate_account_balances():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_after FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_after 欄位")
+                        print("[OK] 現金管理頁面添加 profit_after 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_after 欄位已存在")
@@ -9641,7 +10174,7 @@ def get_accurate_account_balances():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN profit_change FLOAT'))
-                        print("✅ 現金管理頁面添加 profit_change 欄位")
+                        print("[OK] 現金管理頁面添加 profit_change 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 profit_change 欄位已存在")
@@ -9651,7 +10184,7 @@ def get_accurate_account_balances():
                     # 檢查並添加轉帳欄位
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 from_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 from_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 from_account_id 欄位已存在")
@@ -9660,7 +10193,7 @@ def get_accurate_account_balances():
                     
                     try:
                         db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                        print("✅ 現金管理頁面添加 to_account_id 欄位")
+                        print("[OK] 現金管理頁面添加 to_account_id 欄位")
                     except Exception as e:
                         if "already exists" in str(e).lower() or "duplicate column" in str(e).lower():
                             print("ℹ️ 現金管理頁面 to_account_id 欄位已存在")
@@ -9668,7 +10201,7 @@ def get_accurate_account_balances():
                             raise e
                     
                     db.session.commit()
-                    print("✅ 現金管理頁面欄位修復完成，重新查詢...")
+                    print("[OK] 現金管理頁面欄位修復完成，重新查詢...")
                     
                     # 重新查詢
                     misc_entries = db.session.execute(
@@ -9676,10 +10209,10 @@ def get_accurate_account_balances():
                         .options(db.selectinload(LedgerEntry.account))
                     ).scalars().all()
                 except Exception as fix_error:
-                    print(f"❌ 現金管理頁面修復欄位失敗: {fix_error}")
+                    print(f"[ERROR] 現金管理頁面修復欄位失敗: {fix_error}")
                     misc_entries = []
             else:
-                print(f"❌ 現金管理頁面查詢LedgerEntry失敗: {e}")
+                print(f"[ERROR] 現金管理頁面查詢LedgerEntry失敗: {e}")
                 misc_entries = []
         # 確保在乾淨的事務中查詢 cash_logs
         try:
