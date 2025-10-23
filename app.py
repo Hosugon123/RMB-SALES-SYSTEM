@@ -2817,114 +2817,6 @@ def api_sales_entry():
             # 使用FIFO服務分配庫存
             fifo_result = FIFOService.allocate_inventory_for_sale(new_sale)
             print(f"FIFO庫存分配成功: {fifo_result}")
-            
-            # 5. 自動記錄利潤到RMB帳戶和LedgerEntry（獨立事務，不影響主事務）
-            print(f"DEBUG: fifo_result = {fifo_result}")
-            if fifo_result and 'profit_twd' in fifo_result:
-                profit_amount = fifo_result['profit_twd']
-                print(f"DEBUG: 售出利潤金額: {profit_amount} TWD")
-                
-                # 將利潤記錄包裝在獨立的 try-except 中，避免影響主事務
-                try:
-                    # 找到對應的RMB帳戶
-                    rmb_account = new_sale.rmb_account
-                    print(f"DEBUG: RMB帳戶 = {rmb_account}")
-                    if rmb_account:
-                        # 記錄到ProfitService（保持原有邏輯）
-                        profit_result = ProfitService.add_profit(
-                            account_id=rmb_account.id,
-                            amount=profit_amount,
-                            transaction_type="PROFIT_EARNED",
-                            description=f"銷售利潤：客戶「{customer.name}」",
-                            note=f"RMB {new_sale.rmb_amount}，匯率 {new_sale.twd_amount/new_sale.rmb_amount:.4f}",
-                            related_transaction_id=new_sale.id,
-                            related_transaction_type="SALES",
-                            operator_id=get_safe_operator_id()
-                        )
-                        
-                        # 同時記錄到LedgerEntry中，用於利潤管理歷史
-                        try:
-                            # 計算當前總利潤（不包含當前銷售記錄）
-                            existing_sales = db.session.execute(
-                                db.select(SalesRecord)
-                                .filter(SalesRecord.id != new_sale.id)
-                            ).scalars().all()
-                            
-                            current_total_profit = 0.0
-                            for sale in existing_sales:
-                                sale_profit_info = FIFOService.calculate_profit_for_sale(sale)
-                                if sale_profit_info:
-                                    current_total_profit += sale_profit_info.get('profit_twd', 0.0)
-                            
-                            # 扣除之前的利潤提款
-                            try:
-                                profit_withdrawals = db.session.execute(
-                                    db.select(LedgerEntry)
-                                    .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
-                                ).scalars().all()
-                                total_withdrawals = sum(entry.amount for entry in profit_withdrawals)
-                                current_total_profit -= total_withdrawals
-                            except:
-                                pass  # 如果查詢失敗，忽略
-                            
-                            # 創建利潤記錄
-                            try:
-                                profit_entry = LedgerEntry(
-                                    entry_type="PROFIT_EARNED",
-                                    amount=profit_amount,
-                                    description=f"售出利潤：{customer.name}",
-                                    operator_id=get_safe_operator_id(),
-                                    profit_before=current_total_profit,
-                                    profit_after=current_total_profit + profit_amount,
-                                    profit_change=profit_amount
-                                )
-                            except Exception as e:
-                                if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
-                                    print("警告: 銷售記錄創建利潤LedgerEntry時缺少欄位，嘗試修復...")
-                                    db.session.rollback()
-                                    
-                                    # 嘗試添加缺失的欄位
-                                    try:
-                                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
-                                        db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
-                                        db.session.commit()
-                                        print("[OK] 銷售記錄欄位修復完成，重新創建記錄...")
-                                        
-                                        # 重新創建記錄
-                                        profit_entry = LedgerEntry(
-                                            entry_type="PROFIT_EARNED",
-                                            amount=profit_amount,
-                                            description=f"售出利潤：{customer.name}",
-                                            operator_id=get_safe_operator_id(),
-                                            profit_before=current_total_profit,
-                                            profit_after=current_total_profit + profit_amount,
-                                            profit_change=profit_amount
-                                        )
-                                    except Exception as fix_error:
-                                        print(f"[ERROR] 銷售記錄修復欄位失敗: {fix_error}")
-                                        raise fix_error
-                                else:
-                                    raise e
-                            db.session.add(profit_entry)
-                            db.session.flush()  # 確保記錄被添加到會話中
-                            print(f"[OK] 記錄售出利潤到LedgerEntry成功: {profit_amount:.2f} TWD")
-                            print(f"DEBUG: 利潤記錄 - 前: {current_total_profit:.2f}, 後: {current_total_profit + profit_amount:.2f}, 變動: {profit_amount:.2f}")
-                            print(f"DEBUG: LedgerEntry ID: {profit_entry.id}")
-                        except Exception as ledger_error:
-                            print(f"[WARNING] 記錄售出利潤到LedgerEntry失敗: {ledger_error}")
-                            import traceback
-                            traceback.print_exc()
-                        
-                        if profit_result["success"]:
-                            print(f"[OK] 自動記錄銷售利潤成功: {profit_amount:.2f} TWD")
-                        else:
-                            print(f"[WARNING] 自動記錄銷售利潤失敗: {profit_result['message']}")
-                    else:
-                        print("[WARNING] 找不到RMB帳戶，跳過利潤記錄")
-                except Exception as profit_error:
-                    print(f"[WARNING] 記錄銷售利潤時發生錯誤: {profit_error}")
-                    print(f"[WARNING] 利潤記錄失敗不影響銷售記錄創建，繼續執行...")
-                    # 不影響銷售記錄的創建，只記錄警告
         except Exception as e:
             print(f"[ERROR] FIFO庫存分配失敗: {e}")
             import traceback
@@ -2936,9 +2828,117 @@ def api_sales_entry():
                 "message": f"庫存分配失敗: {e}"
             }), 500
         
-        # 提交所有更改
+        # 5. 提交主事務 (SalesRecord, LedgerEntry, FIFOSalesAllocation)
         db.session.commit()
         print(f"[OK] DEBUG: 資料庫提交成功，SalesRecord ID: {new_sale.id}")
+        
+        # ====== 新增：利潤記錄隔離 ======
+        # 6. 獨立提交利潤交易 (允許失敗，不回滾 SalesRecord)
+        if fifo_result and 'profit_twd' in fifo_result:
+            profit_amount = fifo_result['profit_twd']
+            print(f"DEBUG: 售出利潤金額: {profit_amount} TWD")
+            
+            try:
+                # 找到對應的RMB帳戶
+                rmb_account = new_sale.rmb_account
+                print(f"DEBUG: RMB帳戶 = {rmb_account}")
+                if rmb_account:
+                    # 記錄到ProfitService（保持原有邏輯）
+                    profit_result = ProfitService.add_profit(
+                        account_id=rmb_account.id,
+                        amount=profit_amount,
+                        transaction_type="PROFIT_EARNED",
+                        description=f"銷售利潤：客戶「{customer.name}」",
+                        note=f"RMB {new_sale.rmb_amount}，匯率 {new_sale.twd_amount/new_sale.rmb_amount:.4f}",
+                        related_transaction_id=new_sale.id,
+                        related_transaction_type="SALES",
+                        operator_id=get_safe_operator_id()
+                    )
+                    
+                    # 同時記錄到LedgerEntry中，用於利潤管理歷史
+                    try:
+                        # 計算當前總利潤（不包含當前銷售記錄）
+                        existing_sales = db.session.execute(
+                            db.select(SalesRecord)
+                            .filter(SalesRecord.id != new_sale.id)
+                        ).scalars().all()
+                        
+                        current_total_profit = 0.0
+                        for sale in existing_sales:
+                            sale_profit_info = FIFOService.calculate_profit_for_sale(sale)
+                            if sale_profit_info:
+                                current_total_profit += sale_profit_info.get('profit_twd', 0.0)
+                        
+                        # 扣除之前的利潤提款
+                        try:
+                            profit_withdrawals = db.session.execute(
+                                db.select(LedgerEntry)
+                                .filter(LedgerEntry.entry_type == "PROFIT_WITHDRAW")
+                            ).scalars().all()
+                            total_withdrawals = sum(entry.amount for entry in profit_withdrawals)
+                            current_total_profit -= total_withdrawals
+                        except:
+                            pass  # 如果查詢失敗，忽略
+                        
+                        # 創建利潤記錄
+                        try:
+                            profit_entry = LedgerEntry(
+                                entry_type="PROFIT_EARNED",
+                                amount=profit_amount,
+                                description=f"售出利潤：{customer.name}",
+                                operator_id=get_safe_operator_id(),
+                                profit_before=current_total_profit,
+                                profit_after=current_total_profit + profit_amount,
+                                profit_change=profit_amount
+                            )
+                        except Exception as e:
+                            if "from_account_id does not exist" in str(e) or "to_account_id does not exist" in str(e):
+                                print("警告: 銷售記錄創建利潤LedgerEntry時缺少欄位，嘗試修復...")
+                                db.session.rollback()
+                                
+                                # 嘗試添加缺失的欄位
+                                try:
+                                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN from_account_id INTEGER'))
+                                    db.session.execute(db.text('ALTER TABLE ledger_entries ADD COLUMN to_account_id INTEGER'))
+                                    db.session.commit()
+                                    print("[OK] 銷售記錄欄位修復完成，重新創建記錄...")
+                                    
+                                    # 重新創建記錄
+                                    profit_entry = LedgerEntry(
+                                        entry_type="PROFIT_EARNED",
+                                        amount=profit_amount,
+                                        description=f"售出利潤：{customer.name}",
+                                        operator_id=get_safe_operator_id(),
+                                        profit_before=current_total_profit,
+                                        profit_after=current_total_profit + profit_amount,
+                                        profit_change=profit_amount
+                                    )
+                                except Exception as fix_error:
+                                    print(f"[ERROR] 銷售記錄修復欄位失敗: {fix_error}")
+                                    raise fix_error
+                            else:
+                                raise e
+                        db.session.add(profit_entry)
+                        db.session.flush()  # 確保記錄被添加到會話中
+                        print(f"[OK] 記錄售出利潤到LedgerEntry成功: {profit_amount:.2f} TWD")
+                        print(f"DEBUG: 利潤記錄 - 前: {current_total_profit:.2f}, 後: {current_total_profit + profit_amount:.2f}, 變動: {profit_amount:.2f}")
+                        print(f"DEBUG: LedgerEntry ID: {profit_entry.id}")
+                    except Exception as ledger_error:
+                        print(f"[WARNING] 記錄售出利潤到LedgerEntry失敗: {ledger_error}")
+                        import traceback
+                        traceback.print_exc()
+                    
+                    if profit_result["success"]:
+                        print(f"[OK] 自動記錄銷售利潤成功: {profit_amount:.2f} TWD")
+                    else:
+                        print(f"[WARNING] 自動記錄銷售利潤失敗: {profit_result['message']}")
+                else:
+                    print("[WARNING] 找不到RMB帳戶，跳過利潤記錄")
+            except Exception as profit_error:
+                print(f"[WARNING] 記錄銷售利潤時發生錯誤: {profit_error}")
+                print(f"[WARNING] 利潤記錄失敗不影響銷售記錄創建，繼續執行...")
+                # 不影響銷售記錄的創建，只記錄警告
+        # ====== 結束：利潤記錄隔離 ======
         
         # 立即驗證記錄是否真的被保存
         try:
