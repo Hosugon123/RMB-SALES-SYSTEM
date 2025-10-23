@@ -17,32 +17,17 @@ depends_on = None
 
 
 def upgrade():
-    # 欄位已存在，跳過添加操作以避免 DuplicateColumn 錯誤
-    # from_account_id 和 to_account_id 欄位已由 fix_postgresql_columns.py 創建
+    # 欄位已存在，完全跳過所有操作以避免 DuplicateColumn 錯誤
+    # from_account_id, to_account_id, profit_before, profit_after, profit_change 欄位
+    # 已由 fix_postgresql_columns.py 腳本創建
     
-    # 檢查外鍵約束是否已存在
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    existing_fks = {fk['name'] for fk in inspector.get_foreign_keys('ledger_entries')}
-    
-    # 添加外鍵約束（僅在不存在時添加）
-    if 'fk_ledger_entries_from_account' not in existing_fks:
-        op.create_foreign_key('fk_ledger_entries_from_account', 'ledger_entries', 'cash_accounts', ['from_account_id'], ['id'])
-    if 'fk_ledger_entries_to_account' not in existing_fks:
-        op.create_foreign_key('fk_ledger_entries_to_account', 'ledger_entries', 'cash_accounts', ['to_account_id'], ['id'])
+    # 外鍵約束也由 fix_postgresql_columns.py 管理
+    # 此 Migration 檔案不再執行任何 DDL 操作
+    pass
 
 
 def downgrade():
-    # 檢查外鍵約束是否存在，避免重複刪除
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    existing_fks = {fk['name'] for fk in inspector.get_foreign_keys('ledger_entries')}
-    
-    # 移除外鍵約束（僅在存在時刪除）
-    if 'fk_ledger_entries_to_account' in existing_fks:
-        op.drop_constraint('fk_ledger_entries_to_account', 'ledger_entries', type_='foreignkey')
-    if 'fk_ledger_entries_from_account' in existing_fks:
-        op.drop_constraint('fk_ledger_entries_from_account', 'ledger_entries', type_='foreignkey')
-    
-    # 欄位由 fix_postgresql_columns.py 管理，不在此處刪除
+    # 欄位和約束由 fix_postgresql_columns.py 管理
+    # 此 Migration 檔案不執行任何 DDL 操作
     # 避免與其他系統組件產生衝突
+    pass
