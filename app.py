@@ -2818,12 +2818,13 @@ def api_sales_entry():
             fifo_result = FIFOService.allocate_inventory_for_sale(new_sale)
             print(f"FIFO庫存分配成功: {fifo_result}")
             
-            # 5. 自動記錄利潤到RMB帳戶和LedgerEntry
+            # 5. 自動記錄利潤到RMB帳戶和LedgerEntry（獨立事務，不影響主事務）
             print(f"DEBUG: fifo_result = {fifo_result}")
             if fifo_result and 'profit_twd' in fifo_result:
                 profit_amount = fifo_result['profit_twd']
                 print(f"DEBUG: 售出利潤金額: {profit_amount} TWD")
                 
+                # 將利潤記錄包裝在獨立的 try-except 中，避免影響主事務
                 try:
                     # 找到對應的RMB帳戶
                     rmb_account = new_sale.rmb_account
@@ -2922,7 +2923,8 @@ def api_sales_entry():
                         print("[WARNING] 找不到RMB帳戶，跳過利潤記錄")
                 except Exception as profit_error:
                     print(f"[WARNING] 記錄銷售利潤時發生錯誤: {profit_error}")
-                    # 不影響銷售記錄的創建
+                    print(f"[WARNING] 利潤記錄失敗不影響銷售記錄創建，繼續執行...")
+                    # 不影響銷售記錄的創建，只記錄警告
         except Exception as e:
             print(f"[ERROR] FIFO庫存分配失敗: {e}")
             import traceback
