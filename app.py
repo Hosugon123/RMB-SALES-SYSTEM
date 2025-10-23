@@ -2663,7 +2663,7 @@ def api_sales_entry():
                 return None
         
         def safe_convert_to_float(value, field_name):
-            """安全地將值轉換為浮點數"""
+            """安全地將值轉換為浮點數，支援貨幣符號和逗號"""
             if not value or value == "":
                 return None
             try:
@@ -2671,6 +2671,19 @@ def api_sales_entry():
                 str_value = str(value).strip()
                 if not str_value:
                     return None
+                
+                # 移除常見的貨幣符號和格式字符
+                import re
+                # 移除貨幣符號：NT$, $, ¥, €, £, 等
+                str_value = re.sub(r'[NT$¥€£$]', '', str_value)
+                # 移除千位分隔符號（逗號）
+                str_value = str_value.replace(',', '')
+                # 移除多餘的空白
+                str_value = str_value.strip()
+                
+                if not str_value:
+                    return None
+                    
                 return float(str_value)
             except (ValueError, TypeError) as e:
                 print(f"DEBUG: {field_name} 轉換失敗: '{value}' -> {e}")
