@@ -590,8 +590,7 @@ class ProfitService:
             account.profit_balance += amount
             balance_after = account.profit_balance
             
-            # 同步更新總金額（利潤變動時總金額也要變動）
-            account.balance += amount
+            # 注意：不修改 account.balance，利潤應獨立於營運資金
             
             # 創建利潤交易記錄
             profit_transaction = ProfitTransaction(
@@ -643,8 +642,7 @@ class ProfitService:
             account.profit_balance -= amount
             balance_after = account.profit_balance
             
-            # 同步更新總金額（利潤變動時總金額也要變動）
-            account.balance -= amount
+            # 注意：不修改 account.balance，利潤應獨立於營運資金
             
             # 創建利潤交易記錄
             profit_transaction = ProfitTransaction(
@@ -694,8 +692,7 @@ class ProfitService:
             account.profit_balance = new_balance
             balance_after = new_balance
             
-            # 同步更新總金額（利潤變動時總金額也要變動）
-            account.balance += adjustment_amount
+            # 注意：不修改 account.balance，利潤應獨立於營運資金
             
             # 創建利潤交易記錄
             profit_transaction = ProfitTransaction(
