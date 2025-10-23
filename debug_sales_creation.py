@@ -1,145 +1,377 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-售出功能調試腳本
-檢查售出記錄建立和顯示問題
+銷售訂單創建診斷腳本
+檢查銷售記錄是否正確創建和顯示
 """
 
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from app import app, db
-from models import SalesRecord, Customer, CashAccount, LedgerEntry
+import sys
 from datetime import datetime, date
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 
-def debug_sales_creation():
-    """調試售出記錄建立問題"""
-    print("🔍 開始調試售出記錄建立問題...")
+def create_app():
+    """創建Flask應用程式實例"""
+    app = Flask(__name__)
     
-    with app.app_context():
-        try:
-            # 1. 檢查最新的售出記錄
-            latest_sales = db.session.execute(
-                db.select(SalesRecord)
-                .order_by(SalesRecord.created_at.desc())
-                .limit(10)
-            ).scalars().all()
+    # 資料庫配置
+    if os.environ.get('DATABASE_URL'):
+        database_url = os.environ.get('DATABASE_URL')
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql+psycopg://', 1)
+        elif database_url.startswith('postgresql://'):
+            database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+        app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    else:
+        # 本地測試使用 SQLite
+        app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///instance/sales_system_v4.db"
+    
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    return app
+
+def check_database_connection():
+    """檢查資料庫連接"""
+    print("=" * 60)
+    print("1. 檢查資料庫連接")
+    print("=" * 60)
+    
+    app = create_app()
+    db = SQLAlchemy(app)
+    
+    try:
+        with app.app_context():
+            # 檢查資料庫連接
+            result = db.session.execute(text("SELECT 1")).scalar()
+            print(f"[OK] 資料庫連接成功: {result}")
             
-            print(f"📊 最新10筆售出記錄:")
-            for i, sale in enumerate(latest_sales):
-                print(f"  {i+1}. ID: {sale.id}")
-                print(f"     客戶: {sale.customer.name if sale.customer else 'None'}")
-                print(f"     RMB帳戶: {sale.rmb_account.name if s.rmb_account else 'None'}")
-                print(f"     操作者: {sale.operator.username if s.operator else 'None'}")
-                print(f"     RMB金額: {sale.rmb_amount}")
-                print(f"     台幣金額: {sale.twd_amount}")
-                print(f"     是否結清: {sale.is_settled}")
-                print(f"     建立時間: {sale.created_at}")
-                print(f"     ---")
+            # 檢查資料庫類型
+            database_url = str(db.engine.url)
+            print(f"[INFO] 資料庫類型: {database_url.split('://')[0]}")
             
-            # 2. 檢查未結清的售出記錄
-            unsettled_sales = db.session.execute(
-                db.select(SalesRecord)
-                .filter_by(is_settled=False)
-                .order_by(SalesRecord.created_at.desc())
-                .limit(10)
-            ).scalars().all()
+            return True, db, app
+    except Exception as e:
+        print(f"❌ 資料庫連接失敗: {e}")
+        return False, None, None
+
+def check_tables_exist(db):
+    """檢查必要表格是否存在"""
+    print("\n" + "=" * 60)
+    print("2. 檢查必要表格")
+    print("=" * 60)
+    
+    try:
+        with db.app.app_context():
+            # 檢查所有表格
+            tables_query = text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public'
+                ORDER BY table_name
+            """)
             
-            print(f"\n📋 未結清的售出記錄 ({len(unsettled_sales)} 筆):")
-            for i, sale in enumerate(unsettled_sales):
-                print(f"  {i+1}. ID: {sale.id} - {sale.customer.name if sale.customer else 'None'} - RMB {sale.rmb_amount} - {sale.created_at}")
+            result = db.session.execute(tables_query).fetchall()
+            tables = [row[0] for row in result]
             
-            # 3. 檢查今天建立的售出記錄
-            today = date.today()
-            today_sales = db.session.execute(
-                db.select(SalesRecord)
-                .filter(SalesRecord.created_at >= today)
-                .order_by(SalesRecord.created_at.desc())
-            ).scalars().all()
+            print(f"📋 現有表格: {tables}")
             
-            print(f"\n📅 今天建立的售出記錄 ({len(today_sales)} 筆):")
-            for i, sale in enumerate(today_sales):
-                print(f"  {i+1}. ID: {sale.id} - {sale.customer.name if sale.customer else 'None'} - RMB {sale.rmb_amount} - {sale.created_at}")
+            # 檢查關鍵表格
+            required_tables = [
+                'sales_records', 'customers', 'cash_accounts', 
+                'ledger_entries', 'fifo_sales_allocations'
+            ]
             
-            # 4. 檢查利潤記錄
-            latest_profit_entries = db.session.execute(
-                db.select(LedgerEntry)
-                .filter(
-                    (LedgerEntry.description.like("%售出利潤%")) |
-                    (LedgerEntry.entry_type == "PROFIT_EARNED")
-                )
-                .order_by(LedgerEntry.entry_date.desc())
-                .limit(10)
-            ).scalars().all()
+            missing_tables = []
+            for table in required_tables:
+                if table in tables:
+                    print(f"✅ 表格存在: {table}")
+                else:
+                    print(f"❌ 表格缺失: {table}")
+                    missing_tables.append(table)
             
-            print(f"\n💰 最新10筆利潤記錄:")
-            for i, entry in enumerate(latest_profit_entries):
-                print(f"  {i+1}. ID: {entry.id}")
-                print(f"     描述: {entry.description}")
-                print(f"     金額: {entry.amount}")
-                print(f"     類型: {entry.entry_type}")
-                print(f"     時間: {entry.entry_date}")
-                print(f"     ---")
-            
-            # 5. 檢查資料庫約束問題
-            print(f"\n🔧 檢查資料庫約束...")
-            
-            # 檢查是否有NULL的is_settled
-            null_is_settled = db.session.execute(
-                db.select(SalesRecord)
-                .filter(SalesRecord.is_settled.is_(None))
-            ).scalars().all()
-            
-            if null_is_settled:
-                print(f"❌ 發現 {len(null_is_settled)} 筆售出記錄缺少is_settled:")
-                for sale in null_is_settled:
-                    print(f"  ID: {sale.id} - 客戶: {sale.customer.name if sale.customer else 'None'}")
+            if missing_tables:
+                print(f"\n⚠️ 缺少關鍵表格: {missing_tables}")
+                return False
             else:
-                print(f"✅ 所有售出記錄都有is_settled設置")
+                print("\n✅ 所有關鍵表格都存在")
+                return True
+                
+    except Exception as e:
+        print(f"❌ 檢查表格時發生錯誤: {e}")
+        return False
+
+def check_sales_records(db):
+    """檢查銷售記錄"""
+    print("\n" + "=" * 60)
+    print("3. 檢查銷售記錄")
+    print("=" * 60)
+    
+    try:
+        with db.app.app_context():
+            # 檢查銷售記錄總數
+            count_query = text("SELECT COUNT(*) FROM sales_records")
+            total_count = db.session.execute(count_query).scalar()
+            print(f"📊 銷售記錄總數: {total_count}")
             
-            # 檢查是否有NULL的rmb_account_id
-            null_rmb_account = db.session.execute(
-                db.select(SalesRecord)
-                .filter(SalesRecord.rmb_account_id.is_(None))
-            ).scalars().all()
-            
-            if null_rmb_account:
-                print(f"❌ 發現 {len(null_rmb_account)} 筆售出記錄缺少rmb_account_id:")
-                for sale in null_rmb_account:
-                    print(f"  ID: {sale.id} - 客戶: {sale.customer.name if sale.customer else 'None'}")
+            if total_count > 0:
+                # 檢查最近的銷售記錄
+                recent_query = text("""
+                    SELECT id, customer_id, rmb_account_id, twd_amount, rmb_amount, 
+                           exchange_rate, is_settled, created_at
+                    FROM sales_records 
+                    ORDER BY created_at DESC 
+                    LIMIT 5
+                """)
+                
+                result = db.session.execute(recent_query).fetchall()
+                print(f"\n📋 最近5筆銷售記錄:")
+                for row in result:
+                    print(f"  ID: {row[0]}, 客戶: {row[1]}, RMB帳戶: {row[2]}, "
+                          f"TWD: {row[3]}, RMB: {row[4]}, 匯率: {row[5]}, "
+                          f"已結算: {row[6]}, 創建時間: {row[7]}")
+                
+                # 檢查未結算的銷售記錄
+                unsettled_query = text("SELECT COUNT(*) FROM sales_records WHERE is_settled = false")
+                unsettled_count = db.session.execute(unsettled_query).scalar()
+                print(f"\n📊 未結算銷售記錄: {unsettled_count}")
+                
+                return True
             else:
-                print(f"✅ 所有售出記錄都有rmb_account_id")
+                print("❌ 沒有找到任何銷售記錄")
+                return False
+                
+    except Exception as e:
+        print(f"❌ 檢查銷售記錄時發生錯誤: {e}")
+        return False
+
+def check_ledger_entries(db):
+    """檢查記帳記錄"""
+    print("\n" + "=" * 60)
+    print("4. 檢查記帳記錄")
+    print("=" * 60)
+    
+    try:
+        with db.app.app_context():
+            # 檢查記帳記錄總數
+            count_query = text("SELECT COUNT(*) FROM ledger_entries")
+            total_count = db.session.execute(count_query).scalar()
+            print(f"📊 記帳記錄總數: {total_count}")
             
-            # 6. 檢查客戶和帳戶關聯
-            print(f"\n🔗 檢查關聯完整性...")
-            
-            broken_customer_links = db.session.execute(
-                db.select(SalesRecord)
-                .filter(SalesRecord.customer_id.isnot(None))
-                .filter(~SalesRecord.customer.has())
-            ).scalars().all()
-            
-            if broken_customer_links:
-                print(f"❌ 發現 {len(broken_customer_links)} 筆售出記錄有無效的客戶關聯")
+            if total_count > 0:
+                # 檢查最近的記帳記錄
+                recent_query = text("""
+                    SELECT id, entry_type, account_id, amount, description, 
+                           entry_date, operator_id
+                    FROM ledger_entries 
+                    ORDER BY entry_date DESC 
+                    LIMIT 5
+                """)
+                
+                result = db.session.execute(recent_query).fetchall()
+                print(f"\n📋 最近5筆記帳記錄:")
+                for row in result:
+                    print(f"  ID: {row[0]}, 類型: {row[1]}, 帳戶: {row[2]}, "
+                          f"金額: {row[3]}, 描述: {row[4]}, 日期: {row[5]}, "
+                          f"操作員: {row[6]}")
+                
+                # 檢查利潤相關記錄
+                profit_query = text("SELECT COUNT(*) FROM ledger_entries WHERE entry_type = 'PROFIT_EARNED'")
+                profit_count = db.session.execute(profit_query).scalar()
+                print(f"\n📊 利潤入庫記錄: {profit_count}")
+                
+                return True
             else:
-                print(f"✅ 所有售出記錄的客戶關聯都正常")
+                print("❌ 沒有找到任何記帳記錄")
+                return False
+                
+    except Exception as e:
+        print(f"❌ 檢查記帳記錄時發生錯誤: {e}")
+        return False
+
+def check_customers_and_accounts(db):
+    """檢查客戶和帳戶"""
+    print("\n" + "=" * 60)
+    print("5. 檢查客戶和帳戶")
+    print("=" * 60)
+    
+    try:
+        with db.app.app_context():
+            # 檢查客戶
+            customer_query = text("SELECT COUNT(*) FROM customers")
+            customer_count = db.session.execute(customer_query).scalar()
+            print(f"📊 客戶總數: {customer_count}")
             
-            broken_account_links = db.session.execute(
-                db.select(SalesRecord)
-                .filter(SalesRecord.rmb_account_id.isnot(None))
-                .filter(~SalesRecord.rmb_account.has())
-            ).scalars().all()
+            if customer_count > 0:
+                recent_customers = db.session.execute(text("""
+                    SELECT id, name, total_receivables_twd 
+                    FROM customers 
+                    ORDER BY id DESC 
+                    LIMIT 3
+                """)).fetchall()
+                
+                print(f"📋 最近3個客戶:")
+                for row in recent_customers:
+                    print(f"  ID: {row[0]}, 姓名: {row[1]}, 應收帳款: {row[2]}")
             
-            if broken_account_links:
-                print(f"❌ 發現 {len(broken_account_links)} 筆售出記錄有無效的帳戶關聯")
+            # 檢查現金帳戶
+            account_query = text("SELECT COUNT(*) FROM cash_accounts")
+            account_count = db.session.execute(account_query).scalar()
+            print(f"\n📊 現金帳戶總數: {account_count}")
+            
+            if account_count > 0:
+                recent_accounts = db.session.execute(text("""
+                    SELECT id, account_name, account_type, balance_twd, balance_rmb
+                    FROM cash_accounts 
+                    ORDER BY id DESC 
+                    LIMIT 3
+                """)).fetchall()
+                
+                print(f"📋 最近3個帳戶:")
+                for row in recent_accounts:
+                    print(f"  ID: {row[0]}, 名稱: {row[1]}, 類型: {row[2]}, "
+                          f"TWD餘額: {row[3]}, RMB餘額: {row[4]}")
+            
+            return True
+            
+    except Exception as e:
+        print(f"❌ 檢查客戶和帳戶時發生錯誤: {e}")
+        return False
+
+def check_fifo_allocations(db):
+    """檢查FIFO分配記錄"""
+    print("\n" + "=" * 60)
+    print("6. 檢查FIFO分配記錄")
+    print("=" * 60)
+    
+    try:
+        with db.app.app_context():
+            # 檢查FIFO分配記錄總數
+            count_query = text("SELECT COUNT(*) FROM fifo_sales_allocations")
+            total_count = db.session.execute(count_query).scalar()
+            print(f"📊 FIFO分配記錄總數: {total_count}")
+            
+            if total_count > 0:
+                # 檢查最近的FIFO分配記錄
+                recent_query = text("""
+                    SELECT id, sales_record_id, fifo_inventory_id, allocated_quantity, 
+                           allocated_cost_twd, allocated_profit_twd
+                    FROM fifo_sales_allocations 
+                    ORDER BY id DESC 
+                    LIMIT 5
+                """)
+                
+                result = db.session.execute(recent_query).fetchall()
+                print(f"\n📋 最近5筆FIFO分配記錄:")
+                for row in result:
+                    print(f"  ID: {row[0]}, 銷售記錄: {row[1]}, 庫存: {row[2]}, "
+                          f"分配數量: {row[3]}, 分配成本: {row[4]}, 分配利潤: {row[5]}")
+                
+                return True
             else:
-                print(f"✅ 所有售出記錄的帳戶關聯都正常")
+                print("❌ 沒有找到任何FIFO分配記錄")
+                return False
+                
+    except Exception as e:
+        print(f"❌ 檢查FIFO分配記錄時發生錯誤: {e}")
+        return False
+
+def test_sales_creation_api(db):
+    """測試銷售創建API"""
+    print("\n" + "=" * 60)
+    print("7. 測試銷售創建API")
+    print("=" * 60)
+    
+    try:
+        with db.app.app_context():
+            # 檢查是否有可用的客戶和帳戶
+            customer_query = text("SELECT id, name FROM customers LIMIT 1")
+            customer_result = db.session.execute(customer_query).fetchone()
             
-        except Exception as e:
-            print(f"❌ 調試過程中發生錯誤: {e}")
-            import traceback
-            traceback.print_exc()
+            account_query = text("SELECT id, account_name FROM cash_accounts WHERE account_type = 'RMB' LIMIT 1")
+            account_result = db.session.execute(account_query).fetchone()
+            
+            if not customer_result:
+                print("❌ 沒有可用的客戶")
+                return False
+            
+            if not account_result:
+                print("❌ 沒有可用的RMB帳戶")
+                return False
+            
+            print(f"✅ 找到測試客戶: ID={customer_result[0]}, 姓名={customer_result[1]}")
+            print(f"✅ 找到測試帳戶: ID={account_result[0]}, 名稱={account_result[1]}")
+            
+            # 記錄創建前的狀態
+            before_count = db.session.execute(text("SELECT COUNT(*) FROM sales_records")).scalar()
+            print(f"📊 創建前銷售記錄數: {before_count}")
+            
+            return True
+            
+    except Exception as e:
+        print(f"❌ 測試銷售創建API時發生錯誤: {e}")
+        return False
+
+def main():
+    """主函數"""
+    print("銷售訂單創建診斷腳本")
+    print("=" * 60)
+    
+    # 1. 檢查資料庫連接
+    success, db, app = check_database_connection()
+    if not success:
+        print("\n❌ 診斷失敗：無法連接到資料庫")
+        return False
+    
+    # 2. 檢查必要表格
+    if not check_tables_exist(db):
+        print("\n❌ 診斷失敗：缺少必要表格")
+        return False
+    
+    # 3. 檢查銷售記錄
+    sales_exist = check_sales_records(db)
+    
+    # 4. 檢查記帳記錄
+    ledger_exist = check_ledger_entries(db)
+    
+    # 5. 檢查客戶和帳戶
+    check_customers_and_accounts(db)
+    
+    # 6. 檢查FIFO分配記錄
+    check_fifo_allocations(db)
+    
+    # 7. 測試銷售創建API
+    test_sales_creation_api(db)
+    
+    # 總結
+    print("\n" + "=" * 60)
+    print("診斷總結")
+    print("=" * 60)
+    
+    if sales_exist:
+        print("✅ 銷售記錄存在 - 問題可能在於前端顯示")
+        print("   建議檢查:")
+        print("   1. 現金管理頁面的API調用")
+        print("   2. 前端JavaScript的數據處理")
+        print("   3. 瀏覽器控制台的錯誤信息")
+    else:
+        print("❌ 銷售記錄不存在 - 問題在於後端創建")
+        print("   建議檢查:")
+        print("   1. api_sales_entry 函數的執行")
+        print("   2. 資料庫事務是否正確提交")
+        print("   3. 錯誤處理和日誌記錄")
+    
+    if ledger_exist:
+        print("✅ 記帳記錄存在")
+    else:
+        print("❌ 記帳記錄不存在")
+    
+    print("\n🔧 下一步建議:")
+    print("1. 檢查瀏覽器開發者工具的Network標籤")
+    print("2. 查看後端日誌中的錯誤信息")
+    print("3. 測試手動創建銷售記錄")
+    print("4. 檢查資料庫事務隔離級別")
+    
+    return True
 
 if __name__ == "__main__":
-    debug_sales_creation()
+    main()
