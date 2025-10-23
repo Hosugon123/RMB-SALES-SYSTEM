@@ -2807,8 +2807,10 @@ def api_sales_entry():
                 
                 # 移除常見的貨幣符號和格式字符
                 import re
-                # 移除貨幣符號：NT$, $, ¥, €, £, 等
-                str_value = re.sub(r'[NT$¥€£$]', '', str_value)
+                # 移除貨幣符號：NT$, NT, $, ¥, ￥, €, £, 等
+                str_value = re.sub(r'[NT$¥￥€£$]', '', str_value)
+                # 特別處理 NT$ 和 NT 符號
+                str_value = str_value.replace('NT$', '').replace('NT', '')
                 # 移除千位分隔符號（逗號）
                 str_value = str_value.replace(',', '')
                 # 移除多餘的空白
