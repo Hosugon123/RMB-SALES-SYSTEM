@@ -2551,24 +2551,7 @@ window.renderMovements = function(transactions) {
         // 新增：入款戶餘額變化顯示
         let depositAccountBalanceHtml = '-';
         
-        // 如果是售出記錄且有客戶應收帳款餘額變化，顯示客戶個人應收帳款變化（與客戶交易紀錄頁面完全一致的樣式）
-        if (m.type === '售出' && m.customer_receivable_balance) {
-            const customerBalance = m.customer_receivable_balance;
-            const before = (customerBalance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
-            const change = (customerBalance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
-            const after = (customerBalance.after || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
-            const changeColor = (customerBalance.change || 0) > 0 ? 'text-success' : (customerBalance.change || 0) < 0 ? 'text-danger' : 'text-muted';
-            const changeSymbol = (customerBalance.change || 0) > 0 ? '+' : '';
-            
-            // 使用與客戶交易紀錄頁面完全一致的樣式
-            depositAccountBalanceHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border-left: 4px solid #2196f3;">' +
-                '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #2196f3; padding-bottom: 4px; margin-bottom: 4px;">' + (customerBalance.description || '應收帳款') + '</div>' +
-                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
-                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
-                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
-                '</div>';
-        } else if (m.deposit_account_balance) {
-            // 其他記錄使用原來的顯示方式
+        if (m.deposit_account_balance) {
             const balance = m.deposit_account_balance;
             const before = (balance.before || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
             const change = (balance.change || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
@@ -2576,12 +2559,23 @@ window.renderMovements = function(transactions) {
             const changeColor = (balance.change || 0) > 0 ? 'text-success' : (balance.change || 0) < 0 ? 'text-danger' : 'text-muted';
             const changeSymbol = (balance.change || 0) > 0 ? '+' : '';
             
-            depositAccountBalanceHtml = '<div class="card" style="background-color: #f5f5f5; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
-                '<div class="text-success fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #28a745; padding-bottom: 4px; margin-bottom: 4px;">' + depositAccount + '</div>' +
-                '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
-                '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
-                '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
-                '</div>';
+            // 如果是售出記錄，使用特殊的藍色卡片樣式（與客戶交易紀錄頁面一致）
+            if (m.type === '售出') {
+                depositAccountBalanceHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px; border-left: 4px solid #2196f3;">' +
+                    '<div class="text-primary fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #2196f3; padding-bottom: 4px; margin-bottom: 4px;">' + (balance.description || '應收帳款') + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '</div>';
+            } else {
+                // 其他記錄使用原來的顯示方式
+                depositAccountBalanceHtml = '<div class="card" style="background-color: #f5f5f5; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">' +
+                    '<div class="text-success fw-bold" style="font-size: 0.85rem; text-align: right; border-bottom: 1px solid #28a745; padding-bottom: 4px; margin-bottom: 4px;">' + depositAccount + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">前: ' + before + '</div>' +
+                    '<div class="' + changeColor + ' fw-bold" style="font-size: 0.8rem;">變動: ' + changeSymbol + change + '</div>' +
+                    '<div class="text-dark" style="font-size: 0.8rem;">後: ' + after + '</div>' +
+                    '</div>';
+            }
         }
 
         // 新增：RMB帳戶餘額變化顯示

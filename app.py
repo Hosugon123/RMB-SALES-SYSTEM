@@ -8633,12 +8633,19 @@ def get_cash_management_transactions():
                         "description": "售出利潤"
                     },
                     
-                    # 新增：客戶個人應收帳款餘額變化
-                    "customer_receivable_balance": {
+                    # 出款戶餘額變化（RMB帳戶）
+                    "payment_account_balance": {
+                        "before": round(rmb_balance_before, 2),
+                        "change": round(rmb_balance_change, 2),
+                        "after": round(rmb_balance_after, 2),
+                        "description": f"RMB帳戶「{rmb_account_name}」餘額"
+                    },
+                    
+                    # 入款戶餘額變化（客戶應收帳款）- 使用標準字段
+                    "deposit_account_balance": {
                         "before": round(customer_receivable_before, 2),
                         "change": round(customer_receivable_change, 2),
                         "after": round(customer_receivable_after, 2),
-                        "customer_name": customer_name,
                         "description": f"客戶「{customer_name}」應收帳款"
                     }
                 }
@@ -8678,7 +8685,7 @@ def get_cash_management_transactions():
 
         # 處理其他記帳記錄（包含利潤提款）
         for entry in misc_entries:
-            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT"]:
+            if entry.entry_type not in ["BUY_IN_DEBIT", "BUY_IN_CREDIT", "SETTLEMENT", "PROFIT_EARNED"]:
                 twd_change = 0
                 rmb_change = 0
                 
