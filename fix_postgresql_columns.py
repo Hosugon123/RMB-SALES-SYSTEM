@@ -131,6 +131,28 @@ def test_ledger_entry_creation():
     
     try:
         with app.app_context():
+            # 動態查詢現有的 cash_accounts.id
+            account_query = text("SELECT id FROM cash_accounts LIMIT 1")
+            account_result = db.session.execute(account_query).fetchone()
+            
+            if not account_result:
+                print("⚠️ 沒有找到現有的 cash_accounts 記錄，跳過測試")
+                return True
+            
+            account_id = account_result[0]
+            print(f"✅ 找到現有帳戶 ID: {account_id}")
+            
+            # 動態查詢現有的 user.id (operator_id)
+            user_query = text("SELECT id FROM \"user\" LIMIT 1")
+            user_result = db.session.execute(user_query).fetchone()
+            
+            if not user_result:
+                print("⚠️ 沒有找到現有的 user 記錄，跳過測試")
+                return True
+            
+            operator_id = user_result[0]
+            print(f"✅ 找到現有用戶 ID: {operator_id}")
+            
             # 測試插入LedgerEntry
             test_query = text("""
                 INSERT INTO ledger_entries (
@@ -144,11 +166,11 @@ def test_ledger_entry_creation():
             
             result = db.session.execute(test_query, {
                 'entry_type': 'TEST',
-                'account_id': 1,
+                'account_id': account_id,
                 'amount': 0.01,
                 'description': '欄位修復測試',
                 'entry_date': '2024-01-01 12:00:00',
-                'operator_id': 1,
+                'operator_id': operator_id,
                 'from_account_id': None,
                 'to_account_id': None,
                 'profit_before': None,

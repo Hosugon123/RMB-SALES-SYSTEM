@@ -5,7 +5,7 @@ services:
     name: rmb-sales-system
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python fix_postgresql_columns.py && flask db upgrade && gunicorn app:app
+    startCommand: python fix_postgresql_columns.py && flask db upgrade heads && gunicorn app:app -w 4 -b 0.0.0.0:${PORT}
     envVars:
       - key: FLASK_ENV
         value: production
