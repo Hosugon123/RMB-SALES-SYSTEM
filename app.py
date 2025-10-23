@@ -1957,6 +1957,74 @@ def sync_profit_balance_command():
     return 0
 
 
+@app.cli.command("cleanup-profit-balance")
+def cleanup_profit_balance_command():
+    """一次性命令：從 CashAccount.balance 中扣除所有錯誤累積的 profit_balance"""
+    try:
+        print("開始清理利潤餘額...")
+        
+        # 獲取所有現金帳戶
+        accounts = db.session.execute(db.select(CashAccount)).scalars().all()
+        total_adjustments = 0
+        processed_accounts = 0
+        
+        for account in accounts:
+            if account.profit_balance > 0:
+                print(f"處理帳戶: {account.name} (ID: {account.id})")
+                print(f"  原始總金額: {account.balance:.2f}")
+                print(f"  利潤餘額: {account.profit_balance:.2f}")
+                
+                # 記錄調整前的狀態
+                balance_before = account.balance
+                profit_before = account.profit_balance
+                
+                # 從總金額中扣除利潤餘額
+                account.balance -= account.profit_balance
+                balance_after = account.balance
+                
+                # 將利潤餘額設置為 0
+                account.profit_balance = 0
+                
+                print(f"  調整後總金額: {account.balance:.2f}")
+                print(f"  調整後利潤餘額: {account.profit_balance:.2f}")
+                print(f"  總金額變動: {balance_after - balance_before:.2f}")
+                
+                # 創建 LedgerEntry 記錄
+                ledger_entry = LedgerEntry(
+                    entry_type="PROFIT_ADJUSTMENT",
+                    amount=balance_after - balance_before,  # 負數表示扣除
+                    description="歷史數據清理：從總餘額中移除錯誤累積的利潤",
+                    operator_id=get_safe_operator_id(),
+                    profit_before=profit_before,
+                    profit_after=0,
+                    profit_change=-profit_before
+                )
+                
+                db.session.add(ledger_entry)
+                total_adjustments += abs(balance_after - balance_before)
+                processed_accounts += 1
+                
+                print(f"  已創建 LedgerEntry 記錄 (ID: {ledger_entry.id})")
+                print("  ---")
+        
+        # 提交所有變更
+        db.session.commit()
+        
+        print(f"\n清理完成！")
+        print(f"處理帳戶數量: {processed_accounts}")
+        print(f"總調整金額: {total_adjustments:.2f}")
+        print("所有錯誤累積的利潤餘額已從總金額中扣除，並記錄在 LedgerEntry 中。")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"清理利潤餘額時發生錯誤: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
+
+
 # <---【移除】舊的 init-db 命令，完全由 Flask-Migrate 取代
 
 
