@@ -2163,6 +2163,51 @@ def fix_ar_command(customer_id, correct_amount):
     print("✅ 單個客戶 AR 數據清洗完成。")
 
 
+@app.cli.command("rebuild-customer-ar")
+def rebuild_customer_ar_command():
+    """強制依據 SalesRecord.is_settled 欄位重建所有客戶的應收帳款總額"""
+    from sqlalchemy import func
+    
+    print("\n🚀 開始執行所有客戶應收帳款強制重建...")
+    
+    try:
+        # 遍歷所有客戶
+        customers = db.session.execute(db.select(Customer)).scalars().all()
+        total_rebuilt = 0
+        
+        for customer in customers:
+            # 查詢該客戶所有 '未結清' 的 SalesRecord 總和
+            total_receivables = db.session.execute(
+                db.select(func.sum(SalesRecord.twd_amount))
+                .filter(SalesRecord.customer_id == customer.id)
+                .filter(SalesRecord.is_settled == False) 
+            ).scalar()
+            
+            new_total_receivables = total_receivables if total_receivables is not None else 0.0
+            
+            # 更新客戶記錄
+            old_receivables = customer.total_receivables_twd
+            customer.total_receivables_twd = new_total_receivables
+            
+            if old_receivables != new_total_receivables:
+                print(f"✅ 客戶 {customer.name} AR 已重建: NT$ {old_receivables:,.2f} -> NT$ {new_total_receivables:,.2f}")
+                total_rebuilt += 1
+            else:
+                print(f"   客戶 {customer.name} AR 無需重建: NT$ {old_receivables:,.2f}")
+    
+        db.session.commit()
+        print(f"\n✅ 所有客戶應收帳款重建完成。共重建 {total_rebuilt} 個客戶。")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 應收帳款重建失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
+
+
 # <---【移除】舊的 init-db 命令，完全由 Flask-Migrate 取代
 
 
