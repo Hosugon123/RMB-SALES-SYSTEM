@@ -1,5 +1,6 @@
 ﻿import os
 import traceback
+import click
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -2106,6 +2107,60 @@ def recalculate_all_receivables_command():
         return 1
     
     return 0
+
+
+def force_set_receivables(customer_id: int, correct_amount: float):
+    """內部函數：強制設置客戶的應收帳款總額，並記錄在 LedgerEntry 中。"""
+    from datetime import datetime
+    
+    try:
+        customer = db.session.get(Customer, customer_id)
+        if not customer:
+            print(f"❌ 錯誤: 找不到客戶 ID {customer_id}")
+            return False
+
+        old_receivables = customer.total_receivables_twd
+        
+        if old_receivables == correct_amount:
+            print(f"✅ 客戶 {customer.name} AR 已經是正確值: NT$ {correct_amount:,.2f}")
+            return True
+            
+        # 1. 設置正確的應收帳款數字
+        customer.total_receivables_twd = correct_amount
+        
+        # 2. 記錄到 LedgerEntry (用於審計)
+        adjustment_amount = correct_amount - old_receivables
+        description = f"數據清洗：手動校正 AR 總額 ({old_receivables:,.2f} -> {correct_amount:,.2f})"
+        
+        ledger_entry = LedgerEntry(
+            entry_type="AR_ADJUSTMENT",
+            amount=adjustment_amount, 
+            description=description,
+            operator_id=get_safe_operator_id()
+        )
+        db.session.add(ledger_entry)
+        
+        db.session.commit()
+        print(f"🎉 客戶 {customer.name} AR 數據已強制修正!")
+        print(f"   變動: NT$ {old_receivables:,.2f} -> NT$ {correct_amount:,.2f}")
+        return True
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 數據修正失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+@app.cli.command("fix-ar")
+@click.option('--id', 'customer_id', type=int, required=True, help='客戶 ID')
+@click.option('--amount', 'correct_amount', type=float, required=True, help='正確的應收帳款數字')
+def fix_ar_command(customer_id, correct_amount):
+    """強制設置單個客戶的應收帳款總額"""
+    print("\n🚀 開始執行單個客戶 AR 數據清洗...")
+    force_set_receivables(customer_id, correct_amount)
+    print("✅ 單個客戶 AR 數據清洗完成。")
 
 
 # <---【移除】舊的 init-db 命令，完全由 Flask-Migrate 取代
@@ -7239,6 +7294,12 @@ def api_settlement():
         print(f"[FIX] 銷帳API: 準備提交事務...")
         db.session.commit()
         print(f"[OK] 銷帳API: 事務提交成功")
+        
+        # [CRITICAL FIX: 銷帳後強制重新計算 AR，確保數據一致性]
+        print(f"[AR_FIX] 銷帳API: 重新計算客戶應收帳款...")
+        recalculate_customer_receivables(customer_id)
+        db.session.commit()  # 提交 AR 餘額的最終校正值
+        print(f"[AR_FIX] 銷帳API: 客戶 {customer.name} 應收帳款已重新計算並同步")
         
         # 強制刷新對象狀態
         print(f"[FIX] 銷帳API: 刷新對象狀態...")
