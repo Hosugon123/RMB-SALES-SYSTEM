@@ -2208,6 +2208,86 @@ def rebuild_customer_ar_command():
     return 0
 
 
+@app.cli.command("fix-historical-settlements")
+def fix_historical_settlements_command():
+    """修復歷史銷帳數據：根據 LedgerEntry 推斷哪些 SalesRecord 應該已結清"""
+    from sqlalchemy import func
+    from datetime import datetime
+    
+    print("\n🚀 開始修復歷史銷帳數據...")
+    print("⚠️  此操作會根據 LedgerEntry 的銷帳記錄，推斷並標記對應的 SalesRecord 為已結清")
+    
+    try:
+        # 遍歷所有客戶
+        customers = db.session.execute(db.select(Customer)).scalars().all()
+        total_fixed = 0
+        
+        for customer in customers:
+            print(f"\n處理客戶: {customer.name} (ID: {customer.id})")
+            
+            # 1. 查詢該客戶的所有銷帳記錄（從 LedgerEntry）
+            settlement_entries = db.session.execute(
+                db.select(LedgerEntry)
+                .filter(LedgerEntry.entry_type == "SETTLEMENT")
+                .filter(LedgerEntry.description.like(f"%{customer.name}%"))
+                .order_by(LedgerEntry.entry_date.asc())
+            ).scalars().all()
+            
+            if not settlement_entries:
+                print(f"   - 沒有找到銷帳記錄")
+                continue
+            
+            print(f"   - 找到 {len(settlement_entries)} 筆銷帳記錄")
+            
+            # 2. 查詢該客戶的所有未結清銷售記錄（按時間順序）
+            unsettled_sales = db.session.execute(
+                db.select(SalesRecord)
+                .filter(SalesRecord.customer_id == customer.id)
+                .filter(SalesRecord.is_settled == False)
+                .order_by(SalesRecord.created_at.asc())
+            ).scalars().all()
+            
+            print(f"   - 找到 {len(unsettled_sales)} 筆未結清銷售記錄")
+            
+            # 3. 使用 FIFO 方式標記銷售記錄為已結清
+            for settlement in settlement_entries:
+                settlement_amount = settlement.amount
+                remaining_amount = settlement_amount
+                
+                print(f"   - 處理銷帳: NT$ {settlement_amount:,.2f} ({settlement.entry_date})")
+                
+                for sale in unsettled_sales:
+                    if remaining_amount <= 0:
+                        break
+                    
+                    if sale.twd_amount <= remaining_amount:
+                        # 完全結清這筆訂單
+                        sale.is_settled = True
+                        remaining_amount -= sale.twd_amount
+                        print(f"     ✅ 標記訂單 ID {sale.id} 為已結清 (NT$ {sale.twd_amount:,.2f})")
+                        total_fixed += 1
+                    else:
+                        # 部分結清
+                        print(f"     ⚠️  訂單 ID {sale.id} 部分結清 (剩餘: NT$ {remaining_amount:,.2f})")
+                        break
+                
+                # 從列表中移除已結清的訂單
+                unsettled_sales = [s for s in unsettled_sales if not s.is_settled]
+        
+        db.session.commit()
+        print(f"\n✅ 歷史銷帳數據修復完成。共標記 {total_fixed} 筆訂單為已結清。")
+        print("🔄 現在請執行 'flask rebuild-customer-ar' 來重新計算所有客戶的應收帳款")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 歷史銷帳數據修復失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
+
+
 # <---【移除】舊的 init-db 命令，完全由 Flask-Migrate 取代
 
 
