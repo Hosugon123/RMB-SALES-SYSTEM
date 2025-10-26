@@ -7285,7 +7285,40 @@ def api_settlement():
         # 3. 核心業務邏輯
         print(f"[FIX] 銷帳API: 開始核心業務邏輯...")
         
-        # 更新客戶應收帳款
+        # [CRITICAL FIX: 標記 SalesRecord 為已結清]
+        # 查詢該客戶所有未結清的銷售記錄，按時間順序（先進先出）
+        unsettled_sales = db.session.execute(
+            db.select(SalesRecord)
+            .filter(SalesRecord.customer_id == customer_id)
+            .filter(SalesRecord.is_settled == False)
+            .order_by(SalesRecord.created_at.asc())
+        ).scalars().all()
+        
+        print(f"[AR_FIX] 銷帳API: 找到 {len(unsettled_sales)} 筆未結清銷售記錄")
+        
+        # 使用 FIFO 方式標記銷售記錄為已結清
+        remaining_amount = amount
+        settled_count = 0
+        
+        for sale in unsettled_sales:
+            if remaining_amount <= 0:
+                break
+            
+            if sale.twd_amount <= remaining_amount:
+                # 完全結清這筆訂單
+                sale.is_settled = True
+                remaining_amount -= sale.twd_amount
+                settled_count += 1
+                print(f"[AR_FIX] 銷帳API: 完全結清訂單 ID {sale.id}, 金額: NT$ {sale.twd_amount:,.2f}")
+            else:
+                # 部分結清（這種情況下不標記為已結清，因為還有餘額）
+                print(f"[AR_FIX] 銷帳API: 訂單 ID {sale.id} 部分結清, 剩餘: NT$ {remaining_amount:,.2f}")
+                # 注意：當前系統不支持部分結清，如果需要支持，需要拆分訂單
+                break
+        
+        print(f"[AR_FIX] 銷帳API: 共標記 {settled_count} 筆訂單為已結清")
+        
+        # 更新客戶應收帳款（這個值會被後續的 recalculate_customer_receivables 重新計算）
         old_receivables = customer.total_receivables_twd
         customer.total_receivables_twd -= amount
         print(f"[FIX] 銷帳API: 更新客戶應收帳款 - 原: {old_receivables}, 新: {customer.total_receivables_twd}")
