@@ -2209,13 +2209,45 @@ def rebuild_customer_ar_command():
 
 
 @app.cli.command("fix-historical-settlements")
-def fix_historical_settlements_command():
-    """修復歷史銷帳數據：根據 LedgerEntry 推斷哪些 SalesRecord 應該已結清"""
+@click.option('--reset', is_flag=True, help='先將所有銷售記錄重置為未結清狀態')
+def fix_historical_settlements_command(reset):
+    """修復歷史銷帳數據：根據 LedgerEntry 推斷哪些 SalesRecord 應該已結清
+    
+    ⚠️  警告：此命令應該只執行一次！如果需要重新執行，請先使用 --reset 選項。
+    """
     from sqlalchemy import func
     from datetime import datetime
     
     print("\n🚀 開始修復歷史銷帳數據...")
+    
+    # 如果指定了 --reset，先重置所有記錄
+    if reset:
+        print("⚠️  重置模式：將所有銷售記錄設置為未結清狀態")
+        all_sales = db.session.execute(db.select(SalesRecord)).scalars().all()
+        for sale in all_sales:
+            sale.is_settled = False
+        db.session.commit()
+        print(f"✅ 已重置 {len(all_sales)} 筆銷售記錄為未結清狀態\n")
+    
     print("⚠️  此操作會根據 LedgerEntry 的銷帳記錄，推斷並標記對應的 SalesRecord 為已結清")
+    print("⚠️  此命令應該只執行一次！如果已經執行過，請勿重複執行。\n")
+    
+    # 檢查是否已經執行過（如果有大量已結清記錄，可能已經執行過）
+    if not reset:
+        settled_count = db.session.execute(
+            db.select(func.count(SalesRecord.id))
+            .filter(SalesRecord.is_settled == True)
+        ).scalar()
+        
+        if settled_count > 0:
+            print(f"⚠️  警告：發現 {settled_count} 筆已標記為已結清的記錄")
+            print("⚠️  如果您已經執行過此命令，請勿重複執行！")
+            print("⚠️  如果需要重新執行，請使用 'flask fix-historical-settlements --reset'\n")
+            
+            response = input("是否繼續執行？(yes/no): ")
+            if response.lower() != 'yes':
+                print("❌ 操作已取消")
+                return 1
     
     try:
         # 遍歷所有客戶
