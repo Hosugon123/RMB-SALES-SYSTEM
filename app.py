@@ -566,6 +566,42 @@ class ProfitTransaction(db.Model):
 
 
 # ===================================================================
+# 應收帳款管理服務類
+# ===================================================================
+def recalculate_customer_receivables(customer_id):
+    """
+    重新計算並更新指定客戶的應收帳款總額 (TWD)，以所有未結清銷售記錄為準。
+    """
+    from sqlalchemy import func
+    
+    # 使用獨立的 Session 進行查詢，避免污染當前請求的 Session
+    with db.session.no_autoflush:
+        customer = db.session.get(Customer, customer_id)
+        if not customer:
+            print(f"[ERROR] 重新計算應收帳款失敗：找不到客戶 ID {customer_id}")
+            return False
+
+        # 查詢所有未結清的 SalesRecord (SalesRecord.is_settled == False) 的 TWD 金額總和
+        total_receivables = db.session.execute(
+            db.select(func.sum(SalesRecord.twd_amount))
+            .filter(SalesRecord.customer_id == customer_id)
+            .filter(SalesRecord.is_settled == False)
+        ).scalar()
+        
+        new_total_receivables = total_receivables if total_receivables is not None else 0.0
+        
+        # 更新客戶記錄（不提交，讓主事務處理）
+        old_receivables = customer.total_receivables_twd
+        customer.total_receivables_twd = new_total_receivables
+        
+        # 由於此函數在主事務中被調用，只需 flush，讓主事務提交
+        db.session.flush()
+
+        print(f"[AR_FIX] 客戶 {customer.name} AR 已更新: NT$ {old_receivables:,.2f} -> NT$ {new_total_receivables:,.2f}")
+        return True
+
+
+# ===================================================================
 # 利潤管理服務類
 # ===================================================================
 class ProfitService:
@@ -2025,6 +2061,53 @@ def cleanup_profit_balance_command():
     return 0
 
 
+@app.cli.command("recalculate-all-receivables")
+def recalculate_all_receivables_command():
+    """強制重新計算所有客戶的應收帳款總額（以未結清銷售記錄為準）"""
+    from sqlalchemy import func
+    
+    print("\n🚀 開始執行所有客戶應收帳款校正...")
+    
+    try:
+        db.session.begin()
+        
+        # 遍歷所有客戶
+        customers = db.session.execute(db.select(Customer)).scalars().all()
+        total_corrected = 0
+        
+        for customer in customers:
+            # 1. 查詢該客戶所有 '未結清' 的 SalesRecord 總和
+            total_receivables = db.session.execute(
+                db.select(func.sum(SalesRecord.twd_amount))
+                .filter(SalesRecord.customer_id == customer.id)
+                .filter(SalesRecord.is_settled == False) 
+            ).scalar()
+            
+            new_total_receivables = total_receivables if total_receivables is not None else 0.0
+            
+            # 2. 更新客戶記錄
+            old_receivables = customer.total_receivables_twd
+            customer.total_receivables_twd = new_total_receivables
+            
+            if old_receivables != new_total_receivables:
+                print(f"✅ 客戶 {customer.name} AR 已校正: NT$ {old_receivables:,.2f} -> NT$ {new_total_receivables:,.2f}")
+                total_corrected += 1
+            else:
+                print(f"   客戶 {customer.name} AR 無需校正: NT$ {old_receivables:,.2f}")
+    
+        db.session.commit()
+        print(f"\n✅ 所有客戶應收帳款校正完成。共校正 {total_corrected} 個客戶。")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 應收帳款校正失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
+
+
 # <---【移除】舊的 init-db 命令，完全由 Flask-Migrate 取代
 
 
@@ -2924,8 +3007,9 @@ def api_sales_entry():
         # 3. 核心業務邏輯
         twd_amount = round(rmb_amount * exchange_rate, 2)
 
-        # 更新客戶餘額（應收帳款增加）
-        customer.total_receivables_twd += twd_amount
+        # [CRITICAL FIX: 刪除錯誤的 AR 累加邏輯]
+        # 舊邏輯：customer.total_receivables_twd += twd_amount
+        # 新邏輯：在提交後，通過 recalculate_customer_receivables() 重新計算
         
         # 注意：RMB帳戶餘額不在此處扣款，而是在FIFO庫存分配時從實際庫存來源帳戶扣款
 
@@ -2979,6 +3063,11 @@ def api_sales_entry():
         # 5. 提交主事務 (SalesRecord, LedgerEntry, FIFOSalesAllocation)
         db.session.commit()
         print(f"[OK] DEBUG: 資料庫提交成功，SalesRecord ID: {new_sale.id}")
+        
+        # [CRITICAL FIX: 在提交後，強制重新計算 AR]
+        recalculate_customer_receivables(customer.id)
+        db.session.commit()  # 提交 AR 餘額的最終校正值
+        print(f"[AR_FIX] 客戶 {customer.name} 應收帳款已重新計算並同步")
         
         # ====== 新增：利潤記錄隔離 ======
         # 6. 獨立提交利潤交易 (允許失敗，不回滾 SalesRecord)
