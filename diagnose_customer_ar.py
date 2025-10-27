@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 """診斷客戶應收帳款問題"""
 
-from app import app, db
-from models import Customer
+from app import app, db, Customer
 from sqlalchemy import func
 
 with app.app_context():
