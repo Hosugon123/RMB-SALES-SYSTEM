@@ -1578,7 +1578,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 twdRmbChangeHtml = '<div class="card" style="background-color: #e3f2fd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 8px; margin: 2px;">';
                 
                 if (twdChange !== 0) {
-                    const twdColorClass = twdChange > 0 ? 'text-success' : 'text-danger';
+                    // 銷帳記錄的TWD使用藍色
+                    let twdColorClass;
+                    if (m.type === '銷帳' || m.type === 'SETTLEMENT') {
+                        twdColorClass = 'text-primary';  // 藍色
+                    } else {
+                        twdColorClass = twdChange > 0 ? 'text-success' : 'text-danger';
+                    }
                     const twdSymbol = twdChange > 0 ? '+' : '';
                     twdRmbChangeHtml += '<div class="' + twdColorClass + ' fw-bold" style="font-size: 0.85rem;">TWD: ' + twdSymbol + twdChange.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
                     twdRmbChangeHtml += '<div class="text-dark" style="font-size: 0.75rem; margin-top: 2px;">總額: ' + runningTwd.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</div>';
