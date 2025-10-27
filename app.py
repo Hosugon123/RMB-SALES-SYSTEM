@@ -571,7 +571,9 @@ class ProfitTransaction(db.Model):
 # ===================================================================
 def recalculate_customer_receivables(customer_id):
     """
-    重新計算並更新指定客戶的應收帳款總額 (TWD)，以所有未結清銷售記錄為準。
+    重新計算並更新指定客戶的應收帳款總額 (TWD)。
+    公式：AR = SUM(所有售出金額) - SUM(所有銷帳金額)
+    不需要依賴 is_settled 欄位！
     """
     from sqlalchemy import func
     
@@ -582,14 +584,21 @@ def recalculate_customer_receivables(customer_id):
             print(f"[ERROR] 重新計算應收帳款失敗：找不到客戶 ID {customer_id}")
             return False
 
-        # 查詢所有未結清的 SalesRecord (SalesRecord.is_settled == False) 的 TWD 金額總和
-        total_receivables = db.session.execute(
+        # 1. 計算所有售出金額
+        total_sales = db.session.execute(
             db.select(func.sum(SalesRecord.twd_amount))
             .filter(SalesRecord.customer_id == customer_id)
-            .filter(SalesRecord.is_settled == False)
-        ).scalar()
+        ).scalar() or 0.0
         
-        new_total_receivables = total_receivables if total_receivables is not None else 0.0
+        # 2. 計算所有銷帳金額（從 LedgerEntry）
+        total_settlements = db.session.execute(
+            db.select(func.sum(LedgerEntry.amount))
+            .filter(LedgerEntry.entry_type == "SETTLEMENT")
+            .filter(LedgerEntry.description.like(f"%{customer.name}%"))
+        ).scalar() or 0.0
+        
+        # 3. AR = 售出 - 銷帳
+        new_total_receivables = total_sales - total_settlements
         
         # 更新客戶記錄（不提交，讓主事務處理）
         old_receivables = customer.total_receivables_twd
@@ -599,6 +608,7 @@ def recalculate_customer_receivables(customer_id):
         db.session.flush()
 
         print(f"[AR_FIX] 客戶 {customer.name} AR 已更新: NT$ {old_receivables:,.2f} -> NT$ {new_total_receivables:,.2f}")
+        print(f"     (售出: NT$ {total_sales:,.2f} - 銷帳: NT$ {total_settlements:,.2f})")
         return True
 
 
