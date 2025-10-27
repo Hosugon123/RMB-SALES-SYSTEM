@@ -7711,7 +7711,7 @@ def api_customer_transactions(customer_id):
             profit_twd = profit_info['profit_twd'] if profit_info else 0
             
             # 計算該筆銷售的應收帳款餘額變化
-            # 需要計算在該筆銷售之前，該客戶的應收帳款餘額
+            # 需要計算在該筆銷售之前，該客戶的應收帳款餘額（售出 - 銷帳）
             try:
                 # 獲取該筆銷售之前的所有銷售記錄
                 previous_sales = (
@@ -7727,12 +7727,23 @@ def api_customer_transactions(customer_id):
                     .all()
                 )
                 
-                # 計算該筆銷售之前的應收帳款餘額
-                receivable_before = sum(s.twd_amount for s in previous_sales)
+                # 獲取該筆銷售之前的所有銷帳記錄
+                settlements_before_sale = [
+                    e for e in receivable_entries 
+                    if e.entry_date < sale.created_at
+                ]
+                
+                # 計算該筆銷售之前的應收帳款餘額 = 售出總額 - 銷帳總額
+                total_sales_before = sum(s.twd_amount for s in previous_sales)
+                total_settlements_before = sum(e.amount for e in settlements_before_sale)
+                receivable_before = total_sales_before - total_settlements_before
+                
+                # 銷售後的應收帳款
                 receivable_after = receivable_before + sale.twd_amount
                 receivable_change = sale.twd_amount
                 
-                print(f"DEBUG: 客戶 {customer.name} 銷售 {sale.id} 應收帳款變化 - 變動前: {receivable_before:.2f}, 變動: {receivable_change:.2f}, 變動後: {receivable_after:.2f}")
+                print(f"DEBUG: 客戶 {customer.name} 銷售 {sale.id} 應收帳款變化 - 售出前總額: {total_sales_before:.2f}, 銷帳前總額: {total_settlements_before:.2f}")
+                print(f"DEBUG: 變動前: {receivable_before:.2f}, 變動: {receivable_change:.2f}, 變動後: {receivable_after:.2f}")
                 
             except Exception as e:
                 print(f"DEBUG: 計算客戶 {customer.name} 銷售 {sale.id} 應收帳款變化失敗: {e}")
