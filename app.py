@@ -7759,8 +7759,48 @@ def api_customer_transactions(customer_id):
                 }
             })
         
-        # 添加銷帳記錄
+        # 添加銷帳記錄（計算應收帳款餘額變化）
         for entry in receivable_entries:
+            # 計算該筆銷帳時的應收帳款餘額變化
+            try:
+                # 獲取該筆銷帳之前的所有銷售記錄總和
+                sales_before_settlement = (
+                    db.session.execute(
+                        db.select(SalesRecord)
+                        .filter(
+                            SalesRecord.customer_id == customer_id,
+                            SalesRecord.created_at < entry.entry_date
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                
+                # 獲取該筆銷帳之前的所有銷帳記錄總和
+                settlements_before_current = [
+                    e for e in receivable_entries 
+                    if e.entry_date < entry.entry_date
+                ]
+                
+                # 計算銷帳前的應收帳款
+                total_sales_before = sum(s.twd_amount for s in sales_before_settlement)
+                total_settlements_before = sum(e.amount for e in settlements_before_current)
+                receivable_before = total_sales_before - total_settlements_before
+                
+                # 銷帳變化（負數）
+                receivable_change = -entry.amount
+                
+                # 銷帳後的應收帳款
+                receivable_after = receivable_before + receivable_change
+                
+                print(f"DEBUG: 客戶 {customer.name} 銷帳 {entry.id} 應收帳款變化 - 變動前: {receivable_before:.2f}, 變動: {receivable_change:.2f}, 變動後: {receivable_after:.2f}")
+                
+            except Exception as e:
+                print(f"DEBUG: 計算客戶 {customer.name} 銷帳 {entry.id} 應收帳款變化失敗: {e}")
+                receivable_before = 0
+                receivable_change = -entry.amount
+                receivable_after = receivable_change
+            
             transactions.append({
                 'id': entry.id,
                 'type': '銷帳',
@@ -7770,7 +7810,14 @@ def api_customer_transactions(customer_id):
                 'twd_amount': entry.amount,
                 'profit_twd': 0,
                 'status': '已收款',
-                'category': 'settlement'
+                'category': 'settlement',
+                # 新增：應收帳款餘額變化
+                'receivable_balance': {
+                    'before': round(receivable_before, 2),
+                    'change': round(receivable_change, 2),
+                    'after': round(receivable_after, 2),
+                    'description': f'客戶「{customer.name}」應收帳款'
+                }
             })
         
         # 按日期排序
