@@ -9156,12 +9156,34 @@ def get_cash_management_transactions():
                             .all()
                         )
                         
-                        # 計算該筆銷售之前的應收帳款餘額（與客戶交易紀錄頁面相同的邏輯）
-                        customer_receivable_before = sum(sale.twd_amount for sale in previous_sales)
+                        # 獲取該筆銷售之前的所有銷帳記錄（計算應收帳款餘額需要扣除銷帳）
+                        all_settlements = db.session.execute(
+                            db.select(LedgerEntry)
+                            .filter(LedgerEntry.entry_type == "SETTLEMENT")
+                            .order_by(LedgerEntry.entry_date.desc())
+                        ).scalars().all()
+                        
+                        # 過濾出該客戶的銷帳記錄
+                        customer_settlements = [
+                            e for e in all_settlements 
+                            if customer.name in e.description
+                        ]
+                        
+                        # 獲取該筆銷售之前的所有銷帳記錄
+                        settlements_before_sale = [
+                            e for e in customer_settlements 
+                            if e.entry_date < s.created_at
+                        ]
+                        
+                        # 計算該筆銷售之前的應收帳款餘額 = 售出總額 - 銷帳總額（與客戶交易紀錄頁面相同的邏輯）
+                        total_sales_before = sum(sale.twd_amount for sale in previous_sales)
+                        total_settlements_before = sum(e.amount for e in settlements_before_sale)
+                        customer_receivable_before = total_sales_before - total_settlements_before
                         customer_receivable_after = customer_receivable_before + twd_amount
                         customer_receivable_change = twd_amount
                         
-                        print(f"DEBUG: 客戶 {customer.name} 銷售 {sale_id} 應收帳款變化 - 變動前: {customer_receivable_before:.2f}, 變動: {customer_receivable_change:.2f}, 變動後: {customer_receivable_after:.2f}")
+                        print(f"DEBUG: 客戶 {customer.name} 銷售 {sale_id} 應收帳款變化 - 售出前總額: {total_sales_before:.2f}, 銷帳前總額: {total_settlements_before:.2f}")
+                        print(f"DEBUG: 變動前: {customer_receivable_before:.2f}, 變動: {customer_receivable_change:.2f}, 變動後: {customer_receivable_after:.2f}")
                     else:
                         customer_receivable_before = 0
                         customer_receivable_after = twd_amount if twd_amount else 0
