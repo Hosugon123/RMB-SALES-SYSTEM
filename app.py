@@ -2175,10 +2175,11 @@ def fix_ar_command(customer_id, correct_amount):
 
 @app.cli.command("rebuild-customer-ar")
 def rebuild_customer_ar_command():
-    """強制依據 SalesRecord.is_settled 欄位重建所有客戶的應收帳款總額"""
+    """使用新公式重建所有客戶的應收帳款總額：AR = SUM(售出) - SUM(銷帳)"""
     from sqlalchemy import func
     
     print("\n🚀 開始執行所有客戶應收帳款強制重建...")
+    print("使用新公式：AR = SUM(所有售出金額) - SUM(所有銷帳金額)")
     
     try:
         # 遍歷所有客戶
@@ -2186,14 +2187,21 @@ def rebuild_customer_ar_command():
         total_rebuilt = 0
         
         for customer in customers:
-            # 查詢該客戶所有 '未結清' 的 SalesRecord 總和
-            total_receivables = db.session.execute(
+            # 1. 計算所有售出金額
+            total_sales = db.session.execute(
                 db.select(func.sum(SalesRecord.twd_amount))
                 .filter(SalesRecord.customer_id == customer.id)
-                .filter(SalesRecord.is_settled == False) 
-            ).scalar()
+            ).scalar() or 0.0
             
-            new_total_receivables = total_receivables if total_receivables is not None else 0.0
+            # 2. 計算所有銷帳金額（從 LedgerEntry）
+            total_settlements = db.session.execute(
+                db.select(func.sum(LedgerEntry.amount))
+                .filter(LedgerEntry.entry_type == "SETTLEMENT")
+                .filter(LedgerEntry.description.like(f"%{customer.name}%"))
+            ).scalar() or 0.0
+            
+            # 3. AR = 售出 - 銷帳
+            new_total_receivables = total_sales - total_settlements
             
             # 更新客戶記錄
             old_receivables = customer.total_receivables_twd
@@ -2201,6 +2209,7 @@ def rebuild_customer_ar_command():
             
             if old_receivables != new_total_receivables:
                 print(f"✅ 客戶 {customer.name} AR 已重建: NT$ {old_receivables:,.2f} -> NT$ {new_total_receivables:,.2f}")
+                print(f"   (售出: NT$ {total_sales:,.2f} - 銷帳: NT$ {total_settlements:,.2f})")
                 total_rebuilt += 1
             else:
                 print(f"   客戶 {customer.name} AR 無需重建: NT$ {old_receivables:,.2f}")
