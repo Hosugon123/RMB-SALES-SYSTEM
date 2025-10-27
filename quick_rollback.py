@@ -3,13 +3,14 @@
 """快速回滾：重置所有銷售記錄為未結清狀態"""
 
 from app import app, db
+from sqlalchemy import text
 
 with app.app_context():
     print('🔄 開始回滾操作...')
     
     # 使用原始 SQL 直接更新
     result = db.session.execute(
-        "UPDATE sales_records SET is_settled = FALSE"
+        text("UPDATE sales_records SET is_settled = FALSE")
     )
     db.session.commit()
     
