@@ -2,25 +2,23 @@
 # -*- coding: utf-8 -*-
 """
 歷史 SalesRecord 的 LedgerEntry 修正腳本
-修正缺失的 LedgerEntry 記錄，確保 RMB 帳戶餘額變動有正確記錄
+修正缺失的 LedgerEntry 記錄， emphasize RMB 帳戶餘額變動有正確記錄
 """
 
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app import app, db
-from models import SalesRecord, LedgerEntry, FIFOSalesAllocation, CashAccount, FIFOInventory
-from sqlalchemy import select
-from datetime import datetime
-
 def check_and_fix_historical_sales():
     """檢查並修正歷史銷售記錄的 LedgerEntry"""
+    # 在函數內部導入，確保 app.py 已完全載入
+    from app import app, db, SalesRecord, LedgerEntry, FIFOSalesAllocation, CashAccount, FIFOInventory
+    from sqlalchemy import select
+    from datetime import datetime, timedelta
+    
     print("=" * 80)
     print("開始檢查歷史 SalesRecord 的 LedgerEntry 記錄...")
     print("=" * 80)
-    
-    from datetime import timedelta
     
     with app.app_context():
         # 1. 獲取所有銷售記錄
@@ -143,6 +141,10 @@ def check_and_fix_historical_sales():
 
 def verify_account_balances():
     """驗證帳戶餘額是否正確"""
+    # 在函數內部導入，確保 app.py 已完全載入
+    from app import app, db, LedgerEntry, CashAccount
+    from sqlalchemy import select
+    
     print("\n" + "=" * 80)
     print("驗證帳戶餘額...")
     print("=" * 80)
