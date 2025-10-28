@@ -7469,12 +7469,18 @@ def api_settlement():
         # 確保PostgreSQL欄位存在
         fix_postgresql_columns()
         
+        # 構建描述：如果有備註，將備註加到描述中（向後兼容）
+        if note:
+            description = f"客戶「{customer.name}」銷帳收款 - {note}"
+        else:
+            description = f"客戶「{customer.name}」銷帳收款"
+        
         settlement_entry = LedgerEntry(
             account_id=account.id,
             entry_type="SETTLEMENT",
             amount=amount,
             entry_date=datetime.utcnow(),
-            description=f"客戶「{customer.name}」銷帳收款 - {note}" if note else f"客戶「{customer.name}」銷帳收款",
+            description=description,
             operator_id=operator_id
         )
         print(f"[FIX] 銷帳API: LedgerEntry物件創建成功: {settlement_entry}")
@@ -9385,17 +9391,29 @@ def get_cash_management_transactions():
                         # 利潤提款不影響帳戶餘額
                         pass
                 
+                # 處理銷帳記錄的描述和備註分離
+                description = entry.description if entry.description else ""
+                note_from_description = None
+                
+                if entry.entry_type == "SETTLEMENT" and description:
+                    # 檢查描述格式：客戶「XXX」銷帳收款 - 備註
+                    if "銷帳收款 - " in description:
+                        parts = description.split(" - ", 1)
+                        description = parts[0]  # 客戶「XXX」銷帳收款
+                        if len(parts) > 1:
+                            note_from_description = parts[1]  # 備註內容
+                
                 # 構建基本記錄
                 record = {
                     "type": entry.entry_type,
                     "date": entry.entry_date.isoformat(),
-                    "description": entry.description,
+                    "description": description,
                     "twd_change": twd_change,
                     "rmb_change": rmb_change,
                     "operator": entry.operator.username if entry.operator else "未知",
                     "payment_account": payment_account,
                     "deposit_account": deposit_account,
-                    "note": getattr(entry, 'note', None),
+                    "note": note_from_description or getattr(entry, 'note', None),
                 }
                 
                 # 添加帳戶餘額變化信息
@@ -9499,17 +9517,29 @@ def get_cash_management_transactions():
                     payment_account = "N/A"
                     deposit_account = "N/A"
 
+                # 處理銷帳記錄的描述和備註分離
+                description = log.description if log.description else ""
+                note_from_description = None
+                
+                if log.type == "SETTLEMENT" and description:
+                    # 檢查描述格式：客戶「XXX」銷帳收款 - 備註
+                    if "銷帳收款 - " in description:
+                        parts = description.split(" - ", 1)
+                        description = parts[0]  # 客戶「XXX」銷帳收款
+                        if len(parts) > 1:
+                            note_from_description = parts[1]  # 備註內容
+                
                 # 構建基本記錄
                 record = {
                     "type": log.type,
                     "date": log.time.isoformat(),
-                    "description": log.description,
+                    "description": description,
                     "twd_change": twd_change,
                     "rmb_change": rmb_change,
                     "operator": log.operator.username if log.operator else "未知",
                     "payment_account": payment_account,
                     "deposit_account": deposit_account,
-                    "note": getattr(log, 'note', None),
+                    "note": note_from_description or getattr(log, 'note', None),
                 }
                 
                 # 添加帳戶餘額變化信息（針對SETTLEMENT類型）
