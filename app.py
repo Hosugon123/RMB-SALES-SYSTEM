@@ -87,7 +87,7 @@ def fix_postgresql_columns():
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, date, timezone
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, text
 
 # ===================================================================
 # 2. App、資料庫、遷移與登入管理器的初始化
@@ -569,47 +569,9 @@ class ProfitTransaction(db.Model):
 # ===================================================================
 # 應收帳款管理服務類
 # ===================================================================
-def recalculate_customer_receivables(customer_id):
-    """
-    重新計算並更新指定客戶的應收帳款總額 (TWD)。
-    公式：AR = SUM(所有售出金額) - SUM(所有銷帳金額)
-    不需要依賴 is_settled 欄位！
-    """
-    from sqlalchemy import func
-    
-    # 使用獨立的 Session 進行查詢，避免污染當前請求的 Session
-    with db.session.no_autoflush:
-        customer = db.session.get(Customer, customer_id)
-        if not customer:
-            print(f"[ERROR] 重新計算應收帳款失敗：找不到客戶 ID {customer_id}")
-            return False
-
-        # 1. 計算所有售出金額
-        total_sales = db.session.execute(
-            db.select(func.sum(SalesRecord.twd_amount))
-            .filter(SalesRecord.customer_id == customer_id)
-        ).scalar() or 0.0
-        
-        # 2. 計算所有銷帳金額（從 LedgerEntry）
-        total_settlements = db.session.execute(
-            db.select(func.sum(LedgerEntry.amount))
-            .filter(LedgerEntry.entry_type == "SETTLEMENT")
-            .filter(LedgerEntry.description.like(f"%{customer.name}%"))
-        ).scalar() or 0.0
-        
-        # 3. AR = 售出 - 銷帳
-        new_total_receivables = total_sales - total_settlements
-        
-        # 更新客戶記錄（不提交，讓主事務處理）
-        old_receivables = customer.total_receivables_twd
-        customer.total_receivables_twd = new_total_receivables
-        
-        # 由於此函數在主事務中被調用，只需 flush，讓主事務提交
-        db.session.flush()
-
-        print(f"[AR_FIX] 客戶 {customer.name} AR 已更新: NT$ {old_receivables:,.2f} -> NT$ {new_total_receivables:,.2f}")
-        print(f"     (售出: NT$ {total_sales:,.2f} - 銷帳: NT$ {total_settlements:,.2f})")
-        return True
+# [DELETED] recalculate_customer_receivables 函數
+# 原因：避免在 api_sales_entry 和 api_settlement 中導致 RecursionError
+# 應收帳款應在業務邏輯中直接更新，而不是通過重新計算
 
 
 # ===================================================================
@@ -1003,7 +965,23 @@ class FIFOService:
                     source_account = inventory.purchase_record.deposit_account
                     old_balance = source_account.balance
                     source_account.balance -= allocate_from_this_batch
-                    print(f"[MONEY] 從庫存來源帳戶 {source_account.name} 扣款: {old_balance:.2f} -> {source_account.balance:.2f} (-{allocate_from_this_batch:.2f} RMB)")
+                    new_balance = source_account.balance
+                    print(f"[MONEY] 從庫存來源帳戶 {source_account.name} 扣款: {old_balance:.2f} -> {new_balance:.2f} (-{allocate_from_this_batch:.2f} RMB)")
+                    
+                    # 創建 LedgerEntry 記錄餘額變動（金額為負數表示出款）
+                    try:
+                        ledger_entry = LedgerEntry(
+                            entry_type="WITHDRAW",  # 使用 WITHDRAW 類型表示出款
+                            account_id=source_account.id,
+                            amount=-allocate_from_this_batch,  # 負數表示出款
+                            description=f"售出扣款：分配給客戶（庫存批次 {inventory.id}）",
+                            operator_id=get_safe_operator_id()
+                        )
+                        db.session.add(ledger_entry)
+                        print(f"[LEDGER] 已記錄 RMB 帳戶餘額變動：{old_balance:.2f} -> {new_balance:.2f} ({ledger_entry.amount:.2f} RMB)")
+                    except Exception as ledger_error:
+                        print(f"[WARNING] 創建 LedgerEntry 失敗: {ledger_error}")
+                        # 不中斷流程，繼續執行
                 else:
                     print(f"[WARNING] 警告：庫存記錄沒有關聯的存款帳戶，無法扣款！")
                 
@@ -3238,11 +3216,8 @@ def api_sales_entry():
         # 3. 核心業務邏輯
         twd_amount = round(rmb_amount * exchange_rate, 2)
 
-        # [CRITICAL FIX: 刪除錯誤的 AR 累加邏輯]
-        # 舊邏輯：customer.total_receivables_twd += twd_amount
-        # 新邏輯：在提交後，通過 recalculate_customer_receivables() 重新計算
-        
         # 注意：RMB帳戶餘額不在此處扣款，而是在FIFO庫存分配時從實際庫存來源帳戶扣款
+        # AR 會在後續直接更新，避免使用 recalculate_customer_receivables() 導致遞歸
 
         # 創建銷售紀錄
         print(f"[DEBUG] DEBUG: 創建SalesRecord - 客戶: {customer.name}, RMB帳戶: {rmb_account.name}")
@@ -3291,14 +3266,13 @@ def api_sales_entry():
                 "message": f"庫存分配失敗: {e}"
             }), 500
         
-        # 5. 提交主事務 (SalesRecord, LedgerEntry, FIFOSalesAllocation)
+        # 5. 更新客戶應收帳款（直接累加，避免遞歸）
+        customer.total_receivables_twd += twd_amount
+        
+        # 6. 提交主事務 (SalesRecord, FIFOSalesAllocation, Customer AR update)
         db.session.commit()
         print(f"[OK] DEBUG: 資料庫提交成功，SalesRecord ID: {new_sale.id}")
-        
-        # [CRITICAL FIX: 在提交後，強制重新計算 AR]
-        recalculate_customer_receivables(customer.id)
-        db.session.commit()  # 提交 AR 餘額的最終校正值
-        print(f"[AR_FIX] 客戶 {customer.name} 應收帳款已重新計算並同步")
+        print(f"[AR_FIX] 客戶 {customer.name} 應收帳款已更新: +NT$ {twd_amount:,.2f}")
         
         # ====== 新增：利潤記錄隔離 ======
         # 6. 獨立提交利潤交易 (允許失敗，不回滾 SalesRecord)
@@ -7439,7 +7413,7 @@ def api_settlement():
         
         print(f"[AR_FIX] 銷帳API: 共標記 {settled_count} 筆訂單為已結清")
         
-        # 更新客戶應收帳款（這個值會被後續的 recalculate_customer_receivables 重新計算）
+        # 更新客戶應收帳款（在銷帳時直接扣減）
         old_receivables = customer.total_receivables_twd
         customer.total_receivables_twd -= amount
         print(f"[FIX] 銷帳API: 更新客戶應收帳款 - 原: {old_receivables}, 新: {customer.total_receivables_twd}")
@@ -7495,16 +7469,16 @@ def api_settlement():
             print(f"[ERROR] 銷帳API: 錯誤詳情: {traceback.format_exc()}")
             raise e
         
+        # 更新客戶應收帳款（直接扣減，避免遞歸）
+        customer.total_receivables_twd -= amount
+        if customer.total_receivables_twd < 0:
+            customer.total_receivables_twd = 0  # 確保不為負數
+        
         # 提交事務
         print(f"[FIX] 銷帳API: 準備提交事務...")
         db.session.commit()
         print(f"[OK] 銷帳API: 事務提交成功")
-        
-        # [CRITICAL FIX: 銷帳後強制重新計算 AR，確保數據一致性]
-        print(f"[AR_FIX] 銷帳API: 重新計算客戶應收帳款...")
-        recalculate_customer_receivables(customer_id)
-        db.session.commit()  # 提交 AR 餘額的最終校正值
-        print(f"[AR_FIX] 銷帳API: 客戶 {customer.name} 應收帳款已重新計算並同步")
+        print(f"[AR_FIX] 客戶 {customer.name} 應收帳款已更新: -NT$ {amount:,.2f}")
         
         # 強制刷新對象狀態
         print(f"[FIX] 銷帳API: 刷新對象狀態...")

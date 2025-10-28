@@ -2712,6 +2712,12 @@ function initializeNumberFormatting() {
     console.log('🔍 找到數字輸入欄位:', numberInputs.length);
     
     numberInputs.forEach((input, index) => {
+        // CRITICAL: 跳過已經初始化過的輸入框（避免覆蓋值）
+        if (input._enhancedInput || input.getActualValue) {
+            console.log(`⏭️ 跳過已初始化的欄位 ${input.id}`);
+            return;
+        }
+        
         console.log(`📝 初始化欄位 ${index + 1}:`, input.id, input.name);
         
         // 根據欄位ID決定選項
@@ -2737,7 +2743,9 @@ function initializeNumberFormatting() {
     console.log('✅ 簡化的數字輸入欄位格式化初始化完成（無千位分隔符）');
 }
 
-// 頁面載入完成後初始化數字格式化
+// 註釋掉重複的 DOMContentLoaded 監聽器，避免重複綁定事件
+// 此初始化邏輯已經在主要的 DOMContentLoaded code block 中處理
+/*
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 現金管理頁面載入完成，開始初始化...');
     
@@ -2757,6 +2765,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+*/
 
 // 待付款項銷帳功能
 window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, channelName) {
@@ -2847,11 +2856,31 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
                 hasGetActualValue: !!settlementAmountInput.getActualValue
             });
             
+            // 保存初始值，避免在數字格式化過程中被清空
+            const initialValue = settlementAmountInput.value;
+            console.log('📝 保存初始值:', initialValue);
+            
             // 手動初始化數字格式化
             if (typeof setupNumberInputFormatting === 'function') {
                 try {
-                    setupNumberInputFormatting(settlementAmountInput, { maxDecimals: 2 });
-                    console.log('✅ 銷帳金額輸入框數字格式化已立即應用');
+                    // 先強制設置值，確保不會被清空
+                    settlementAmountInput.value = initialValue;
+                    console.log('🔧 強制設置 input.value =', initialValue);
+                    
+                    // 傳遞初始值給數字格式化系統
+                    const enhancedInput = setupNumberInputFormatting(settlementAmountInput, { 
+                        maxDecimals: 2,
+                        initialValue: initialValue
+                    });
+                    console.log('✅ 銷帳金額輸入框數字格式化已立即應用，初始值:', initialValue);
+                    
+                    // 確保初始化後值不會被清空
+                    if (settlementAmountInput._enhancedInput) {
+                        settlementAmountInput._enhancedInput._actualValue = initialValue;
+                        settlementAmountInput.value = initialValue;
+                        console.log('✅ 已同步初始值到 _actualValue:', initialValue);
+                        console.log('🔍 確認 _enhancedInput._actualValue =', settlementAmountInput._enhancedInput._actualValue);
+                    }
                 } catch (error) {
                     console.error('❌ setupNumberInputFormatting 執行失敗:', error);
                     // 手動創建 getActualValue 方法作為備用
@@ -2874,6 +2903,12 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
                     value: settlementAmountInput.value,
                     getActualValue: settlementAmountInput.getActualValue ? settlementAmountInput.getActualValue() : 'N/A'
                 });
+                
+                // 確保實際值與輸入框值同步
+                if (settlementAmountInput.value && settlementAmountInput._enhancedInput) {
+                    settlementAmountInput._enhancedInput._actualValue = settlementAmountInput.value;
+                    console.log('✅ 已同步實際值:', settlementAmountInput._enhancedInput._actualValue);
+                }
             }, 50);
         }
         
@@ -2882,28 +2917,37 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
             this.setAttribute('aria-hidden', 'false');
             this.setAttribute('aria-modal', 'true');
             
-            // 為銷帳金額輸入框應用數字格式化
+            // 為銷帳金額輸入框應用數字格式化（不要重複初始化）
             const settlementAmountInput = document.getElementById('settlementAmount');
             if (settlementAmountInput) {
-                console.log('🔍 模態框顯示時的初始值:', {
+                console.log('🔍 模態框顯示時的狀態:', {
                     originalValue: settlementAmountInput.value,
                     expectedAmount: '${amount}',
-                    hasGetActualValue: !!settlementAmountInput.getActualValue
+                    hasGetActualValue: !!settlementAmountInput.getActualValue,
+                    has_enhancedInput: !!settlementAmountInput._enhancedInput
                 });
                 
-                // 確保數字格式化被正確應用
-                if (typeof setupNumberInputFormatting === 'function') {
+                // 只檢查是否已初始化，不要重複初始化
+                if (!settlementAmountInput._enhancedInput && typeof setupNumberInputFormatting === 'function') {
+                    // 只在未初始化時才調用
                     setupNumberInputFormatting(settlementAmountInput, { maxDecimals: 2 });
-                    console.log('✅ 銷帳金額輸入框數字格式化已應用');
+                    console.log('✅ 銷帳金額輸入框數字格式化已在模態框顯示時應用');
                 } else {
-                    console.warn('⚠️ setupNumberInputFormatting 函數不存在');
+                    console.log('✅ 數字格式化已經存在，跳過重複初始化');
+                }
+                
+                // 確保值不會被清空
+                if (settlementAmountInput._enhancedInput && settlementAmountInput.value) {
+                    settlementAmountInput._enhancedInput._actualValue = settlementAmountInput.value;
+                    console.log('✅ 已確保 _actualValue 與 input.value 同步:', settlementAmountInput.value);
                 }
                 
                 // 驗證 getActualValue 方法是否存在
                 setTimeout(() => {
                     console.log('🔍 延遲檢查 getActualValue:', {
                         hasGetActualValue: !!settlementAmountInput.getActualValue,
-                        value: settlementAmountInput.value
+                        value: settlementAmountInput.value,
+                        actualValue: settlementAmountInput.getActualValue ? settlementAmountInput.getActualValue() : 'N/A'
                     });
                 }, 100);
             }
@@ -2987,80 +3031,40 @@ window.executePendingPaymentSettlement = async function(pendingId, originalAmoun
         'parseFloat.toString()': parseFloat.toString().substring(0, 100)
     });
     
-    // 優先使用 getActualValue 方法（如果存在），否則直接解析 value
-    if (settlementAmountInput.getActualValue) {
-        const actualValue = settlementAmountInput.getActualValue();
-        console.log('🔍 使用 getActualValue 方法:', {
-            rawValue: actualValue,
-            type: typeof actualValue,
-            length: actualValue ? actualValue.length : 0,
-            charCodes: actualValue ? actualValue.split('').map(c => c.charCodeAt(0)) : []
-        });
-        
-        // 嘗試多種解析方式
-        settlementAmount = parseFloat(actualValue);
-        console.log('🔍 parseFloat 結果:', settlementAmount);
-        
-        if (isNaN(settlementAmount)) {
-            console.warn('⚠️ parseFloat 失敗，嘗試 Number()');
-            settlementAmount = Number(actualValue);
-            console.log('🔍 Number() 結果:', settlementAmount);
-        }
-        
-        if (isNaN(settlementAmount)) {
-            console.warn('⚠️ Number() 也失敗，嘗試一元加號運算符');
-            settlementAmount = +actualValue;
-            console.log('🔍 一元加號結果:', settlementAmount);
-        }
-        
-        // 最後的備用方案：手動解析
-        if (isNaN(settlementAmount)) {
-            console.warn('⚠️ 所有解析方式都失敗，嘗試手動解析');
-            const cleanValue = actualValue.replace(/[^\d.-]/g, '');
-            if (cleanValue) {
-                settlementAmount = parseFloat(cleanValue);
-                console.log('🔍 手動解析結果:', settlementAmount);
+    // 直接從 input.value 讀取（避免被格式化系統干擾）
+    const rawValue = settlementAmountInput.value;
+    console.log('🔍 直接讀取 input.value:', rawValue);
+    
+    // 如果為空，嘗試從 getActualValue 獲取
+    let actualValue = rawValue;
+    if (!actualValue || actualValue === '') {
+        console.warn('⚠️ input.value 為空，嘗試 getActualValue');
+        if (settlementAmountInput.getActualValue && typeof settlementAmountInput.getActualValue === 'function') {
+            try {
+                actualValue = settlementAmountInput.getActualValue();
+                console.log('🔍 getActualValue 返回:', actualValue);
+            } catch (e) {
+                console.warn('⚠️ getActualValue 執行失敗:', e);
             }
-        }
-    } else {
-        // 移除格式化字符後解析
-        const rawValue = settlementAmountInput.value.replace(/[^0-9.-]/g, '');
-        console.log('🔍 使用直接解析方法:', rawValue);
-        
-        settlementAmount = parseFloat(rawValue);
-        if (isNaN(settlementAmount)) {
-            settlementAmount = Number(rawValue);
-        }
-        if (isNaN(settlementAmount)) {
-            settlementAmount = +rawValue;
         }
     }
     
-    // 如果解析失敗，嘗試更寬鬆的解析方式
-    if (isNaN(settlementAmount)) {
-        console.warn('⚠️ 標準解析失敗，嘗試更寬鬆的解析');
-        const fallbackValue = settlementAmountInput.value.replace(/[^\d.-]/g, '');
-        settlementAmount = parseFloat(fallbackValue);
-        console.log('🔍 寬鬆解析結果:', settlementAmount);
-        
-        // 如果還是失敗，嘗試最寬鬆的解析
-        if (isNaN(settlementAmount)) {
-            console.warn('⚠️ 寬鬆解析也失敗，嘗試最寬鬆的解析');
-            const ultraFallbackValue = settlementAmountInput.value.replace(/[^\d]/g, '');
-            settlementAmount = parseFloat(ultraFallbackValue);
-            console.log('🔍 最寬鬆解析結果:', settlementAmount);
-        }
-        
-        // 最終備用方案：直接從字符串構建數字
-        if (isNaN(settlementAmount)) {
-            console.warn('⚠️ 所有解析都失敗，嘗試字符串構建');
-            const digitsOnly = settlementAmountInput.value.replace(/[^\d]/g, '');
-            if (digitsOnly) {
-                settlementAmount = parseInt(digitsOnly, 10);
-                console.log('🔍 字符串構建結果:', settlementAmount);
-            }
-        }
+    // 如果還是為空，嘗試從屬性讀取
+    if (!actualValue || actualValue === '') {
+        console.warn('⚠️ 所有方法都失敗，嘗試從 defaultValue 讀取');
+        actualValue = settlementAmountInput.defaultValue || settlementAmountInput.getAttribute('value') || '';
+        console.log('🔍 從屬性讀取:', actualValue);
     }
+    
+    console.log('🔍 最終的值:', actualValue);
+    
+    // 移除所有非數字字符（除了小數點）
+    const cleanedValue = actualValue ? actualValue.toString().replace(/[^\d.]/g, '') : '';
+    console.log('🔍 清理後的值:', cleanedValue);
+    
+    // 解析為數字
+    settlementAmount = parseFloat(cleanedValue);
+    console.log('🔍 parseFloat 結果:', settlementAmount);
     
     console.log('🔍 解析後的銷帳金額:', settlementAmount);
     console.log('🔍 原始待付金額:', originalAmount);

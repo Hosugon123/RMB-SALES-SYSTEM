@@ -11,10 +11,20 @@ class EnhancedNumberInput {
             ...options
         };
         
+        // 保存原始值，確保 getActualValue 能正確返回
+        // 使用 input.value 或 options.initialValue
+        this._actualValue = options.initialValue !== undefined ? options.initialValue : this.input.value;
+        if (this._actualValue) {
+            this.input.value = this._actualValue;
+        }
+        
         this.setupEventListeners();
     }
     
     setupEventListeners() {
+        // 保存原有的 _actualValue，避免在添加事件監聽器時被清空
+        const existingValue = this._actualValue;
+        
         // 輸入事件
         this.input.addEventListener('input', (e) => this.handleInput(e));
         
@@ -23,10 +33,21 @@ class EnhancedNumberInput {
         
         // 鍵盤事件
         this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
+        
+        // 確保添加事件監聽器後值不會被清空
+        if (existingValue) {
+            this._actualValue = existingValue;
+            this.input.value = existingValue;
+        }
     }
     
     handleInput(e) {
         let rawValue = e.target.value;
+        
+        // 如果輸入框為空或值相同，不進行處理（避免重複觸發）
+        if (!rawValue || rawValue === this._actualValue) {
+            return;
+        }
         
         // 移除除了數字、小數點和負號以外的所有字元
         if (this.options.allowNegative) {
@@ -46,14 +67,23 @@ class EnhancedNumberInput {
             rawValue = parts[0] + '.' + parts.slice(1).join('');
         }
 
+        // 保存實際值
+        this._actualValue = rawValue;
+
         // 直接顯示清理後的值，不添加千位分隔符
         e.target.value = rawValue;
     }
     
     handleBlur(e) {
-        // 失去焦點時的處理
-        if (!e.target.value || e.target.value === '-' || e.target.value === '.') {
+        // 確保 _actualValue 與 input.value 同步
+        // 只有在值完全無效時才清空
+        const currentValue = e.target.value.trim();
+        if (currentValue === '' || currentValue === '-' || currentValue === '.') {
             e.target.value = '';
+            this._actualValue = '';
+        } else {
+            // 保存實際值
+            this._actualValue = currentValue;
         }
     }
     
@@ -71,9 +101,14 @@ class EnhancedNumberInput {
         e.preventDefault();
     }
     
-    // 獲取實際數值（直接返回輸入值）
+    // 獲取實際數值（優先返回保存的值）
     getValue() {
-        return this.input.value;
+        // 如果 _actualValue 存在，優先返回它
+        if (this._actualValue !== undefined && this._actualValue !== null && this._actualValue !== '') {
+            return this._actualValue;
+        }
+        // 否則返回 input.value
+        return this.input.value || '';
     }
     
     // 獲取數字值
@@ -106,6 +141,9 @@ function setupNumberInputFormatting(inputElement, options = {}) {
     // 向後兼容的方法
     inputElement.getActualValue = () => enhancedInput.getValue();
     inputElement.validateNumber = () => enhancedInput.isValid();
+    
+    // 保存對 enhancedInput 的引用，方便其他代碼訪問
+    inputElement._enhancedInput = enhancedInput;
     
     return enhancedInput;
 }
