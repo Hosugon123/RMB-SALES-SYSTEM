@@ -6315,7 +6315,6 @@ def api_total_profit():
     """計算系統總利潤的API，使用FIFO計算邏輯確保準確性"""
     try:
         # 使用FIFO計算邏輯，確保與實際銷售和成本數據一致
-        print("DEBUG: 開始使用FIFO計算總利潤")
         
         # 獲取所有銷售記錄
         all_sales = (
@@ -6327,10 +6326,7 @@ def api_total_profit():
             .all()
         )
         
-        print(f"DEBUG: 找到 {len(all_sales)} 筆銷售記錄")
-        
         if len(all_sales) == 0:
-            print("DEBUG: 沒有任何銷售記錄，返回零利潤")
             return jsonify({
                 'status': 'success',
                 'data': {
@@ -6345,9 +6341,7 @@ def api_total_profit():
         total_cost_twd = 0.0
         
         for sale in all_sales:
-            print(f"DEBUG: 處理銷售記錄 ID: {sale.id}, 客戶: {sale.customer.name if sale.customer else 'N/A'}")
             profit_info = FIFOService.calculate_profit_for_sale(sale)
-            print(f"DEBUG: 利潤計算結果: {profit_info}")
             
             if profit_info:
                 sale_profit = profit_info.get('profit_twd', 0.0)
@@ -6356,10 +6350,6 @@ def api_total_profit():
                 total_profit_twd += sale_profit
                 total_cost_twd += sale_cost
                 total_revenue_twd += sale.twd_amount
-                
-                print(f"DEBUG: 銷售 {sale.id} - 利潤: {sale_profit}, 成本: {sale_cost}, 收入: {sale.twd_amount}")
-            else:
-                print(f"DEBUG: 銷售記錄 {sale.id} 無法計算利潤")
         
         # 扣除利潤提款記錄
         try:
@@ -7687,22 +7677,7 @@ def api_customer_transactions(customer_id):
             if customer.name in entry.description
         ]
         
-        # 調試：打印查詢到的銷帳記錄
-        print(f"查詢銷帳記錄:")
-        print(f"  - 客戶名稱: {customer.name}")
-        print(f"  - 所有銷帳記錄數量: {len(all_settlements)}")
-        print(f"  - 過濾後包含客戶名稱的銷帳記錄數量: {len(receivable_entries)}")
-        
-        # 打印所有銷帳記錄的描述，幫助調試
-        if len(all_settlements) > 0:
-            print(f"  - 所有銷帳記錄描述:")
-            for entry in all_settlements:
-                print(f"    * {entry.description}")
-        
-        if len(receivable_entries) > 0:
-            print(f"  - 匹配的銷帳記錄描述:")
-            for entry in receivable_entries:
-                print(f"    * {entry.description}")
+        # 已移除調試輸出
         
         # 直接使用數據庫中存儲的應收帳款值，確保與現金管理頁面一致
         total_receivables = customer.total_receivables_twd
@@ -7748,11 +7723,10 @@ def api_customer_transactions(customer_id):
                 receivable_after = receivable_before + sale.twd_amount
                 receivable_change = sale.twd_amount
                 
-                print(f"DEBUG: 客戶 {customer.name} 銷售 {sale.id} 應收帳款變化 - 售出前總額: {total_sales_before:.2f}, 銷帳前總額: {total_settlements_before:.2f}")
-                print(f"DEBUG: 變動前: {receivable_before:.2f}, 變動: {receivable_change:.2f}, 變動後: {receivable_after:.2f}")
+                # 已移除調試輸出
                 
             except Exception as e:
-                print(f"DEBUG: 計算客戶 {customer.name} 銷售 {sale.id} 應收帳款變化失敗: {e}")
+                # 計算失敗時使用預設值
                 receivable_before = 0
                 receivable_after = sale.twd_amount
                 receivable_change = sale.twd_amount
@@ -7839,12 +7813,6 @@ def api_customer_transactions(customer_id):
         
         # 按日期排序
         transactions.sort(key=lambda x: x['date'], reverse=True)
-        
-        print(f"客戶 {customer.name} 的交易紀錄:")
-        print(f"  - 銷售記錄數量: {len(sales_records)}")
-        print(f"  - 銷帳記錄數量: {len(receivable_entries)}")
-        print(f"  - 總交易數量: {len(transactions)}")
-        print(f"  - 當前應收帳款: {total_receivables}")
         
         return jsonify({
             'status': 'success',
