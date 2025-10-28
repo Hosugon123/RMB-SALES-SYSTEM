@@ -9537,22 +9537,53 @@ def get_cash_management_transactions():
             acc.balance for acc in all_accounts_obj if acc.currency == "RMB"
         )
         
-        # 計算累積餘額（從實際餘額開始倒推）
-        running_twd_balance = actual_total_twd
-        running_rmb_balance = actual_total_rmb
-        
-        # 從最新的交易開始，向前倒推每筆交易前的餘額
-        for record in unified_stream:
-            # 記錄此筆交易後的餘額（當前累積餘額）
-            record["running_twd_balance"] = running_twd_balance
-            record["running_rmb_balance"] = running_rmb_balance
+        # --- START: CRITICAL FIX for Forward Accumulation ---
+        # 1. 計算流水的總變動量 (用於倒推起始餘額)
+        total_twd_change = sum(e.get('twd_change', 0) for e in unified_stream)
+        total_rmb_change = sum(e.get('rmb_change', 0) for e in unified_stream)
+
+        # 2. 確定當前最新的實際餘額
+        current_twd_balance = actual_total_twd
+        current_rmb_balance = actual_total_rmb
+
+        # 3. 計算歷史起始餘額
+        # 歷史起始餘額 = 當前最新餘額 - 所有記錄在列表中的變動總和
+        starting_twd_balance = current_twd_balance - total_twd_change
+        starting_rmb_balance = current_rmb_balance - total_rmb_change
+
+        # 4. 按時間正序排序 (ASC) 以便正向累積
+        unified_stream.sort(key=lambda x: x['date'], reverse=False)
+
+        # 5. 執行正向累積計算 (Forward Accumulation)
+        current_twd = starting_twd_balance
+        current_rmb = starting_rmb_balance
+        processed_stream = []
+
+        for entry in unified_stream:
+            entry['twd_balance_before'] = current_twd
+            entry['rmb_balance_before'] = current_rmb
             
-            # 計算此筆交易前的餘額（為下一筆交易準備）
-            running_twd_balance -= (record.get("twd_change", 0) or 0)
-            running_rmb_balance -= (record.get("rmb_change", 0) or 0)
+            twd_change = entry.get('twd_change', 0)
+            rmb_change = entry.get('rmb_change', 0)
+            
+            current_twd += twd_change
+            current_rmb += rmb_change
+            
+            entry['twd_balance_after'] = current_twd
+            entry['rmb_balance_after'] = current_rmb
+            
+            # 保持向後兼容的字段名
+            entry['running_twd_balance'] = current_twd
+            entry['running_rmb_balance'] = current_rmb
+            
+            processed_stream.append(entry)
+
+        # 6. 重新按時間倒序排列 (DESC) 以便頁面顯示
+        processed_stream.sort(key=lambda x: x['date'], reverse=True)
         
-        # 重新按日期倒序排列（新的在前）
-        unified_stream.sort(key=lambda x: x["date"], reverse=True)
+        # 使用 processed_stream 替換原來的 unified_stream
+        unified_stream = processed_stream
+        # --- END: CRITICAL FIX for Forward Accumulation ---
         
         # 統計各類型記錄數量
         sales_count = sum(1 for record in unified_stream if record.get("type") == "售出")
