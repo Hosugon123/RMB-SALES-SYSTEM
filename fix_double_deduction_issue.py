@@ -149,13 +149,13 @@ def fix_double_deduction(account_stats, wrong_account_issues, dry_run=True):
         print("=" * 100)
     
     try:
+        # 初始化調整清單
+        adjustment_needed = {}
+        
         # 1. 處理從錯誤帳戶扣款的問題
         if wrong_account_issues:
             print("\n【步驟1】修復從錯誤帳戶扣款的問題")
             print("-" * 100)
-            
-            # 統計每個帳戶需要調整的金額
-            adjustment_needed = {}
             
             for issue in wrong_account_issues:
                 record = issue['record']
