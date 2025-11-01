@@ -65,6 +65,12 @@ db.sqlite3-journal
 instance/
 .webassets-cache
 
+# Backup files
+backup_temp/
+*.tar.gz
+*.dump
+*.backup
+
 # Scrapy stuff:
 .scrapy
 

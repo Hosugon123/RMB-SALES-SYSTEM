@@ -106,6 +106,7 @@ if os.environ.get('DATABASE_URL'):
     elif database_url.startswith('postgresql://'):
         database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
     
+    
     print(f"使用資料庫連接字串: {database_url[:50]}...")
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 else:
