@@ -2318,13 +2318,16 @@ def fix_historical_settlements_command(reset):
 @app.cli.command("cleanup-sales-withdraw")
 @click.option('--dry-run', is_flag=True, help='僅分析，不實際執行清理')
 @click.option('--force', is_flag=True, help='跳過確認，直接執行清理')
-def cleanup_sales_withdraw_command(dry_run, force):
+@click.option('--no-reimbursement', is_flag=True, help='不回補餘額，只刪除記錄')
+def cleanup_sales_withdraw_command(dry_run, force, no_reimbursement):
     """清理歷史售出扣款的 WITHDRAW LedgerEntry 記錄
     
     這些記錄是多餘的，因為售出記錄已經在流水頁面顯示了完整的扣款信息。
-    此命令會回補帳戶餘額並刪除重複的 WITHDRAW 記錄。
+    此命令會回補帳戶餘額並刪除重複的 WITHDRAW 記錄（使用 --no-reimbursement 可跳過回補）。
     """
     mode_str = "DRY RUN（僅分析）" if dry_run else ("實際清理（強制）" if force else "實際清理（需確認）")
+    if no_reimbursement:
+        mode_str += "（不回補餘額）"
     print(f"\n🔍 開始分析歷史售出扣款 WITHDRAW 記錄... ({mode_str})")
     
     try:
@@ -2380,15 +2383,18 @@ def cleanup_sales_withdraw_command(dry_run, force):
                 print("❌ 操作已取消")
                 return 0
         
-        # 回補帳戶餘額
-        for account_id, stats in account_stats.items():
-            account = stats['account']
-            if account:
-                old_balance = account.balance
-                account.balance += stats['total_amount']
-                new_balance = account.balance
-                print(f"\n✅ 帳戶 {account.name}: 回補 {stats['total_amount']:.2f} RMB")
-                print(f"   餘額變化: {old_balance:.2f} -> {new_balance:.2f}")
+        # 回補帳戶餘額（如果沒有指定 --no-reimbursement）
+        if not no_reimbursement:
+            for account_id, stats in account_stats.items():
+                account = stats['account']
+                if account:
+                    old_balance = account.balance
+                    account.balance += stats['total_amount']
+                    new_balance = account.balance
+                    print(f"\n✅ 帳戶 {account.name}: 回補 {stats['total_amount']:.2f} RMB")
+                    print(f"   餘額變化: {old_balance:.2f} -> {new_balance:.2f}")
+        else:
+            print("\n⚠️  跳過餘額回補（只刪除記錄）")
         
         # 刪除所有 WITHDRAW 記錄
         for record in withdraw_records:
@@ -2397,7 +2403,8 @@ def cleanup_sales_withdraw_command(dry_run, force):
         db.session.commit()
         print(f"\n✅ 清理完成！")
         print(f"   刪除記錄: {len(withdraw_records)} 筆")
-        print(f"   回補餘額: {total_amount:.2f} RMB")
+        if not no_reimbursement:
+            print(f"   回補餘額: {total_amount:.2f} RMB")
         
     except Exception as e:
         db.session.rollback()
