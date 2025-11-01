@@ -929,6 +929,19 @@ class FIFOService:
             total_cost = 0
             allocations = []
             
+            # 關鍵修正：檢查並驗證售出的扣款戶
+            if not sales_record.rmb_account:
+                raise ValueError(f"銷售記錄 ID {sales_record.id} 沒有指定扣款戶（rmb_account_id）")
+            
+            deduction_account = sales_record.rmb_account  # 售出的扣款戶
+            
+            # 檢查扣款戶餘額是否足夠
+            if deduction_account.balance < rmb_amount:
+                raise ValueError(
+                    f"扣款戶 {deduction_account.name} 餘額不足！"
+                    f"需要 {rmb_amount:,.2f} RMB，但僅剩 {deduction_account.balance:,.2f} RMB"
+                )
+            
             # 按買入時間順序獲取有庫存的記錄（FIFO原則）
             available_inventory = (
                 db.session.execute(
@@ -961,31 +974,6 @@ class FIFOService:
                 # 更新庫存剩餘數量
                 inventory.remaining_rmb -= allocate_from_this_batch
                 
-                # 關鍵修正：從庫存來源帳戶扣款RMB（不是從銷售記錄的出貨帳戶）
-                if inventory.purchase_record.deposit_account:
-                    source_account = inventory.purchase_record.deposit_account
-                    old_balance = source_account.balance
-                    source_account.balance -= allocate_from_this_batch
-                    new_balance = source_account.balance
-                    print(f"[MONEY] 從庫存來源帳戶 {source_account.name} 扣款: {old_balance:.2f} -> {new_balance:.2f} (-{allocate_from_this_batch:.2f} RMB)")
-                    
-                    # 創建 LedgerEntry 記錄餘額變動（金額為負數表示出款）
-                    try:
-                        ledger_entry = LedgerEntry(
-                            entry_type="WITHDRAW",  # 使用 WITHDRAW 類型表示出款
-                            account_id=source_account.id,
-                            amount=-allocate_from_this_batch,  # 負數表示出款
-                            description=f"售出扣款：分配給客戶（庫存批次 {inventory.id}）",
-                            operator_id=get_safe_operator_id()
-                        )
-                        db.session.add(ledger_entry)
-                        print(f"[LEDGER] 已記錄 RMB 帳戶餘額變動：{old_balance:.2f} -> {new_balance:.2f} ({ledger_entry.amount:.2f} RMB)")
-                    except Exception as ledger_error:
-                        print(f"[WARNING] 創建 LedgerEntry 失敗: {ledger_error}")
-                        # 不中斷流程，繼續執行
-                else:
-                    print(f"[WARNING] 警告：庫存記錄沒有關聯的存款帳戶，無法扣款！")
-                
                 # 累計成本
                 total_cost += allocation.allocated_cost_twd
                 remaining_to_allocate -= allocate_from_this_batch
@@ -997,6 +985,15 @@ class FIFOService:
             
             if remaining_to_allocate > 0:
                 raise ValueError(f"庫存不足，還需要 {remaining_to_allocate} RMB")
+            
+            # 關鍵修正：從售出的扣款戶統一扣款（不是從庫存來源帳戶）
+            old_balance = deduction_account.balance
+            deduction_account.balance -= rmb_amount
+            new_balance = deduction_account.balance
+            print(f"[MONEY] 從售出扣款戶 {deduction_account.name} 扣款: {old_balance:.2f} -> {new_balance:.2f} (-{rmb_amount:.2f} RMB)")
+            
+            # 注意：不創建 WITHDRAW LedgerEntry，因為售出記錄已經會在流水頁面顯示完整的扣款信息
+            # 避免重複顯示造成混淆
             
             db.session.flush()  # 改為flush，讓上層控制commit
             print(f"FIFO分配完成，總成本: {total_cost} TWD")
@@ -2318,6 +2315,100 @@ def fix_historical_settlements_command(reset):
     return 0
 
 
+@app.cli.command("cleanup-sales-withdraw")
+@click.option('--dry-run', is_flag=True, help='僅分析，不實際執行清理')
+@click.option('--force', is_flag=True, help='跳過確認，直接執行清理')
+def cleanup_sales_withdraw_command(dry_run, force):
+    """清理歷史售出扣款的 WITHDRAW LedgerEntry 記錄
+    
+    這些記錄是多餘的，因為售出記錄已經在流水頁面顯示了完整的扣款信息。
+    此命令會回補帳戶餘額並刪除重複的 WITHDRAW 記錄。
+    """
+    mode_str = "DRY RUN（僅分析）" if dry_run else ("實際清理（強制）" if force else "實際清理（需確認）")
+    print(f"\n🔍 開始分析歷史售出扣款 WITHDRAW 記錄... ({mode_str})")
+    
+    try:
+        # 查詢所有售出扣款的 WITHDRAW 記錄
+        withdraw_records = db.session.execute(
+            db.select(LedgerEntry)
+            .filter(LedgerEntry.entry_type == "WITHDRAW")
+            .filter(LedgerEntry.description.like("%售出扣款%"))
+        ).scalars().all()
+        
+        print(f"\n找到 {len(withdraw_records)} 筆售出扣款 WITHDRAW 記錄")
+        
+        if len(withdraw_records) == 0:
+            print("✅ 沒有找到需要清理的記錄！")
+            return 0
+        
+        # 按帳戶統計
+        account_stats = {}
+        for record in withdraw_records:
+            account_id = record.account_id
+            if account_id not in account_stats:
+                account_stats[account_id] = {
+                    'count': 0,
+                    'total_amount': 0,
+                    'account': record.account
+                }
+            account_stats[account_id]['count'] += 1
+            account_stats[account_id]['total_amount'] += abs(record.amount)
+        
+        print("\n統計資訊：")
+        print("-" * 80)
+        total_amount = 0
+        for account_id, stats in account_stats.items():
+            account_name = stats['account'].name if stats['account'] else "未知帳戶"
+            print(f"帳戶: {account_name} (ID: {account_id})")
+            print(f"  記錄數量: {stats['count']} 筆")
+            print(f"  總扣款金額: {stats['total_amount']:.2f} RMB")
+            total_amount += stats['total_amount']
+        
+        print("-" * 80)
+        print(f"總記錄數: {len(withdraw_records)} 筆")
+        print(f"總扣款金額: {total_amount:.2f} RMB")
+        
+        if dry_run:
+            print("\n✅ DRY RUN 模式：僅顯示分析結果，不實際執行清理")
+            return 0
+        
+        print("\n⚠️  警告：此操作會刪除 LedgerEntry 記錄並調整帳戶餘額！")
+        
+        if not force:
+            response = input("是否繼續？(yes/no): ")
+            if response.lower() != 'yes':
+                print("❌ 操作已取消")
+                return 0
+        
+        # 回補帳戶餘額
+        for account_id, stats in account_stats.items():
+            account = stats['account']
+            if account:
+                old_balance = account.balance
+                account.balance += stats['total_amount']
+                new_balance = account.balance
+                print(f"\n✅ 帳戶 {account.name}: 回補 {stats['total_amount']:.2f} RMB")
+                print(f"   餘額變化: {old_balance:.2f} -> {new_balance:.2f}")
+        
+        # 刪除所有 WITHDRAW 記錄
+        for record in withdraw_records:
+            db.session.delete(record)
+        
+        db.session.commit()
+        print(f"\n✅ 清理完成！")
+        print(f"   刪除記錄: {len(withdraw_records)} 筆")
+        print(f"   回補餘額: {total_amount:.2f} RMB")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 清理失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
+
+
 # <---【移除】舊的 init-db 命令，完全由 Flask-Migrate 取代
 
 
@@ -3203,12 +3294,13 @@ def api_sales_entry():
             return jsonify({"status": "error", "message": "找不到指定的客戶。"}), 404
         if not rmb_account or rmb_account.currency != "RMB":
             return jsonify({"status": "error", "message": "無效的 RMB 出貨帳戶。"}), 400
+        # 關鍵修正：檢查扣款戶餘額是否足夠（不是檢查庫存）
         if rmb_account.balance < rmb_amount:
             return (
                 jsonify(
                     {
                         "status": "error",
-                        "message": f"RMB 庫存不足！帳戶 {rmb_account.name} 僅剩 {rmb_account.balance:,.2f}。",
+                        "message": f"扣款戶餘額不足！帳戶 {rmb_account.name} 僅剩 {rmb_account.balance:,.2f} RMB，需要 {rmb_amount:,.2f} RMB。",
                     }
                 ),
                 400,
@@ -3217,7 +3309,7 @@ def api_sales_entry():
         # 3. 核心業務邏輯
         twd_amount = round(rmb_amount * exchange_rate, 2)
 
-        # 注意：RMB帳戶餘額不在此處扣款，而是在FIFO庫存分配時從實際庫存來源帳戶扣款
+        # 注意：RMB帳戶餘額會在FIFO庫存分配時從售出的扣款戶（rmb_account）扣款
         # AR 會在後續直接更新，避免使用 recalculate_customer_receivables() 導致遞歸
 
         # 創建銷售紀錄
@@ -4101,13 +4193,16 @@ def cash_management():
                 print(f"  TWD帳戶變動: {twd_change} (類型: {entry.entry_type})")
                 
             elif entry.account and entry.account.currency == "RMB":
-                rmb_change = (
-                    entry.amount
-                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
-                    else -entry.amount
-                )
+                # 關鍵修正：WITHDRAW 類型應該顯示為負數（扣款）
+                if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]:
+                    rmb_change = entry.amount  # 存款、轉入：正數表示增加
+                elif entry.entry_type == "WITHDRAW":
+                    # 提款：確保顯示為負數（扣款）
+                    rmb_change = -abs(entry.amount)  # 強制轉為負數
+                else:
+                    rmb_change = -entry.amount  # 其他類型：反向
                 
-                print(f"  RMB帳戶變動: {rmb_change} (類型: {entry.entry_type})")
+                print(f"  RMB帳戶變動: {rmb_change} (類型: {entry.entry_type}, 原始amount: {entry.amount})")
             
             # 顯示所有記帳記錄，包括提款記錄
             # 移除過濾，確保提款記錄被包含在內
@@ -9256,11 +9351,14 @@ def get_cash_management_transactions():
                     else:
                         twd_change = -entry.amount
                 elif entry.account and entry.account.currency == "RMB":
-                    rmb_change = (
-                        entry.amount
-                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
-                        else -entry.amount
-                    )
+                    # 關鍵修正：WITHDRAW 類型應該顯示為負數（扣款）
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]:
+                        rmb_change = entry.amount  # 存款、轉入：正數表示增加
+                    elif entry.entry_type == "WITHDRAW":
+                        # 提款：確保顯示為負數（扣款）
+                        rmb_change = -abs(entry.amount)  # 強制轉為負數
+                    else:
+                        rmb_change = -entry.amount  # 其他類型：反向
 
                 # 設置出入款帳戶
                 payment_account = "N/A"
@@ -9328,8 +9426,14 @@ def get_cash_management_transactions():
                         account_balance_before = entry.account.balance - entry.amount
                         account_balance_after = entry.account.balance
                         account_balance_change = entry.amount
+                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT"]:
+                        # 減少餘額的交易 - WITHDRAW 可能使用負數 amount
+                        abs_amount = abs(entry.amount)
+                        account_balance_before = entry.account.balance + abs_amount
+                        account_balance_after = entry.account.balance
+                        account_balance_change = -abs_amount
                     else:
-                        # 減少餘額的交易
+                        # 其他減少餘額的交易
                         account_balance_before = entry.account.balance + entry.amount
                         account_balance_after = entry.account.balance
                         account_balance_change = -entry.amount
@@ -9842,11 +9946,13 @@ def get_cash_management_transactions_simple():
                     else:
                         twd_change = -entry.amount
                 elif entry.account and entry.account.currency == "RMB":
-                    rmb_change = (
-                        entry.amount
-                        if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]
-                        else -entry.amount
-                    )
+                    # WITHDRAW 類型應該顯示為負數（扣款）
+                    if entry.entry_type in ["DEPOSIT", "TRANSFER_IN"]:
+                        rmb_change = entry.amount  # 存款、轉入：正數表示增加
+                    elif entry.entry_type == "WITHDRAW":
+                        rmb_change = -abs(entry.amount)  # 強制轉為負數
+                    else:
+                        rmb_change = -entry.amount  # 其他類型：反向
                 
                 # 設置出入款帳戶
                 payment_account = "N/A"
@@ -9921,9 +10027,11 @@ def get_cash_management_transactions_simple():
                             "after": account_balance_after
                         }
                     elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT"]:
-                        account_balance_before = entry.account.balance + entry.amount
+                        # 減少餘額的交易 - WITHDRAW 可能使用負數 amount
+                        abs_amount = abs(entry.amount)
+                        account_balance_before = entry.account.balance + abs_amount
                         account_balance_after = entry.account.balance
-                        account_balance_change = -entry.amount
+                        account_balance_change = -abs_amount
                         payment_account_balance = {
                             "before": account_balance_before,
                             "change": account_balance_change,
