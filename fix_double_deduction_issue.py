@@ -180,11 +180,14 @@ def fix_double_deduction(account_stats, wrong_account_issues, dry_run=True):
                 if not dry_run:
                     print(f"  ✅ 已記錄到調整清單")
         
-        # 2. 處理所有 WITHDRAW 記錄的刪除和回補
+        # 2. 處理所有 WITHDRAW 記錄的刪除
         print("\n【步驟2】處理所有售出扣款 WITHDRAW 記錄")
         print("-" * 100)
+        print("\n⚠️  注意：WITHDRAW LedgerEntry 只是流水記錄，不影響實際餘額")
+        print("   如果舊代碼有從錯誤帳戶扣款的情況，才需要調整餘額")
         
         total_deleted = 0
+        accounts_with_balance_adjustments = []
         
         for account_id, stats in account_stats.items():
             account = stats['account']
@@ -192,24 +195,26 @@ def fix_double_deduction(account_stats, wrong_account_issues, dry_run=True):
                 old_balance = account.balance
                 
                 # 計算調整金額
-                # 如果這個帳戶在調整清單中，考慮調整
+                # 只調整從錯誤帳戶扣款的情況
                 adjustment = adjustment_needed.get(account_id, 0)
-                final_adjustment = stats['total_amount'] + adjustment
                 
-                if final_adjustment != 0:
-                    new_balance = account.balance + final_adjustment
+                if adjustment != 0:
+                    new_balance = account.balance + adjustment
                     
                     print(f"\n帳戶: {account.name} (ID: {account_id})")
                     print(f"  當前餘額: {old_balance:.2f} RMB")
-                    print(f"  WITHDRAW 記錄總額: {stats['total_amount']:.2f} RMB")
-                    if adjustment != 0:
-                        print(f"  錯誤帳戶調整: {adjustment:+.2f} RMB")
-                    print(f"  總調整: {final_adjustment:+.2f} RMB")
+                    print(f"  錯誤帳戶調整: {adjustment:+.2f} RMB")
                     print(f"  調整後餘額: {new_balance:.2f} RMB")
                     
                     if not dry_run:
                         account.balance = new_balance
                         print(f"  ✅ 已更新餘額")
+                    
+                    accounts_with_balance_adjustments.append(account_id)
+                
+                print(f"\n帳戶: {account.name} (ID: {account_id})")
+                print(f"  WITHDRAW 記錄: {stats['count']} 筆，總額: {stats['total_amount']:.2f} RMB")
+                print(f"  ⚠️  這些記錄只是流水，不影響餘額（如果舊代碼有實際扣款則已在上方調整）")
                 
                 total_deleted += stats['count']
         
@@ -229,11 +234,11 @@ def fix_double_deduction(account_stats, wrong_account_issues, dry_run=True):
             db.session.commit()
             print(f"\n✅ 修復完成！")
             print(f"   刪除記錄: {total_deleted} 筆")
-            print(f"   調整帳戶: {len([a for a in account_stats.values() if adjustment_needed.get(a['account'].id, 0) != 0])} 個")
+            print(f"   調整帳戶: {len(accounts_with_balance_adjustments)} 個（僅調整從錯誤帳戶扣款的情況）")
         else:
             print(f"\n✅ DRY RUN 完成")
             print(f"   將刪除記錄: {total_deleted} 筆")
-            print(f"   將調整帳戶: {len([a for a in account_stats.values() if adjustment_needed.get(a['account'].id, 0) != 0])} 個")
+            print(f"   將調整帳戶: {len(accounts_with_balance_adjustments)} 個（僅調整從錯誤帳戶扣款的情況）")
     
     except Exception as e:
         if not dry_run:
