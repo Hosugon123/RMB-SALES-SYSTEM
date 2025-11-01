@@ -7786,7 +7786,26 @@ def api_customer_transactions(customer_id):
                 }
             })
         
-        # 按日期排序
+        # 按日期排序（準備進行正向累積）
+        transactions.sort(key=lambda x: x['date'], reverse=False)
+        
+        # === 正向累積應收帳款餘額 ===
+        # 計算歷史起始餘額 = 當前餘額 - 所有交易的變動總和
+        total_change = sum(t.get('receivable_balance', {}).get('change', 0) for t in transactions)
+        starting_balance = total_receivables - total_change
+        
+        # 執行正向累積
+        current_balance = starting_balance
+        for t in transactions:
+            if 'receivable_balance' in t:
+                t['receivable_balance']['before'] = round(current_balance, 2)
+                change = t['receivable_balance'].get('change', 0)
+                current_balance += change
+                t['receivable_balance']['after'] = round(current_balance, 2)
+                # 同時更新變動值（確保正確）
+                t['receivable_balance']['change'] = change
+        
+        # 重新按日期倒序排列（最新在前）
         transactions.sort(key=lambda x: x['date'], reverse=True)
         
         return jsonify({
