@@ -2705,11 +2705,11 @@ def dashboard():
 
 
         # 計算總應收帳款
+        # [修改] 移除過濾條件，顯示所有啟用的客戶，即使應收帳款為0
         customers_with_receivables = (
             db.session.execute(
                 db.select(Customer)
                 .filter_by(is_active=True)
-                .filter(Customer.total_receivables_twd > 0)
                 .order_by(Customer.total_receivables_twd.desc())
             )
             .scalars()
@@ -3013,11 +3013,11 @@ def admin_dashboard():
         )
         
         # 計算總應收帳款
+        # [修改] 移除過濾條件，顯示所有啟用的客戶，即使應收帳款為0
         customers_with_receivables = (
             db.session.execute(
                 db.select(Customer)
                 .filter_by(is_active=True)
-                .filter(Customer.total_receivables_twd > 0)
                 .order_by(Customer.total_receivables_twd.desc())
             )
             .scalars()
@@ -3817,12 +3817,12 @@ def cash_management_operator():
         )
 
         # 查詢應收帳款數據 - 添加錯誤處理
+        # [修改] 移除過濾條件，顯示所有啟用的客戶，即使應收帳款為0（用於查詢交易紀錄）
         try:
             customers_with_receivables = (
                 db.session.execute(
                     db.select(Customer)
                     .filter_by(is_active=True)
-                    .filter(Customer.total_receivables_twd > 0)
                     .order_by(Customer.total_receivables_twd.desc())
                 )
                 .scalars()
@@ -4213,12 +4213,12 @@ def cash_management():
         )
 
         # 查詢應收帳款數據 - 添加錯誤處理
+        # [修改] 移除過濾條件，顯示所有啟用的客戶，即使應收帳款為0（用於查詢交易紀錄）
         try:
             customers_with_receivables = (
                 db.session.execute(
                     db.select(Customer)
                     .filter_by(is_active=True)
-                    .filter(Customer.total_receivables_twd > 0)
                     .order_by(Customer.total_receivables_twd.desc())
                 )
                 .scalars()
@@ -10527,11 +10527,11 @@ def get_cash_management_totals():
         )
 
         # 查詢應收帳款數據
+        # [修改] 移除過濾條件，顯示所有啟用的客戶，即使應收帳款為0
         customers_with_receivables = (
             db.session.execute(
                 db.select(Customer)
                 .filter_by(is_active=True)
-                .filter(Customer.total_receivables_twd > 0)
                 .order_by(Customer.total_receivables_twd.desc())
             )
             .scalars()
