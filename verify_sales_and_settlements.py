@@ -8,14 +8,27 @@
 2. 歷史總銷帳：所有 SETTLEMENT LedgerEntry 的總金額
 3. 售出扣款 WITHDRAW 記錄：歷史的售出扣款 WITHDRAW 記錄總額
 4. 驗證數據一致性和帳戶餘額正確性
+
+使用方法：
+- 本地測試: python verify_sales_and_settlements.py
+- Render Shell: python verify_sales_and_settlements.py
+- 或直接在 Render Shell 中創建此腳本並執行
 """
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app import app, db
-from sqlalchemy import func
+# 確保可以找到 app 模組
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+try:
+    from app import app, db, SalesRecord, LedgerEntry, Customer, CashAccount
+except ImportError as e:
+    print(f"❌ 導入錯誤: {e}")
+    print("請確保在專案根目錄執行此腳本")
+    sys.exit(1)
 
 def verify_sales_and_settlements():
     """驗證歷史總售出、歷史總銷帳和 WITHDRAW 記錄"""
@@ -30,7 +43,6 @@ def verify_sales_and_settlements():
             print("-" * 100)
             
             # 查詢所有銷售記錄
-            from app import SalesRecord
             all_sales = db.session.execute(
                 db.select(SalesRecord).order_by(SalesRecord.created_at.asc())
             ).scalars().all()
@@ -66,7 +78,6 @@ def verify_sales_and_settlements():
             print("\n【2】計算歷史總銷帳")
             print("-" * 100)
             
-            from app import LedgerEntry
             all_settlements = db.session.execute(
                 db.select(LedgerEntry)
                 .filter(LedgerEntry.entry_type == "SETTLEMENT")
@@ -111,7 +122,6 @@ def verify_sales_and_settlements():
             total_receivables_calculated = total_sales_twd - total_settlements
             
             # 從資料庫中查詢所有客戶的應收帳款總和
-            from app import Customer
             all_customers = db.session.execute(
                 db.select(Customer)
             ).scalars().all()
@@ -182,7 +192,6 @@ def verify_sales_and_settlements():
             print("\n【6】帳戶餘額驗證")
             print("-" * 100)
             
-            from app import CashAccount
             all_accounts = db.session.execute(
                 db.select(CashAccount).filter(CashAccount.currency == "RMB")
             ).scalars().all()
