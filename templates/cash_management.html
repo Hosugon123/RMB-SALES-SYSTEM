@@ -1078,18 +1078,36 @@ document.addEventListener('DOMContentLoaded', function () {
             // 創建新的事件處理函數
             settlementAmountInput._inputHandler = function() {
                 // [修復] 正確獲取輸入框的實際數值
-                let rawValue;
+                // 直接從 input.value 獲取，避免格式化函數干擾
+                let rawValue = this.value;
+                
+                // 如果 getActualValue 存在且返回有效值，優先使用
                 if (this.getActualValue && typeof this.getActualValue === 'function') {
-                    rawValue = this.getActualValue();
+                    try {
+                        const actualValue = this.getActualValue();
+                        // 只有當 actualValue 是有效字符串時才使用
+                        if (actualValue !== null && actualValue !== undefined && actualValue !== '') {
+                            rawValue = String(actualValue);
+                        }
+                    } catch (e) {
+                        console.warn('getActualValue 執行失敗，使用 input.value:', e);
+                    }
                 } else if (this._enhancedInput && this._enhancedInput.getValue) {
-                    rawValue = this._enhancedInput.getValue();
-                } else {
-                    rawValue = this.value;
+                    try {
+                        const enhancedValue = this._enhancedInput.getValue();
+                        if (enhancedValue !== null && enhancedValue !== undefined && enhancedValue !== '') {
+                            rawValue = String(enhancedValue);
+                        }
+                    } catch (e) {
+                        console.warn('_enhancedInput.getValue 執行失敗，使用 input.value:', e);
+                    }
                 }
                 
-                // 清理值（移除空格、逗號等格式字符，但保留小數點）
-                // [修復] 確保正確解析數字，不把小數點當作分隔符
-                let cleanedValue = String(rawValue).replace(/[,\s]/g, '');
+                // [關鍵修復] 清理值：只移除格式字符（逗號、空格），絕不改變數字結構
+                // 確保整數輸入 "25000" 保持為 "25000"，不變成 "250.00" 或 "2500"
+                let cleanedValue = String(rawValue)
+                    .replace(/[,\s]/g, '')  // 只移除逗號和空格
+                    .replace(/[^0-9.-]/g, '');  // 移除其他非數字字符（保留小數點和負號）
                 
                 // 驗證是否有非法的小數點格式（多個小數點）
                 const parts = cleanedValue.split('.');
@@ -1098,7 +1116,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     cleanedValue = parts[0] + '.' + parts.slice(1).join('');
                 }
                 
-                const amount = parseFloat(cleanedValue) || 0;
+                // [關鍵修復] 直接使用 parseFloat，不做任何除法或小數位處理
+                // parseFloat 會自動處理小數點，整數會保持為整數
+                const amount = parseFloat(cleanedValue);
+                
+                // 驗證解析結果
+                if (isNaN(amount)) {
+                    console.error('數字解析失敗:', {
+                        originalValue: this.value,
+                        rawValue: rawValue,
+                        cleanedValue: cleanedValue,
+                        parts: parts
+                    });
+                }
                 
                 const remaining = Math.max(0, totalReceivable - amount);
                 
@@ -1852,20 +1882,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 // 獲取表單數據
                 const customerId = document.querySelector('input[name="customer_id"]').value;
                 
-                // [修復] 正確獲取銷帳金額，與輸入事件處理保持一致
+                // [關鍵修復] 直接從 input.value 獲取原始值，不依賴格式化函數
+                // 因為格式化函數可能會錯誤地處理整數輸入
                 const settlementAmountInput = document.getElementById('settlementAmount');
-                let rawValue;
-                if (settlementAmountInput.getActualValue && typeof settlementAmountInput.getActualValue === 'function') {
-                    rawValue = settlementAmountInput.getActualValue();
-                } else if (settlementAmountInput._enhancedInput && settlementAmountInput._enhancedInput.getValue) {
-                    rawValue = settlementAmountInput._enhancedInput.getValue();
-                } else {
-                    rawValue = settlementAmountInput.value;
-                }
                 
-                // 清理值（移除空格、逗號等格式字符，但保留小數點）
-                // [修復] 確保正確解析數字，不把小數點當作分隔符
-                let cleanedValue = String(rawValue).replace(/[,\s]/g, '');
+                // 直接使用 input.value，這是用戶實際輸入的值
+                let rawValue = settlementAmountInput.value;
+                
+                // [關鍵修復] 清理值：只移除格式字符（逗號、空格），絕不改變數字結構
+                // 不使用 getActualValue()，因為它可能被格式化函數修改
+                let cleanedValue = String(rawValue)
+                    .replace(/[,\s]/g, '')  // 只移除逗號和空格
+                    .replace(/[^0-9.-]/g, '');  // 移除其他非數字字符（保留小數點和負號）
                 
                 // 驗證是否有非法的小數點格式（多個小數點）
                 const parts = cleanedValue.split('.');
@@ -1874,17 +1902,33 @@ document.addEventListener('DOMContentLoaded', function () {
                     cleanedValue = parts[0] + '.' + parts.slice(1).join('');
                 }
                 
-                const amount = parseFloat(cleanedValue) || 0;
+                // [關鍵修復] 直接使用 parseFloat，不做任何除法或小數位處理
+                // parseFloat 會正確處理整數（如 "25000" → 25000）和小數（如 "25000.5" → 25000.5）
+                let amount = parseFloat(cleanedValue);
+                
+                // 驗證解析結果
+                if (isNaN(amount) || amount < 0) {
+                    console.error('❌ 數字解析失敗或無效:', {
+                        inputValue: settlementAmountInput.value,
+                        rawValue: rawValue,
+                        cleanedValue: cleanedValue,
+                        amount: amount,
+                        parts: parts
+                    });
+                    Swal.fire('錯誤', '請輸入有效的銷帳金額', 'error');
+                    return;
+                }
                 
                 let accountId = document.querySelector('input[name="account_id"]').value;
                 const note = document.getElementById('settlementNote').value;
                 
-                console.log('表單提交時的金額解析:', {
+                console.log('✅ 表單提交時的金額解析:', {
+                    inputValue: settlementAmountInput.value,
                     rawValue: rawValue,
                     cleanedValue: cleanedValue,
                     amount: amount,
-                    inputValue: settlementAmountInput.value,
-                    parts: parts
+                    parts: parts,
+                    isNaN: isNaN(amount)
                 });
                 
                 // 如果隱藏欄位的值為空，嘗試從下拉選單獲取
