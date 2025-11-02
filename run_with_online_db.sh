@@ -6,3 +6,4 @@ export DATABASE_URL="postgresql+psycopg://rmb_user:BGvPp5PwQ3WRnoLCTzW2@dpg-d5im
 echo "啟動應用..."
 python app.py
 
+

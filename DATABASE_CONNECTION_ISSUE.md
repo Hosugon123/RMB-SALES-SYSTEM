@@ -64,3 +64,4 @@ Render 的付費 PostgreSQL 計劃提供：
 
 建議：**使用本地 SQLite，確保所有功能正常後再部署到 Render**。
 
+
