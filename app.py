@@ -7790,10 +7790,10 @@ def api_settlement():
             print(f"[ERROR] 銷帳API: 錯誤詳情: {traceback.format_exc()}")
             raise e
         
-        # 更新客戶應收帳款（直接扣減，避免遞歸）
-        customer.total_receivables_twd -= amount
+        # [已移除重複扣減] 客戶應收帳款已在第7739行扣減，此處不需要重複扣減
+        # 確保應收帳款不為負數
         if customer.total_receivables_twd < 0:
-            customer.total_receivables_twd = 0  # 確保不為負數
+            customer.total_receivables_twd = 0
         
         # 提交事務
         print(f"[FIX] 銷帳API: 準備提交事務...")

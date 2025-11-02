@@ -36,3 +36,4 @@ with app.app_context():
     print(f"6. WITHDRAW/總售出比例: {total_withdraw_rmb/total_sales_rmb*100 if total_sales_rmb > 0 else 0:.2f}%")
     print("="*80)
 
+
