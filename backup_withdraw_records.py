@@ -48,7 +48,7 @@ def backup_withdraw_records():
                     'amount': float(record.amount),
                     'description': record.description,
                     'entry_date': record.entry_date.isoformat() if record.entry_date else None,
-                    'created_at': record.created_at.isoformat() if record.created_at else None,
+                    'operator_id': record.operator_id,
                 })
             
             # 生成備份文件名
