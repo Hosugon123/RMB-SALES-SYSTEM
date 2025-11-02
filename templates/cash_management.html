@@ -1077,15 +1077,50 @@ document.addEventListener('DOMContentLoaded', function () {
             
             // 創建新的事件處理函數
             settlementAmountInput._inputHandler = function() {
-                const amount = parseFloat(this.getActualValue ? this.getActualValue() : this.value) || 0;
+                // [修復] 正確獲取輸入框的實際數值
+                let rawValue;
+                if (this.getActualValue && typeof this.getActualValue === 'function') {
+                    rawValue = this.getActualValue();
+                } else if (this._enhancedInput && this._enhancedInput.getValue) {
+                    rawValue = this._enhancedInput.getValue();
+                } else {
+                    rawValue = this.value;
+                }
+                
+                // 清理值（移除空格、逗號等格式字符，但保留小數點）
+                // [修復] 確保正確解析數字，不把小數點當作分隔符
+                let cleanedValue = String(rawValue).replace(/[,\s]/g, '');
+                
+                // 驗證是否有非法的小數點格式（多個小數點）
+                const parts = cleanedValue.split('.');
+                if (parts.length > 2) {
+                    // 如果有多個小數點，只保留第一個
+                    cleanedValue = parts[0] + '.' + parts.slice(1).join('');
+                }
+                
+                const amount = parseFloat(cleanedValue) || 0;
+                
                 const remaining = Math.max(0, totalReceivable - amount);
                 
                 // 更新顯示欄位
                 document.getElementById('settlementAmountDisplay').value = `NT$ ${amount.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
                 document.getElementById('settlementRemainingReceivable').value = `NT$ ${remaining.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
                 
-                console.log('銷帳金額變更:', { amount, remaining, totalReceivable });
+                console.log('銷帳金額變更:', { 
+                    rawValue: rawValue,
+                    cleanedValue: cleanedValue,
+                    amount: amount, 
+                    remaining: remaining, 
+                    totalReceivable: totalReceivable,
+                    inputValue: this.value,
+                    hasGetActualValue: !!this.getActualValue,
+                    hasEnhancedInput: !!this._enhancedInput
+                });
             };
+            
+            // [修復] 先添加數字格式化功能，再綁定事件監聽器
+            // 這樣可以確保 getActualValue 方法在事件處理時已經可用
+            setupNumberInputFormatting(settlementAmountInput, { maxDecimals: 2 });
             
             // 綁定事件監聽器
             settlementAmountInput.addEventListener('input', settlementAmountInput._inputHandler);
@@ -1093,9 +1128,6 @@ document.addEventListener('DOMContentLoaded', function () {
             
             // 觸發一次初始計算
             settlementAmountInput._inputHandler();
-            
-            // 添加數字格式化功能
-            setupNumberInputFormatting(settlementAmountInput, { maxDecimals: 2 });
         }
         
         console.log('模態框數據設置完成:', {
@@ -1819,9 +1851,41 @@ document.addEventListener('DOMContentLoaded', function () {
                 
                 // 獲取表單數據
                 const customerId = document.querySelector('input[name="customer_id"]').value;
-                const amount = parseFloat(document.getElementById('settlementAmount').getActualValue ? document.getElementById('settlementAmount').getActualValue() : document.getElementById('settlementAmount').value);
+                
+                // [修復] 正確獲取銷帳金額，與輸入事件處理保持一致
+                const settlementAmountInput = document.getElementById('settlementAmount');
+                let rawValue;
+                if (settlementAmountInput.getActualValue && typeof settlementAmountInput.getActualValue === 'function') {
+                    rawValue = settlementAmountInput.getActualValue();
+                } else if (settlementAmountInput._enhancedInput && settlementAmountInput._enhancedInput.getValue) {
+                    rawValue = settlementAmountInput._enhancedInput.getValue();
+                } else {
+                    rawValue = settlementAmountInput.value;
+                }
+                
+                // 清理值（移除空格、逗號等格式字符，但保留小數點）
+                // [修復] 確保正確解析數字，不把小數點當作分隔符
+                let cleanedValue = String(rawValue).replace(/[,\s]/g, '');
+                
+                // 驗證是否有非法的小數點格式（多個小數點）
+                const parts = cleanedValue.split('.');
+                if (parts.length > 2) {
+                    // 如果有多個小數點，只保留第一個
+                    cleanedValue = parts[0] + '.' + parts.slice(1).join('');
+                }
+                
+                const amount = parseFloat(cleanedValue) || 0;
+                
                 let accountId = document.querySelector('input[name="account_id"]').value;
                 const note = document.getElementById('settlementNote').value;
+                
+                console.log('表單提交時的金額解析:', {
+                    rawValue: rawValue,
+                    cleanedValue: cleanedValue,
+                    amount: amount,
+                    inputValue: settlementAmountInput.value,
+                    parts: parts
+                });
                 
                 // 如果隱藏欄位的值為空，嘗試從下拉選單獲取
                 if (!accountId) {

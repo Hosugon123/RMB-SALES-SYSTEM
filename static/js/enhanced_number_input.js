@@ -66,6 +66,19 @@ class EnhancedNumberInput {
         if (parts.length > 2) {
             rawValue = parts[0] + '.' + parts.slice(1).join('');
         }
+        
+        // [修復] 限制小數位數，不把小數點當作一位數
+        if (parts.length === 2) {
+            // 有小數點的情況：限制小數部分最多為 maxDecimals 位
+            const integerPart = parts[0];
+            const decimalPart = parts[1];
+            
+            if (decimalPart.length > this.options.maxDecimals) {
+                // 截斷超過的小數位數
+                rawValue = integerPart + '.' + decimalPart.substring(0, this.options.maxDecimals);
+            }
+        }
+        // 注意：如果沒有小數點，不應該自動添加小數點或限制整數部分
 
         // 保存實際值
         this._actualValue = rawValue;
