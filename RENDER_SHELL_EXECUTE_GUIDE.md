@@ -14,7 +14,13 @@
 
 ```bash
 cd ~/project/src
-git pull
+
+# 如果 git pull 失敗，使用以下命令指定分支
+git pull origin main
+
+# 或者先檢查並切換到 main 分支
+git checkout main
+git pull origin main
 ```
 
 這會從 GitHub 拉取最新代碼，包括 `analyze_withdraw_accounts.py` 腳本。
@@ -92,15 +98,32 @@ python analyze_withdraw_accounts.py
 
 ## ⚠️ 如果遇到問題
 
-### 問題 1：Git pull 失敗
-```bash
-# 檢查 Git 狀態
-git status
+### 問題 1：Git pull 失敗（detached HEAD 狀態）
 
-# 如果有衝突，先暫存更改
-git stash
-git pull
-git stash pop
+**錯誤訊息**："You are not currently on a branch"
+
+**解決方案**：
+
+```bash
+# 方案 1：直接指定遠端和分支
+git pull origin main
+
+# 方案 2：先切換到 main 分支
+git checkout main
+git pull origin main
+
+# 方案 3：檢查當前狀態並修復
+git status
+git branch -a  # 查看所有分支
+git checkout main  # 切換到 main 分支
+git pull origin main
+```
+
+如果以上都不行，可以嘗試：
+```bash
+# 方案 4：強制重置到遠端 main
+git fetch origin
+git reset --hard origin/main
 ```
 
 ### 問題 2：腳本執行失敗（導入錯誤）
@@ -144,8 +167,35 @@ echo $DATABASE_URL
 ## 🚀 快速執行命令（一鍵複製）
 
 ```bash
-cd ~/project/src && git pull && python analyze_withdraw_accounts.py
+cd ~/project/src && git pull origin main && python analyze_withdraw_accounts.py
 ```
 
-直接在 Render Shell 中貼上執行即可！
+**注意**：如果 `git pull origin main` 失敗，請先執行：
+```bash
+cd ~/project/src
+git checkout main
+git pull origin main
+python analyze_withdraw_accounts.py
+```
+
+---
+
+## 🔄 替代方案：直接在 Shell 中創建腳本
+
+如果 Git pull 仍然失敗，可以直接在 Render Shell 中創建腳本：
+
+```bash
+cd ~/project/src
+
+# 從 GitHub 直接下載腳本（如果 Render 有 curl 或 wget）
+# 或者複製腳本內容並創建文件
+cat > analyze_withdraw_accounts.py << 'SCRIPT_END'
+# [將 analyze_withdraw_accounts.py 的完整內容貼在這裡]
+SCRIPT_END
+
+# 然後執行
+python analyze_withdraw_accounts.py
+```
+
+**或者使用簡化版本**：直接執行 Python 代碼進行快速分析（見下方）
 
