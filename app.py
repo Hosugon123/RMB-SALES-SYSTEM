@@ -5179,11 +5179,30 @@ def settle_pending_payment_api():
     處理待付款項銷帳的 API
     """
     try:
-        data = request.get_json()
-        pending_id = data.get("pending_id")
-        payment_account_id = data.get("payment_account_id")
-        settlement_amount = float(data.get("settlement_amount"))
-        note = data.get("note", "").strip()
+        # === Debug: 請求原始資料 ===
+        data = request.get_json() or {}
+        try:
+            print("[SETTLE] Incoming JSON:", data)
+        except Exception:
+            pass
+        # 強制型別轉換，避免字串/None 造成隱性錯誤
+        try:
+            pending_id = int(data.get("pending_id"))
+        except Exception:
+            pending_id = None
+        try:
+            payment_account_id = int(data.get("payment_account_id"))
+        except Exception:
+            payment_account_id = None
+        try:
+            settlement_amount = float(data.get("settlement_amount"))
+        except Exception:
+            settlement_amount = None
+        note = (data.get("note") or "").strip()
+        print("[SETTLE] Parsed -> pending_id=", pending_id, 
+              " payment_account_id=", payment_account_id, 
+              " settlement_amount=", settlement_amount, 
+              " note=", note)
         
         # 驗證必填欄位
         if not all([pending_id, payment_account_id, settlement_amount]):
@@ -5210,6 +5229,9 @@ def settle_pending_payment_api():
             return jsonify({"status": "error", "message": "銷帳金額不能超過待付金額"}), 400
         
         # 檢查帳戶餘額
+        print("[SETTLE] Balances -> account=", payment_account.balance, 
+              " settlement=", settlement_amount, 
+              " pending_amount_twd=", pending_payment.amount_twd)
         if payment_account.balance < settlement_amount:
             return jsonify({"status": "error", "message": f"付款帳戶餘額不足，需要 {settlement_amount:,.2f}，但僅剩 {payment_account.balance:,.2f}"}), 400
         
@@ -5234,6 +5256,7 @@ def settle_pending_payment_api():
         # 創建流水記錄
         try:
             ledger_entry = LedgerEntry(
+                entry_type="SETTLE_PENDING_PAYMENT",
                 account_id=payment_account.id,
                 amount=-settlement_amount,  # 負數表示支出
                 description=description,
@@ -5254,6 +5277,7 @@ def settle_pending_payment_api():
                     
                     # 重新創建記錄
                     ledger_entry = LedgerEntry(
+                        entry_type="SETTLE_PENDING_PAYMENT",
                         account_id=payment_account.id,
                         amount=-settlement_amount,  # 負數表示支出
                         description=description,
@@ -5272,7 +5296,6 @@ def settle_pending_payment_api():
         # 記錄刪除審計日誌
         try:
             import json
-            from flask import request
             
             # 準備被銷帳的資料
             deleted_data = {
@@ -5320,8 +5343,11 @@ def settle_pending_payment_api():
         
     except Exception as e:
         db.session.rollback()
+        import traceback
+        traceback.print_exc()
         print(f"待付款項銷帳失敗: {e}")
-        return jsonify({"status": "error", "message": "銷帳操作失敗"}), 500
+        # 將詳細錯誤回傳給前端以利除錯（僅管理端使用）
+        return jsonify({"status": "error", "message": f"銷帳操作失敗: {str(e)}"}), 500
 
 
 @app.route("/api/process_payment", methods=["POST"])
@@ -7826,6 +7852,213 @@ def api_settlement():
         return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
 
 
+@app.route("/api/settlement/rollback/<int:ledger_entry_id>", methods=["POST"])
+@login_required
+def api_rollback_settlement(ledger_entry_id):
+    """回滾銷帳記錄（防呆措施）"""
+    from datetime import timedelta
+    
+    print(f"\n[ROLLBACK] 銷帳回滾API開始執行 - LedgerEntry ID: {ledger_entry_id}")
+    
+    try:
+        # 1. 查找銷帳記錄
+        settlement_entry = db.session.get(LedgerEntry, ledger_entry_id)
+        
+        if not settlement_entry:
+            print(f"[ERROR] 銷帳回滾API: 找不到 LedgerEntry ID {ledger_entry_id}")
+            return jsonify({"status": "error", "message": "找不到指定的銷帳記錄。"}), 404
+        
+        if settlement_entry.entry_type != "SETTLEMENT":
+            print(f"[ERROR] 銷帳回滾API: LedgerEntry ID {ledger_entry_id} 不是銷帳記錄（類型: {settlement_entry.entry_type}）")
+            return jsonify({"status": "error", "message": "該記錄不是銷帳記錄，無法回滾。"}), 400
+        
+        # 2. 獲取相關數據
+        amount = settlement_entry.amount
+        account_id = settlement_entry.account_id
+        description = settlement_entry.description
+        
+        # 從描述中提取客戶名稱（用於查找客戶）
+        # 描述格式：客戶「XXX」銷帳收款 - 備註
+        customer_name = None
+        if "客戶「" in description and "」" in description:
+            try:
+                start = description.index("客戶「") + len("客戶「")
+                end = description.index("」", start)
+                customer_name = description[start:end]
+            except:
+                pass
+        
+        if not customer_name:
+            print(f"[ERROR] 銷帳回滾API: 無法從描述提取客戶名稱: {description}")
+            return jsonify({"status": "error", "message": "無法從銷帳記錄中提取客戶信息，無法執行回滾。"}), 400
+        
+        # 查找客戶
+        customer = db.session.execute(
+            db.select(Customer).filter_by(name=customer_name)
+        ).scalar_one_or_none()
+        
+        if not customer:
+            print(f"[ERROR] 銷帳回滾API: 找不到客戶（名稱: {customer_name}）")
+            return jsonify({"status": "error", "message": f"找不到客戶「{customer_name}」，無法執行回滾。"}), 400
+        
+        account = db.session.get(CashAccount, account_id) if account_id else None
+        
+        if not account:
+            print(f"[ERROR] 銷帳回滾API: 找不到帳戶 ID {account_id}")
+            return jsonify({"status": "error", "message": f"找不到帳戶 ID {account_id}，無法執行回滾。"}), 400
+        
+        print(f"[ROLLBACK] 銷帳回滾API: 找到相關數據")
+        print(f"   - 客戶: {customer.name}, 當前應收帳款: {customer.total_receivables_twd}")
+        print(f"   - 帳戶: {account.name}, 當前餘額: {account.balance}")
+        print(f"   - 銷帳金額: NT$ {amount:,.2f}")
+        
+        # 3. 保存回滾前的狀態（用於審計）
+        old_receivables = customer.total_receivables_twd
+        old_balance = account.balance
+        
+        # 4. 執行回滾邏輯
+        print(f"[ROLLBACK] 開始執行回滾邏輯...")
+        
+        # 4.1 恢復客戶應收帳款
+        customer.total_receivables_twd += amount
+        if customer.total_receivables_twd < 0:
+            customer.total_receivables_twd = 0
+        print(f"[ROLLBACK] 客戶應收帳款已恢復: {old_receivables} -> {customer.total_receivables_twd}")
+        
+        # 4.2 恢復帳戶餘額（扣減）
+        if account.balance < amount:
+            print(f"[WARNING] 帳戶餘額不足回滾: 當前餘額 {account.balance}, 需要扣減 {amount}")
+            # 仍然執行回滾，但記錄警告
+        account.balance -= amount
+        if account.balance < 0:
+            print(f"[WARNING] 帳戶餘額回滾後變負數: {account.balance}")
+        
+        print(f"[ROLLBACK] 帳戶餘額已恢復: {old_balance} -> {account.balance}")
+        
+        # 4.3 將相關的銷售記錄標記為未結清
+        # 查找該客戶在銷帳時間附近的銷售記錄，按時間順序倒推
+        settlement_time = settlement_entry.entry_date
+        
+        # 查找該客戶所有已結清的銷售記錄，按時間順序（從舊到新）
+        # 只處理銷帳時間之後或相近的記錄（避免影響其他銷帳）
+        settled_sales = db.session.execute(
+            db.select(SalesRecord)
+            .filter(SalesRecord.customer_id == customer.id)
+            .filter(SalesRecord.is_settled == True)
+            .filter(SalesRecord.created_at <= settlement_time + timedelta(minutes=10))  # 銷帳時間附近10分鐘內的記錄
+            .order_by(SalesRecord.created_at.desc())  # 從新到舊
+        ).scalars().all()
+        
+        # 使用 FIFO 反向邏輯：從最新的已結清記錄開始，倒推恢復
+        remaining_amount = amount
+        unsettled_count = 0
+        
+        for sale in settled_sales:
+            if remaining_amount <= 0:
+                break
+            
+            if sale.twd_amount <= remaining_amount:
+                # 恢復這筆訂單為未結清
+                sale.is_settled = False
+                remaining_amount -= sale.twd_amount
+                unsettled_count += 1
+                print(f"[ROLLBACK] 恢復訂單 ID {sale.id} 為未結清, 金額: NT$ {sale.twd_amount:,.2f}")
+            else:
+                # 部分結清的情況（這種情況下不恢復，因為可能影響其他銷帳記錄）
+                print(f"[ROLLBACK] 訂單 ID {sale.id} 可能部分結清，跳過恢復")
+                break
+        
+        print(f"[ROLLBACK] 共恢復 {unsettled_count} 筆訂單為未結清")
+        
+        # 4.4 記錄刪除前的數據（用於審計）
+        import json
+        deleted_data = {
+            "id": settlement_entry.id,
+            "entry_type": settlement_entry.entry_type,
+            "account_id": settlement_entry.account_id,
+            "amount": settlement_entry.amount,
+            "description": settlement_entry.description,
+            "entry_date": settlement_entry.entry_date.isoformat() if settlement_entry.entry_date else None,
+            "operator_id": settlement_entry.operator_id
+        }
+        
+        balance_changes = {
+            "customer": {
+                "id": customer.id,
+                "name": customer.name,
+                "receivables_before": old_receivables,
+                "receivables_after": customer.total_receivables_twd,
+                "change": amount
+            },
+            "account": {
+                "id": account.id,
+                "name": account.name,
+                "balance_before": old_balance,
+                "balance_after": account.balance,
+                "change": -amount
+            },
+            "sales_records_unsettled": unsettled_count
+        }
+        
+        # 記錄審計日誌
+        operator_id = get_safe_operator_id()
+        DeleteAuditService.log_deletion(
+            table_name="ledger_entries",
+            record_id=settlement_entry.id,
+            deleted_data=json.dumps(deleted_data, ensure_ascii=False),
+            operation_type="ROLLBACK_SETTLEMENT",
+            description=f"回滾客戶「{customer.name}」的銷帳記錄 NT$ {amount:,.2f}",
+            operator_id=operator_id,
+            request=request,
+            balance_changes=json.dumps(balance_changes, ensure_ascii=False)
+        )
+        
+        # 刪除 LedgerEntry
+        db.session.delete(settlement_entry)
+        print(f"[ROLLBACK] LedgerEntry ID {settlement_entry.id} 已刪除")
+        
+        # 4.5 刪除對應的 CashLog（如果存在）
+        # 查找相同時間、相同類型的 CashLog
+        cash_logs_to_delete = db.session.execute(
+            db.select(CashLog)
+            .filter(CashLog.type == "SETTLEMENT")
+            .filter(CashLog.amount == amount)
+            .filter(CashLog.time.between(
+                settlement_time - timedelta(minutes=2),
+                settlement_time + timedelta(minutes=2)
+            ))
+            .filter(CashLog.description.contains(customer.name))
+        ).scalars().all()
+        
+        for cash_log in cash_logs_to_delete:
+            db.session.delete(cash_log)
+            print(f"[ROLLBACK] CashLog ID {cash_log.id} 已刪除")
+        
+        # 5. 提交事務
+        db.session.commit()
+        print(f"[OK] 銷帳回滾完成")
+        
+        success_message = f"銷帳回滾成功！客戶「{customer.name}」的銷帳記錄 NT$ {amount:,.2f} 已回滾，應收帳款已恢復為 NT$ {customer.total_receivables_twd:,.2f}。"
+        
+        return jsonify({
+            "status": "success",
+            "message": success_message,
+            "details": {
+                "customer_name": customer.name,
+                "amount_rolled_back": amount,
+                "receivables_before": old_receivables,
+                "receivables_after": customer.total_receivables_twd,
+                "sales_records_unsettled": unsettled_count
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] 銷帳回滾API: 發生錯誤: {e}")
+        print(f"[ERROR] 銷帳回滾API: 錯誤詳情: {traceback.format_exc()}")
+        return jsonify({"status": "error", "message": f"回滾失敗: {str(e)}"}), 500
+
+
 @app.route("/api/customers/manage")
 @login_required
 def api_customers_manage():
@@ -9707,6 +9940,10 @@ def get_cash_management_transactions():
                     "note": note_from_description or getattr(entry, 'note', None),
                 }
                 
+                # [新增] 為 SETTLEMENT 類型添加 ledger_entry_id，用於回滾功能
+                if entry.entry_type == "SETTLEMENT":
+                    record["ledger_entry_id"] = entry.id
+                
                 # 添加帳戶餘額變化信息
                 if payment_account_balance:
                     record["payment_account_balance"] = payment_account_balance
@@ -9835,6 +10072,9 @@ def get_cash_management_transactions():
                 
                 # 添加帳戶餘額變化信息（針對SETTLEMENT類型）
                 if log.type == "SETTLEMENT":
+                    # [新增] 為 SETTLEMENT 類型添加 ledger_entry_id，用於回滾功能
+                    if matching_entry:
+                        record["ledger_entry_id"] = matching_entry.id
                     if matching_entry and matching_entry.account:
                         # 使用找到的 LedgerEntry 對應的帳戶
                         account_balance_before = matching_entry.account.balance - twd_change

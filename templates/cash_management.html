@@ -250,7 +250,8 @@
                             <th class="text-end">TWD/RMB 變動</th>
                             <th class="text-end">出款戶餘額變化</th>
                             <th class="text-end">入款戶餘額變化</th>
-                            <th class="text-end pe-3">利潤變動</th>
+                            <th class="text-end">利潤變動</th>
+                            <th class="text-center pe-3" style="min-width: 80px;">操作</th>
                         </tr>
                     </thead>
                     <tbody id="movements-tbody">
@@ -1539,7 +1540,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         if (!transactions || transactions.length === 0) {
             console.log('⚠️ 沒有資金流水數據');
-            movementsTbody.innerHTML = '<tr><td colspan="11" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
+            movementsTbody.innerHTML = '<tr><td colspan="12" class="text-center p-5 text-muted">尚無資金流水紀錄。</td></tr>';
             return;
         }
         
@@ -1754,6 +1755,17 @@ document.addEventListener('DOMContentLoaded', function () {
             const description = parts[0] || '-';
             const note = parts.slice(1).join(' | ') || '-';
 
+            // 操作列：僅對 SETTLEMENT 類型顯示回滾按鈕
+            let actionHtml = '-';
+            if ((m.type === 'SETTLEMENT' || m.type === '銷帳') && m.ledger_entry_id) {
+                actionHtml = '<button class="btn btn-sm btn-outline-danger rollback-settlement-btn" ' +
+                    'data-entry-id="' + m.ledger_entry_id + '" ' +
+                    'data-amount="' + (twdChange || 0) + '" ' +
+                    'data-description="' + (description || '').replace(/"/g, '&quot;') + '" ' +
+                    'title="回滾此銷帳記錄（防呆措施）">' +
+                    '<i class="bi bi-arrow-counterclockwise"></i> 回滾</button>';
+            }
+
             const row = '<tr>' +
                 '<td class="ps-3"><small>' + (m.date ? new Date(m.date + 'Z').toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) : '-') + '</small></td>' +
                 '<td><span class="' + typeClass + '">' + typeDisplay + '</span></td>' +
@@ -1765,13 +1777,136 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<td class="text-end">' + twdRmbChangeHtml + '</td>' +
                 '<td class="text-end">' + paymentAccountBalanceHtml + '</td>' +
                 '<td class="text-end">' + depositAccountBalanceHtml + '</td>' +
-                '<td class="text-end pe-3">' + profitChangeHtml + '</td>' +
+                '<td class="text-end">' + profitChangeHtml + '</td>' +
+                '<td class="text-center pe-3">' + actionHtml + '</td>' +
                 '</tr>';
             
             movementsTbody.innerHTML += row;
         });
         
         console.log('✅ 資金流水渲染完成');
+        
+        // 綁定回滾按鈕事件
+        document.querySelectorAll('.rollback-settlement-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const entryId = this.getAttribute('data-entry-id');
+                const amount = parseFloat(this.getAttribute('data-amount')) || 0;
+                const description = this.getAttribute('data-description') || '';
+                
+                // 顯示確認對話框
+                Swal.fire({
+                    title: '確認回滾銷帳記錄？',
+                    html: '<div class="text-start">' +
+                        '<p><strong>此操作將：</strong></p>' +
+                        '<ul class="text-start">' +
+                        '<li>恢復客戶應收帳款</li>' +
+                        '<li>扣減帳戶餘額</li>' +
+                        '<li>恢復相關銷售記錄為未結清狀態</li>' +
+                        '<li>刪除此銷帳記錄</li>' +
+                        '</ul>' +
+                        '<p class="text-danger mt-3"><strong>銷帳金額：NT$ ' + amount.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></p>' +
+                        '<p class="text-muted"><small>' + description + '</small></p>' +
+                        '<p class="text-warning mt-2"><small>⚠️ 此操作無法撤銷，請確認無誤後再執行。</small></p>' +
+                        '</div>',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: '是的，執行回滾',
+                    cancelButtonText: '取消',
+                    reverseButtons: true,
+                    width: '500px'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // 執行回滾
+                        rollbackSettlement(entryId, btn);
+                    }
+                });
+            });
+        });
+    }
+    
+    // 回滾銷帳記錄函數
+    function rollbackSettlement(ledgerEntryId, buttonElement) {
+        // 禁用按鈕，顯示載入狀態
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>回滾中...';
+        
+        // 顯示載入提示
+        Swal.fire({
+            title: '正在回滾銷帳記錄...',
+            text: '請稍候，正在處理回滾操作',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
+        // 發送回滾請求
+        fetch('/api/settlement/rollback/' + ledgerEntryId, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                Swal.fire({
+                    icon: 'success',
+                    title: '回滾成功！',
+                    html: '<div class="text-start">' +
+                        '<p>' + result.message + '</p>' +
+                        (result.details ? '<ul class="text-start mt-2">' +
+                        '<li>客戶：' + result.details.customer_name + '</li>' +
+                        '<li>回滾金額：NT$ ' + result.details.amount_rolled_back.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</li>' +
+                        '<li>應收帳款恢復：NT$ ' + result.details.receivables_after.toLocaleString('en-US', {minimumFractionDigits: 2}) + '</li>' +
+                        '<li>恢復的銷售記錄：' + result.details.sales_records_unsettled + ' 筆</li>' +
+                        '</ul>' : '') +
+                        '</div>',
+                    timer: 3000,
+                    showConfirmButton: true
+                });
+                
+                // 重新載入流水記錄和總資產
+                console.log('🔄 回滾完成，重新載入數據...');
+                if (window.currentPage) {
+                    loadMovements(window.currentPage);
+                } else {
+                    loadMovements(1);
+                }
+                updateTotalAssets();
+                
+                // 如果客戶列表可見，也需要刷新
+                if (typeof renderAccounts === 'function') {
+                    renderAccounts();
+                }
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: '回滾失敗',
+                    text: result.message || '未知錯誤',
+                    confirmButtonText: '確定'
+                });
+                
+                // 恢復按鈕狀態
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 回滾';
+            }
+        })
+        .catch(error => {
+            console.error('回滾銷帳記錄失敗:', error);
+            Swal.fire({
+                icon: 'error',
+                title: '回滾失敗',
+                text: '網路錯誤或伺服器錯誤，請稍後再試。',
+                confirmButtonText: '確定'
+            });
+            
+            // 恢復按鈕狀態
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 回滾';
+        });
     }
     
     // 渲染分頁控制項
@@ -2956,7 +3091,7 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
         const modal = new bootstrap.Modal(modalElement);
         
         // 立即初始化數字格式化（在模態框顯示前）
-        const settlementAmountInput = document.getElementById('settlementAmount');
+        const settlementAmountInput = modalElement.querySelector('#settlementAmount');
         if (settlementAmountInput) {
             console.log('🔍 模態框創建時立即初始化數字格式化:', {
                 originalValue: settlementAmountInput.value,
@@ -2989,6 +3124,21 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
                         console.log('✅ 已同步初始值到 _actualValue:', initialValue);
                         console.log('🔍 確認 _enhancedInput._actualValue =', settlementAmountInput._enhancedInput._actualValue);
                     }
+
+                    // 記錄使用者輸入的最後有效值，避免偶發為空
+                    const persistLatest = () => {
+                        try {
+                            const v = (typeof settlementAmountInput.getActualValue === 'function')
+                                ? settlementAmountInput.getActualValue()
+                                : settlementAmountInput.value;
+                            if (v !== undefined && v !== null && String(v).trim() !== '') {
+                                settlementAmountInput.dataset.lastValid = String(v).trim();
+                            }
+                        } catch (e) { /* no-op */ }
+                    };
+                    ['input','change','blur','keyup'].forEach(ev => settlementAmountInput.addEventListener(ev, persistLatest));
+                    // 立刻記錄初始值
+                    persistLatest();
                 } catch (error) {
                     console.error('❌ setupNumberInputFormatting 執行失敗:', error);
                     // 手動創建 getActualValue 方法作為備用
@@ -3002,6 +3152,13 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
                 settlementAmountInput.getActualValue = function() {
                     return this.value;
                 };
+                // 同步最後有效值
+                ['input','change','blur','keyup'].forEach(ev => settlementAmountInput.addEventListener(ev, function(){
+                    if (this.value && String(this.value).trim() !== '') {
+                        this.dataset.lastValid = String(this.value).trim();
+                    }
+                }));
+                settlementAmountInput.dataset.lastValid = String(settlementAmountInput.value || '').trim();
             }
             
             // 驗證初始化結果
@@ -3026,7 +3183,7 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
             this.setAttribute('aria-modal', 'true');
             
             // 為銷帳金額輸入框應用數字格式化（不要重複初始化）
-            const settlementAmountInput = document.getElementById('settlementAmount');
+            const settlementAmountInput = modalElement.querySelector('#settlementAmount');
             if (settlementAmountInput) {
                 console.log('🔍 模態框顯示時的狀態:', {
                     originalValue: settlementAmountInput.value,
@@ -3048,6 +3205,12 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
                 if (settlementAmountInput._enhancedInput && settlementAmountInput.value) {
                     settlementAmountInput._enhancedInput._actualValue = settlementAmountInput.value;
                     console.log('✅ 已確保 _actualValue 與 input.value 同步:', settlementAmountInput.value);
+                }
+
+                // 初始化最後有效值備份
+                const current = settlementAmountInput.getActualValue ? settlementAmountInput.getActualValue() : settlementAmountInput.value;
+                if (current && String(current).trim() !== '') {
+                    settlementAmountInput.dataset.lastValid = String(current).trim();
                 }
                 
                 // 驗證 getActualValue 方法是否存在
@@ -3074,7 +3237,8 @@ window.openPendingPaymentModal = function(pendingId, purchaseRecordId, amount, c
 
 // 填充付款帳戶選項
 function populatePaymentAccounts() {
-    const paymentAccountSelect = document.getElementById('paymentAccountSelect');
+    const modalElement = document.getElementById('pendingPaymentModal');
+    const paymentAccountSelect = modalElement ? modalElement.querySelector('#paymentAccountSelect') : document.getElementById('paymentAccountSelect');
     if (!paymentAccountSelect) return;
     
     console.log('🔍 開始填充付款帳戶選項...');
@@ -3116,10 +3280,12 @@ function populatePaymentAccounts() {
 
 // 執行待付款項銷帳
 window.executePendingPaymentSettlement = async function(pendingId, originalAmount) {
-    const paymentAccountId = document.getElementById('paymentAccountSelect').value;
+    const modalElement = document.getElementById('pendingPaymentModal');
+    const paymentAccountSelect = modalElement ? modalElement.querySelector('#paymentAccountSelect') : document.getElementById('paymentAccountSelect');
+    const paymentAccountId = paymentAccountSelect ? paymentAccountSelect.value : '';
     
     // 正確處理數字輸入
-    const settlementAmountInput = document.getElementById('settlementAmount');
+    const settlementAmountInput = modalElement ? modalElement.querySelector('#settlementAmount') : document.getElementById('settlementAmount');
     let settlementAmount;
     
     console.log('🔍 銷帳金額輸入框信息:', {
@@ -3130,6 +3296,14 @@ window.executePendingPaymentSettlement = async function(pendingId, originalAmoun
         hasGetActualValue: !!settlementAmountInput.getActualValue
     });
     
+    // 在讀值前，觸發一次 change 與 blur，避免輸入法/延遲同步導致 value 為空
+    try {
+        settlementAmountInput && settlementAmountInput.dispatchEvent(new Event('change'));
+        settlementAmountInput && settlementAmountInput.blur();
+    } catch (e) {
+        console.warn('觸發 change/blur 失敗（可忽略）:', e);
+    }
+    
     // 測試 parseFloat 是否正常工作
     console.log('🔍 parseFloat 測試:', {
         'parseFloat("1200")': parseFloat("1200"),
@@ -3139,42 +3313,56 @@ window.executePendingPaymentSettlement = async function(pendingId, originalAmoun
         'parseFloat.toString()': parseFloat.toString().substring(0, 100)
     });
     
-    // 直接從 input.value 讀取（避免被格式化系統干擾）
-    const rawValue = settlementAmountInput.value;
-    console.log('🔍 直接讀取 input.value:', rawValue);
-    
-    // 如果為空，嘗試從 getActualValue 獲取
-    let actualValue = rawValue;
-    if (!actualValue || actualValue === '') {
-        console.warn('⚠️ input.value 為空，嘗試 getActualValue');
-        if (settlementAmountInput.getActualValue && typeof settlementAmountInput.getActualValue === 'function') {
-            try {
-                actualValue = settlementAmountInput.getActualValue();
-                console.log('🔍 getActualValue 返回:', actualValue);
-            } catch (e) {
-                console.warn('⚠️ getActualValue 執行失敗:', e);
+    // 封裝健壯的數字讀取：多重來源 + 嚴格清理 + 回退
+    const readNumeric = (inputEl) => {
+        try {
+            const sources = [];
+            // 優先使用最後一次有效輸入備份
+            if (inputEl && inputEl.dataset && inputEl.dataset.lastValid) {
+                sources.push(inputEl.dataset.lastValid);
             }
+            // 來源1：直接值
+            sources.push(inputEl && typeof inputEl.value === 'string' ? inputEl.value : '');
+            // 來源2：getActualValue
+            if (inputEl && typeof inputEl.getActualValue === 'function') {
+                try { sources.push(inputEl.getActualValue()); } catch (_) {}
+            }
+            // 來源3：屬性值
+            sources.push(inputEl ? (inputEl.defaultValue || inputEl.getAttribute('value') || '') : '');
+            // 來源4：dataset 初始值
+            if (inputEl && inputEl.dataset && inputEl.dataset.initial) {
+                sources.push(inputEl.dataset.initial);
+            }
+            // 逐一清理並解析，回傳第一個有效數字
+            for (const v of sources) {
+                if (v === undefined || v === null) continue;
+                const s = String(v).trim();
+                if (!s) continue;
+                const cleaned = s.replace(/[^0-9.\-]/g, '');
+                if (!cleaned) continue;
+                const num = Number(cleaned);
+                if (!Number.isNaN(num) && Number.isFinite(num)) return num;
+            }
+            return NaN;
+        } catch (err) {
+            console.warn('讀取數字發生例外:', err);
+            return NaN;
         }
-    }
+    };
     
-    // 如果還是為空，嘗試從屬性讀取
-    if (!actualValue || actualValue === '') {
-        console.warn('⚠️ 所有方法都失敗，嘗試從 defaultValue 讀取');
-        actualValue = settlementAmountInput.defaultValue || settlementAmountInput.getAttribute('value') || '';
-        console.log('🔍 從屬性讀取:', actualValue);
-    }
-    
-    console.log('🔍 最終的值:', actualValue);
-    
-    // 移除所有非數字字符（除了小數點）
-    const cleanedValue = actualValue ? actualValue.toString().replace(/[^\d.]/g, '') : '';
-    console.log('🔍 清理後的值:', cleanedValue);
-    
-    // 解析為數字
-    settlementAmount = parseFloat(cleanedValue);
-    console.log('🔍 parseFloat 結果:', settlementAmount);
-    
+    settlementAmount = readNumeric(settlementAmountInput);
     console.log('🔍 解析後的銷帳金額:', settlementAmount);
+    
+    // 若仍無效，直接提示錯誤（不要自動回退為原始金額，以免誤付全額）
+    if (!(settlementAmount > 0) || Number.isNaN(settlementAmount)) {
+        console.error('❌ 無法解析使用者輸入的銷帳金額', {
+            inputValue: settlementAmountInput ? settlementAmountInput.value : null,
+            actualGetter: settlementAmountInput && typeof settlementAmountInput.getActualValue === 'function' ? settlementAmountInput.getActualValue() : null,
+            lastValid: settlementAmountInput && settlementAmountInput.dataset ? settlementAmountInput.dataset.lastValid : undefined
+        });
+        Swal.fire('錯誤', '請輸入有效的銷帳金額', 'error');
+        return;
+    }
     console.log('🔍 原始待付金額:', originalAmount);
     console.log('🔍 比較結果:', {
         settlementAmount: settlementAmount,
