@@ -24,6 +24,9 @@ def get_safe_operator_id():
         print(f"[WARNING] 獲取current_user.id失敗: {e}, 使用默認值1")
         return 1
 
+
+## 歷史資料修復工具將在路由區塊後方宣告（以確保 app / 裝飾器已可用）
+
 def fix_postgresql_columns():
     """修復PostgreSQL缺少的欄位"""
     try:
@@ -4578,6 +4581,36 @@ def cash_management():
                     }
                 )
 
+        # 若有 PAYMENT 尚缺出款戶餘額變化，使用帳戶名稱推導（保底）
+        try:
+            for rec in unified_stream:
+                if (
+                    rec.get("type") == "PAYMENT"
+                    and not rec.get("payment_account_balance")
+                    and rec.get("payment_account")
+                    and rec.get("payment_account") not in ["N/A", "-", None, ""]
+                ):
+                    try:
+                        acc = db.session.execute(
+                            db.select(CashAccount).filter(
+                                CashAccount.name == rec.get("payment_account"),
+                                CashAccount.currency == "TWD",
+                            )
+                        ).scalar_one_or_none()
+                    except Exception:
+                        acc = None
+                    if acc:
+                        after_balance = getattr(acc, "balance", 0.0) or 0.0
+                        change = rec.get("twd_change", 0.0) or 0.0
+                        before_balance = after_balance - change
+                        rec["payment_account_balance"] = {
+                            "before": before_balance,
+                            "change": change,
+                            "after": after_balance,
+                        }
+        except Exception as _:
+            pass
+
         # 按日期排序（新的在前）
         unified_stream.sort(key=lambda x: x["date"], reverse=True)
         
@@ -5248,16 +5281,32 @@ def settle_pending_payment_api():
             pending_payment.is_settled = True
             pending_payment.amount_twd = 0
         
-        # 3. 創建流水記錄
-        description = f"待付款項銷帳 - 買入記錄 #{pending_payment.purchase_record_id}"
+        # 3. 創建流水記錄（顯示為「付款於 渠道XXX」）
+        try:
+            channel_name = None
+            if pending_payment and pending_payment.purchase_record and pending_payment.purchase_record.channel:
+                channel_name = pending_payment.purchase_record.channel.name
+            # 一些資料可能用手填名稱
+            if (not channel_name) and hasattr(pending_payment.purchase_record, 'channel_name_manual'):
+                channel_name = pending_payment.purchase_record.channel_name_manual
+            if not channel_name:
+                channel_name = '未知渠道'
+        except Exception:
+            channel_name = '未知渠道'
+
+        # 說明：統一使用「付款於 渠道XXX」格式
+        description = f"付款於 {channel_name}"
         if note:
             description += f" | {note}"
         
         # 創建流水記錄
         try:
+            # 記錄為「付款」型別，金額為負數，並標示出款帳戶
             ledger_entry = LedgerEntry(
-                entry_type="SETTLE_PENDING_PAYMENT",
-                account_id=payment_account.id,
+                entry_type="PAYMENT",  # 類型：付款
+                account_id=payment_account.id,  # 主關聯帳戶
+                from_account_id=payment_account.id,  # 出款帳戶
+                to_account_id=None,
                 amount=-settlement_amount,  # 負數表示支出
                 description=description,
                 operator_id=get_safe_operator_id()
@@ -5277,8 +5326,10 @@ def settle_pending_payment_api():
                     
                     # 重新創建記錄
                     ledger_entry = LedgerEntry(
-                        entry_type="SETTLE_PENDING_PAYMENT",
+                        entry_type="PAYMENT",
                         account_id=payment_account.id,
+                        from_account_id=payment_account.id,
+                        to_account_id=None,
                         amount=-settlement_amount,  # 負數表示支出
                         description=description,
                         operator_id=get_safe_operator_id()
@@ -5506,6 +5557,77 @@ def process_payment_api():
         traceback.print_exc()
         return jsonify({"status": "error", "message": "伺服器內部錯誤，操作失敗。"}), 500
 
+
+@app.route("/admin/fix-history/settle-pending", methods=["POST"])
+@admin_required
+def admin_fix_history_settle_pending():
+    """
+    修復歷史上由待付款項付款所建立的錯誤流水：
+    - entry_type 改為 PAYMENT
+    - 金額改為負數（支出）
+    - from_account_id 補為出款帳戶（等同 account_id）
+
+    僅修正 LedgerEntry 記錄本身，不調整實際帳戶餘額。
+    接收 JSON: { dry_run: bool (default True) }
+    """
+    try:
+        data = request.get_json() or {}
+        dry_run = bool(data.get("dry_run", True))
+
+        target_query = db.select(LedgerEntry).where(
+            db.or_(
+                LedgerEntry.entry_type == "SETTLE_PENDING_PAYMENT",
+                LedgerEntry.description.ilike("%待付款項銷帳%")
+            )
+        )
+        entries = db.session.execute(target_query).scalars().all()
+
+        fixed = 0
+        previews = []
+        for le in entries:
+            before = {
+                "id": le.id,
+                "entry_type": le.entry_type,
+                "amount": le.amount,
+                "account_id": le.account_id,
+                "from_account_id": le.from_account_id,
+            }
+            new_entry_type = "PAYMENT"
+            new_amount = -abs(le.amount) if le.amount is not None else None
+            new_from_account_id = le.from_account_id or le.account_id
+
+            previews.append({
+                "id": le.id,
+                "before": before,
+                "after": {
+                    "entry_type": new_entry_type,
+                    "amount": new_amount,
+                    "from_account_id": new_from_account_id,
+                },
+            })
+
+            if not dry_run:
+                le.entry_type = new_entry_type
+                if new_amount is not None:
+                    le.amount = new_amount
+                le.from_account_id = new_from_account_id
+                fixed += 1
+
+        if not dry_run:
+            db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "dry_run": dry_run,
+            "total_found": len(entries),
+            "total_fixed": fixed,
+            "samples": previews[:20],
+        })
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/fifo-inventory")
 @login_required
@@ -9804,8 +9926,12 @@ def get_cash_management_transactions():
                     twd_change = 0
                     rmb_change = 0
                 elif entry.account and entry.account.currency == "TWD":
+                    # 正向增加的型別
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
+                    # 支出/扣款的型別（注意：PAYMENT/WITHDRAW 可能為負數，統一轉為負號顯示）
+                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT", "PAYMENT", "PROFIT_WITHDRAW"]:
+                        twd_change = -abs(entry.amount)
                     else:
                         twd_change = -entry.amount
                 elif entry.account and entry.account.currency == "RMB":
@@ -9828,6 +9954,9 @@ def get_cash_management_transactions():
                 elif entry.entry_type in ["WITHDRAW"]:
                     payment_account = entry.account.name if entry.account else "N/A"
                     deposit_account = "外部提款"
+                elif entry.entry_type in ["PAYMENT"]:
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    deposit_account = "待付款項"
                 elif entry.entry_type in ["TRANSFER"]:
                     # 內部轉帳：從轉出帳戶 -> 轉入帳戶
                     if entry.from_account and entry.to_account:
@@ -9884,7 +10013,7 @@ def get_cash_management_transactions():
                         account_balance_before = entry.account.balance - entry.amount
                         account_balance_after = entry.account.balance
                         account_balance_change = entry.amount
-                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT"]:
+                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT", "PAYMENT"]:
                         # 減少餘額的交易 - WITHDRAW 可能使用負數 amount
                         abs_amount = abs(entry.amount)
                         account_balance_before = entry.account.balance + abs_amount
@@ -10041,6 +10170,49 @@ def get_cash_management_transactions():
                         deposit_account = matching_entry.account.name
                     else:
                         deposit_account = "現金帳戶"
+                elif log.type == "PAYMENT":
+                    # 待付款項付款：視為支出
+                    twd_change = -abs(log.amount)
+                    payment_account = "N/A"
+                    deposit_account = "待付款項"
+                    # 嘗試從 LedgerEntry 對應到帳戶與餘額
+                    matching_entry = None
+                    # 1) 先用寬鬆時間窗（5分鐘）與金額比對
+                    try:
+                        candidates = [
+                            e for e in misc_entries
+                            if getattr(e, 'entry_type', None) == 'PAYMENT' and 
+                               abs(abs(getattr(e, 'amount', 0)) - abs(log.amount)) < 0.01
+                        ]
+                        if candidates:
+                            # 取時間差最小者
+                            def time_diff_sec(e):
+                                try:
+                                    return abs((e.entry_date - log.time).total_seconds())
+                                except Exception:
+                                    return 999999
+                            candidates.sort(key=time_diff_sec)
+                            best = candidates[0]
+                            if time_diff_sec(best) <= 300:  # 5 分鐘內視為同筆
+                                matching_entry = best
+                            else:
+                                # 時間差過大也先採用最近一筆（避免前端顯示不到變化）
+                                matching_entry = best
+                    except Exception:
+                        matching_entry = None
+                    if matching_entry and matching_entry.account:
+                        payment_account = matching_entry.account.name
+                        # 計算出款戶餘額變化（before/after以 LedgerEntry 當下餘額為準）
+                        abs_amount = abs(matching_entry.amount)
+                        account_balance_before = matching_entry.account.balance + abs_amount
+                        account_balance_after = matching_entry.account.balance
+                        record_payment_balance = {
+                            "before": account_balance_before,
+                            "change": -abs_amount,
+                            "after": account_balance_after
+                        }
+                    else:
+                        record_payment_balance = None
                 else:
                     payment_account = "N/A"
                     deposit_account = "N/A"
@@ -10091,20 +10263,8 @@ def get_cash_management_transactions():
                             "after": account_balance_after,
                             "account_name": matching_entry.account.name
                         }
-                    else:
-                        # 如果找不到對應的 LedgerEntry，嘗試從描述中推斷帳戶
-                        # 或者使用默認的帳戶餘額變化計算
-                        record["account_balance"] = {
-                            "before": 0.0,  # 暫時設為0，需要進一步優化
-                            "change": twd_change,
-                            "after": twd_change
-                        }
-                        record["deposit_account_balance"] = {
-                            "before": 0.0,
-                            "change": twd_change,
-                            "after": twd_change,
-                            "account_name": deposit_account
-                        }
+                elif log.type == "PAYMENT" and record_payment_balance:
+                    record["payment_account_balance"] = record_payment_balance
                 
                 unified_stream.append(record)
 
@@ -10173,6 +10333,36 @@ def get_cash_management_transactions():
         # 使用 processed_stream 替換原來的 unified_stream
         unified_stream = processed_stream
         # --- END: CRITICAL FIX for Forward Accumulation ---
+        
+        # 保底：對缺失 payment_account_balance 的 PAYMENT，用帳戶名稱反推（完整版API）
+        try:
+            for rec in unified_stream:
+                if (
+                    rec.get('type') == 'PAYMENT'
+                    and not rec.get('payment_account_balance')
+                    and rec.get('payment_account')
+                    and rec.get('payment_account') not in ['N/A', '-', None, '']
+                ):
+                    try:
+                        acc = db.session.execute(
+                            db.select(CashAccount).filter(
+                                CashAccount.name == rec.get('payment_account'),
+                                CashAccount.currency == 'TWD',
+                            )
+                        ).scalar_one_or_none()
+                    except Exception:
+                        acc = None
+                    if acc:
+                        after_balance = getattr(acc, 'balance', 0.0) or 0.0
+                        change = rec.get('twd_change', 0.0) or 0.0
+                        before_balance = after_balance - change
+                        rec['payment_account_balance'] = {
+                            'before': before_balance,
+                            'change': change,
+                            'after': after_balance,
+                        }
+        except Exception:
+            pass
         
         # 統計各類型記錄數量
         sales_count = sum(1 for record in unified_stream if record.get("type") == "售出")
@@ -10408,6 +10598,8 @@ def get_cash_management_transactions_simple():
                 elif entry.account and entry.account.currency == "TWD":
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
+                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT", "PAYMENT", "PROFIT_WITHDRAW"]:
+                        twd_change = -abs(entry.amount)
                     else:
                         twd_change = -entry.amount
                 elif entry.account and entry.account.currency == "RMB":
@@ -10450,6 +10642,9 @@ def get_cash_management_transactions_simple():
                 elif entry.entry_type in ["PROFIT_WITHDRAW"]:
                     payment_account = "系統利潤"
                     deposit_account = "利潤提款"
+                elif entry.entry_type in ["PAYMENT"]:
+                    payment_account = entry.account.name if entry.account else "N/A"
+                    deposit_account = "待付款項"
                 elif entry.entry_type in ["PROFIT_EARNED"]:
                     payment_account = "系統利潤"
                     deposit_account = "利潤帳戶"
@@ -10491,7 +10686,7 @@ def get_cash_management_transactions_simple():
                             "change": account_balance_change,
                             "after": account_balance_after
                         }
-                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT"]:
+                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT", "PAYMENT"]:
                         # 減少餘額的交易 - WITHDRAW 可能使用負數 amount
                         abs_amount = abs(entry.amount)
                         account_balance_before = entry.account.balance + abs_amount
@@ -10549,6 +10744,36 @@ def get_cash_management_transactions_simple():
                 
                 unified_stream.append(record)
         
+        # 保底：對缺失 payment_account_balance 的 PAYMENT，用帳戶名稱反推
+        try:
+            for rec in unified_stream:
+                if (
+                    rec.get('type') == 'PAYMENT'
+                    and not rec.get('payment_account_balance')
+                    and rec.get('payment_account')
+                    and rec.get('payment_account') not in ['N/A', '-', None, '']
+                ):
+                    try:
+                        acc = db.session.execute(
+                            db.select(CashAccount).filter(
+                                CashAccount.name == rec.get('payment_account'),
+                                CashAccount.currency == 'TWD',
+                            )
+                        ).scalar_one_or_none()
+                    except Exception:
+                        acc = None
+                    if acc:
+                        after_balance = getattr(acc, 'balance', 0.0) or 0.0
+                        change = rec.get('twd_change', 0.0) or 0.0
+                        before_balance = after_balance - change
+                        rec['payment_account_balance'] = {
+                            'before': before_balance,
+                            'change': change,
+                            'after': after_balance,
+                        }
+        except Exception:
+            pass
+
         # 按時間排序
         unified_stream.sort(key=lambda x: x['date'], reverse=True)
         

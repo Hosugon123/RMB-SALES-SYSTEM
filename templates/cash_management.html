@@ -1614,6 +1614,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     typeDisplay = '提款';
                     typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                     break;
+                case 'PAYMENT':
+                    typeDisplay = '付款';
+                    typeClass = 'badge bg-danger-subtle text-danger-emphasis';
+                    break;
                 case 'CARD_PURCHASE':
                     typeDisplay = '刷卡';
                     typeClass = 'badge bg-warning-subtle text-warning-emphasis';
@@ -2659,6 +2663,10 @@ window.renderMovements = function(transactions) {
             case 'WITHDRAWAL':
             case '提款':
                 typeDisplay = '提款';
+                typeClass = 'badge bg-danger-subtle text-danger-emphasis';
+                break;
+            case 'PAYMENT':
+                typeDisplay = '付款';
                 typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                 break;
             case 'CARD_PURCHASE':
