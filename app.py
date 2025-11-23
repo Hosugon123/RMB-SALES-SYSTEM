@@ -3281,6 +3281,136 @@ def sales_entry():
             .all()
         )
 
+        # 計算全局FIFO庫存總和（所有帳戶的FIFO庫存總和）
+        total_global_fifo_inventory = (
+            db.session.execute(
+                db.select(func.sum(FIFOInventory.remaining_rmb))
+                .select_from(FIFOInventory)
+            )
+            .scalar()
+        ) or 0.0
+        
+        # 計算所有RMB帳戶餘額總和（用於驗證與FIFO庫存的一致性）
+        total_rmb_account_balance = (
+            db.session.execute(
+                db.select(func.sum(CashAccount.balance))
+                .select_from(CashAccount)
+                .filter(CashAccount.currency == "RMB")
+                .filter(CashAccount.is_active == True)
+            )
+            .scalar()
+        ) or 0.0
+        
+        # 診斷數據一致性問題
+        print(f"[庫存檢查] 全局FIFO庫存總和: {total_global_fifo_inventory:.2f} RMB")
+        print(f"[庫存檢查] 所有RMB帳戶餘額總和: {total_rmb_account_balance:.2f} RMB")
+        
+        # 檢查全局一致性
+        global_difference = total_rmb_account_balance - total_global_fifo_inventory
+        has_global_issue = abs(global_difference) > 0.01
+        
+        # 檢查各個帳戶的一致性
+        account_issues = []
+        for holder in holders_with_accounts:
+            rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
+            for acc in rmb_accounts:
+                # 計算該帳戶對應的FIFO庫存總和
+                account_fifo_inventory = (
+                    db.session.execute(
+                        db.select(func.sum(FIFOInventory.remaining_rmb))
+                        .select_from(FIFOInventory)
+                        .join(PurchaseRecord, FIFOInventory.purchase_record_id == PurchaseRecord.id)
+                        .filter(PurchaseRecord.deposit_account_id == acc.id)
+                    )
+                    .scalar()
+                ) or 0.0
+                
+                account_difference = acc.balance - account_fifo_inventory
+                if abs(account_difference) > 0.01:
+                    account_issues.append({
+                        "account_id": acc.id,
+                        "account_name": acc.name,
+                        "holder_name": holder.name,
+                        "account_balance": float(acc.balance),
+                        "fifo_inventory": float(account_fifo_inventory),
+                        "difference": float(account_difference)
+                    })
+        
+        # 計算正確的FIFO庫存（基於買入-售出）
+        # 全局：所有買入RMB - 所有售出RMB
+        total_purchase_rmb = (
+            db.session.execute(
+                db.select(func.sum(PurchaseRecord.rmb_amount))
+                .select_from(PurchaseRecord)
+            )
+            .scalar()
+        ) or 0.0
+        
+        total_sales_rmb = (
+            db.session.execute(
+                db.select(func.sum(SalesRecord.rmb_amount))
+                .select_from(SalesRecord)
+            )
+            .scalar()
+        ) or 0.0
+        
+        correct_global_fifo = total_purchase_rmb - total_sales_rmb
+        
+        # 計算各個帳戶的正確FIFO庫存
+        account_correct_fifo = {}
+        for holder in holders_with_accounts:
+            rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
+            for acc in rmb_accounts:
+                # 該帳戶的買入總和
+                account_purchase_rmb = (
+                    db.session.execute(
+                        db.select(func.sum(PurchaseRecord.rmb_amount))
+                        .select_from(PurchaseRecord)
+                        .filter(PurchaseRecord.deposit_account_id == acc.id)
+                    )
+                    .scalar()
+                ) or 0.0
+                
+                # 從該帳戶售出的總和
+                account_sales_rmb = (
+                    db.session.execute(
+                        db.select(func.sum(SalesRecord.rmb_amount))
+                        .select_from(SalesRecord)
+                        .filter(SalesRecord.rmb_account_id == acc.id)
+                    )
+                    .scalar()
+                ) or 0.0
+                
+                # 正確的FIFO庫存 = 買入 - 售出
+                account_correct_fifo[acc.id] = account_purchase_rmb - account_sales_rmb
+        
+        # 輸出診斷結果
+        print(f"\n[數據診斷] 正確的FIFO庫存計算:")
+        print(f"  全局買入總和: {total_purchase_rmb:.2f} RMB")
+        print(f"  全局售出總和: {total_sales_rmb:.2f} RMB")
+        print(f"  正確的全局FIFO庫存: {correct_global_fifo:.2f} RMB")
+        print(f"  實際的全局FIFO庫存: {total_global_fifo_inventory:.2f} RMB")
+        print(f"  全局FIFO庫存差異: {total_global_fifo_inventory - correct_global_fifo:.2f} RMB")
+        print(f"  所有RMB帳戶餘額總和: {total_rmb_account_balance:.2f} RMB")
+        print(f"  帳戶餘額與正確FIFO庫存差異: {total_rmb_account_balance - correct_global_fifo:.2f} RMB")
+        
+        if has_global_issue or account_issues:
+            print(f"\n[嚴重警告] 發現數據不一致問題！")
+            if has_global_issue:
+                print(f"  全局差異: {global_difference:.2f} RMB (帳戶餘額總和 - 實際FIFO庫存總和)")
+                print(f"  正確的全局FIFO庫存應該是: {correct_global_fifo:.2f} RMB")
+            if account_issues:
+                print(f"  發現 {len(account_issues)} 個帳戶存在不一致:")
+                for issue in account_issues:
+                    correct_fifo = account_correct_fifo.get(issue['account_id'], 0)
+                    print(f"    - {issue['holder_name']}-{issue['account_name']}:")
+                    print(f"        帳戶餘額: {issue['account_balance']:.2f} RMB")
+                    print(f"        實際FIFO庫存: {issue['fifo_inventory']:.2f} RMB")
+                    print(f"        正確FIFO庫存(買入-售出): {correct_fifo:.2f} RMB")
+                    print(f"        差異: {issue['difference']:.2f} RMB")
+        else:
+            print(f"[✓] 數據一致性檢查通過")
+        
         owner_rmb_accounts_grouped = []
         for holder in holders_with_accounts:
             rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
@@ -3291,7 +3421,7 @@ def sales_entry():
                         {
                             "id": acc.id,
                             "name": acc.name,
-                            "balance": float(acc.balance)  # 直接使用資料庫中的餘額
+                            "balance": float(acc.balance)  # 顯示各別帳戶餘額（用於顯示和出款）
                         }
                         for acc in rmb_accounts
                     ]
@@ -10598,7 +10728,7 @@ def get_cash_management_transactions_simple():
                 elif entry.account and entry.account.currency == "TWD":
                     if entry.entry_type in ["DEPOSIT", "TRANSFER_IN", "SETTLEMENT"]:
                         twd_change = entry.amount
-                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT", "PAYMENT", "PROFIT_WITHDRAW"]:
+                    elif entry.entry_type in ["WITHDRAW", "ASSET_WITHDRAW", "TRANSFER_OUT", "PAYMENT", "PROFIT_WITHDRAW"]:
                         twd_change = -abs(entry.amount)
                     else:
                         twd_change = -entry.amount
@@ -10618,7 +10748,7 @@ def get_cash_management_transactions_simple():
                 if entry.entry_type in ["DEPOSIT"]:
                     payment_account = "外部存款"
                     deposit_account = entry.account.name if entry.account else "N/A"
-                elif entry.entry_type in ["WITHDRAW"]:
+                elif entry.entry_type in ["WITHDRAW", "ASSET_WITHDRAW"]:
                     payment_account = entry.account.name if entry.account else "N/A"
                     deposit_account = "外部提款"
                 elif entry.entry_type in ["TRANSFER"]:
@@ -10686,7 +10816,7 @@ def get_cash_management_transactions_simple():
                             "change": account_balance_change,
                             "after": account_balance_after
                         }
-                    elif entry.entry_type in ["WITHDRAW", "TRANSFER_OUT", "PAYMENT"]:
+                    elif entry.entry_type in ["WITHDRAW", "ASSET_WITHDRAW", "TRANSFER_OUT", "PAYMENT"]:
                         # 減少餘額的交易 - WITHDRAW 可能使用負數 amount
                         abs_amount = abs(entry.amount)
                         account_balance_before = entry.account.balance + abs_amount

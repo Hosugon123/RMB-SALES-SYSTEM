@@ -1611,6 +1611,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     break;
                 case 'WITHDRAWAL':
                 case '提款':
+                case 'WITHDRAW':
+                case 'ASSET_WITHDRAW':
                     typeDisplay = '提款';
                     typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                     break;
@@ -2662,6 +2664,8 @@ window.renderMovements = function(transactions) {
                 break;
             case 'WITHDRAWAL':
             case '提款':
+            case 'WITHDRAW':
+            case 'ASSET_WITHDRAW':
                 typeDisplay = '提款';
                 typeClass = 'badge bg-danger-subtle text-danger-emphasis';
                 break;
