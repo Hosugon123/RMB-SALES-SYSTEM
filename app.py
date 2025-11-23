@@ -2693,7 +2693,15 @@ def dashboard():
     try:
         # --- 修正：直接使用實際帳戶餘額計算總資產，與現金管理頁面保持一致 ---
         all_accounts_obj = (
-            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            db.session.execute(
+                db.select(CashAccount)
+                .join(Holder)
+                .filter(
+                    CashAccount.is_active.is_(True),
+                    Holder.is_active.is_(True),
+                )
+                .order_by(CashAccount.holder_id)
+            )
             .scalars()
             .all()
         )
@@ -3937,7 +3945,15 @@ def cash_management_operator():
         ]
         
         all_accounts_obj = (
-            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            db.session.execute(
+                db.select(CashAccount)
+                .join(Holder)
+                .filter(
+                    CashAccount.is_active.is_(True),
+                    Holder.is_active.is_(True),
+                )
+                .order_by(CashAccount.holder_id)
+            )
             .scalars()
             .all()
         )
@@ -4265,7 +4281,15 @@ def cash_management_operator():
 
         # 準備 owner_accounts 數據
         all_accounts_obj = (
-            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            db.session.execute(
+                db.select(CashAccount)
+                .join(Holder)
+                .filter(
+                    CashAccount.is_active.is_(True),
+                    Holder.is_active.is_(True),
+                )
+                .order_by(CashAccount.holder_id)
+            )
             .scalars()
             .all()
         )
@@ -4333,7 +4357,15 @@ def cash_management():
         )
         
         all_accounts_obj = (
-            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            db.session.execute(
+                db.select(CashAccount)
+                .join(Holder)
+                .filter(
+                    CashAccount.is_active.is_(True),
+                    Holder.is_active.is_(True),
+                )
+                .order_by(CashAccount.holder_id)
+            )
             .scalars()
             .all()
         )
@@ -10403,7 +10435,15 @@ def get_cash_management_transactions():
         
         # 獲取所有帳戶
         all_accounts_obj = (
-            db.session.execute(db.select(CashAccount).order_by(CashAccount.holder_id))
+            db.session.execute(
+                db.select(CashAccount)
+                .join(Holder)
+                .filter(
+                    CashAccount.is_active.is_(True),
+                    Holder.is_active.is_(True),
+                )
+                .order_by(CashAccount.holder_id)
+            )
             .scalars()
             .all()
         )
