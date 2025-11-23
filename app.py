@@ -12071,22 +12071,30 @@ def remote_data_recovery():
                 
             elif account.currency == "RMB":
                 # RMB 帳戶餘額計算 - 正確邏輯：
-                # 帳戶餘額 = 該帳戶作為deposit_account的買入 - 該帳戶作為rmb_account的售出扣款
+                # 帳戶餘額 = 該帳戶作為deposit_account的買入 - 從該帳戶庫存實際售出
                 # 注意：根據業務邏輯，帳戶餘額總和應該等於FIFO庫存總和
-                # LedgerEntry是額外的記錄，不應該影響帳戶餘額計算
+                # 使用"從該帳戶庫存實際售出"而不是"從該帳戶扣款的售出"
+                # 因為庫存是全局的，從該帳戶扣款的售出，庫存可能來自其他帳戶
                 
                 # 該帳戶作為deposit_account的買入總額
                 deposit_amount = PurchaseRecord.query.filter(
                     PurchaseRecord.deposit_account_id == account.id
                 ).with_entities(func.sum(PurchaseRecord.rmb_amount)).scalar() or 0
                 
-                # 該帳戶作為rmb_account的售出扣款總額
-                sales_amount = SalesRecord.query.filter(
-                    SalesRecord.rmb_account_id == account.id
-                ).with_entities(func.sum(SalesRecord.rmb_amount)).scalar() or 0
+                # 從該帳戶庫存實際售出的金額（通過FIFOSalesAllocation追蹤）
+                actual_sold_from_this_account = (
+                    db.session.execute(
+                        db.select(func.sum(FIFOSalesAllocation.allocated_rmb))
+                        .select_from(FIFOSalesAllocation)
+                        .join(FIFOInventory, FIFOSalesAllocation.fifo_inventory_id == FIFOInventory.id)
+                        .join(PurchaseRecord, FIFOInventory.purchase_record_id == PurchaseRecord.id)
+                        .filter(PurchaseRecord.deposit_account_id == account.id)
+                    )
+                    .scalar()
+                ) or 0.0
                 
                 # 正確的帳戶餘額計算（排除LedgerEntry）
-                new_balance = deposit_amount - sales_amount
+                new_balance = deposit_amount - actual_sold_from_this_account
             
             account.balance = new_balance
             

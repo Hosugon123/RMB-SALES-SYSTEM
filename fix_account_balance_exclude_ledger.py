@@ -48,13 +48,22 @@ def fix_account_balance():
                     PurchaseRecord.deposit_account_id == acc.id
                 ).with_entities(func.sum(PurchaseRecord.rmb_amount)).scalar() or 0
                 
-                # 該帳戶作為rmb_account的售出扣款總額
-                sales_amount = SalesRecord.query.filter(
-                    SalesRecord.rmb_account_id == acc.id
-                ).with_entities(func.sum(SalesRecord.rmb_amount)).scalar() or 0
+                # 從該帳戶庫存實際售出的金額（通過FIFOSalesAllocation追蹤）
+                # 這是正確的計算方式，因為庫存是全局的，但我們需要知道從哪個帳戶的庫存實際售出
+                actual_sold_from_this_account = (
+                    db.session.execute(
+                        db.select(func.sum(FIFOSalesAllocation.allocated_rmb))
+                        .select_from(FIFOSalesAllocation)
+                        .join(FIFOInventory, FIFOSalesAllocation.fifo_inventory_id == FIFOInventory.id)
+                        .join(PurchaseRecord, FIFOInventory.purchase_record_id == PurchaseRecord.id)
+                        .filter(PurchaseRecord.deposit_account_id == acc.id)
+                    )
+                    .scalar()
+                ) or 0.0
                 
-                # 正確的帳戶餘額（排除LedgerEntry）
-                new_balance = deposit_amount - sales_amount
+                # 正確的帳戶餘額 = 買入 - 從該帳戶庫存實際售出
+                # 這樣才能確保帳戶餘額不會為負值
+                new_balance = deposit_amount - actual_sold_from_this_account
                 
                 acc.balance = new_balance
                 
@@ -68,11 +77,17 @@ def fix_account_balance():
                     'sales_amount': sales_amount
                 })
                 
+                # 也計算從該帳戶扣款的售出（用於對比）
+                sales_deduction = SalesRecord.query.filter(
+                    SalesRecord.rmb_account_id == acc.id
+                ).with_entities(func.sum(SalesRecord.rmb_amount)).scalar() or 0
+                
                 print(f"\n{holder.name}-{acc.name} (ID: {acc.id}):")
                 print(f"  買入: {deposit_amount:,.2f} RMB")
-                print(f"  售出扣款: {sales_amount:,.2f} RMB")
+                print(f"  從該帳戶扣款的售出: {sales_deduction:,.2f} RMB")
+                print(f"  從該帳戶庫存實際售出: {actual_sold_from_this_account:,.2f} RMB")
                 print(f"  舊餘額: {old_balance:,.2f} RMB")
-                print(f"  新餘額: {new_balance:,.2f} RMB")
+                print(f"  新餘額 (買入 - 實際售出): {new_balance:,.2f} RMB")
                 print(f"  變化: {new_balance - old_balance:,.2f} RMB")
         
         # 提交更改
