@@ -12196,6 +12196,158 @@ def remote_data_recovery():
             "timestamp": datetime.now().isoformat()
         }), 500
 
+# 添加數據一致性診斷 API
+@app.route("/api/admin/inventory-diagnosis", methods=["GET"])
+@login_required
+def api_inventory_diagnosis():
+    """數據一致性診斷API - 檢查FIFO庫存與帳戶餘額的一致性"""
+    try:
+        # 獲取所有活躍的持有人和帳戶
+        holders_with_accounts = (
+            db.session.execute(
+                db.select(Holder)
+                .filter_by(is_active=True)
+                .options(db.selectinload(Holder.cash_accounts))
+            )
+            .scalars()
+            .all()
+        )
+        
+        # 計算全局FIFO庫存總和
+        total_global_fifo_inventory = (
+            db.session.execute(
+                db.select(func.sum(FIFOInventory.remaining_rmb))
+                .select_from(FIFOInventory)
+            )
+            .scalar()
+        ) or 0.0
+        
+        # 計算所有RMB帳戶餘額總和
+        total_rmb_account_balance = (
+            db.session.execute(
+                db.select(func.sum(CashAccount.balance))
+                .select_from(CashAccount)
+                .filter(CashAccount.currency == "RMB")
+                .filter(CashAccount.is_active == True)
+            )
+            .scalar()
+        ) or 0.0
+        
+        # 計算正確的FIFO庫存（基於買入-售出）
+        total_purchase_rmb = (
+            db.session.execute(
+                db.select(func.sum(PurchaseRecord.rmb_amount))
+                .select_from(PurchaseRecord)
+            )
+            .scalar()
+        ) or 0.0
+        
+        total_sales_rmb = (
+            db.session.execute(
+                db.select(func.sum(SalesRecord.rmb_amount))
+                .select_from(SalesRecord)
+            )
+            .scalar()
+        ) or 0.0
+        
+        correct_global_fifo = total_purchase_rmb - total_sales_rmb
+        
+        # 檢查各個帳戶的一致性
+        account_issues = []
+        account_details = []
+        
+        for holder in holders_with_accounts:
+            rmb_accounts = [acc for acc in holder.cash_accounts if acc.currency == "RMB" and acc.is_active]
+            for acc in rmb_accounts:
+                # 該帳戶的FIFO庫存總和
+                account_fifo_inventory = (
+                    db.session.execute(
+                        db.select(func.sum(FIFOInventory.remaining_rmb))
+                        .select_from(FIFOInventory)
+                        .join(PurchaseRecord, FIFOInventory.purchase_record_id == PurchaseRecord.id)
+                        .filter(PurchaseRecord.deposit_account_id == acc.id)
+                    )
+                    .scalar()
+                ) or 0.0
+                
+                # 該帳戶的買入總和
+                account_purchase_rmb = (
+                    db.session.execute(
+                        db.select(func.sum(PurchaseRecord.rmb_amount))
+                        .select_from(PurchaseRecord)
+                        .filter(PurchaseRecord.deposit_account_id == acc.id)
+                    )
+                    .scalar()
+                ) or 0.0
+                
+                # 從該帳戶售出的總和
+                account_sales_rmb = (
+                    db.session.execute(
+                        db.select(func.sum(SalesRecord.rmb_amount))
+                        .select_from(SalesRecord)
+                        .filter(SalesRecord.rmb_account_id == acc.id)
+                    )
+                    .scalar()
+                ) or 0.0
+                
+                # 正確的FIFO庫存 = 買入 - 售出
+                correct_fifo = account_purchase_rmb - account_sales_rmb
+                
+                account_difference = acc.balance - account_fifo_inventory
+                
+                account_info = {
+                    "account_id": acc.id,
+                    "account_name": acc.name,
+                    "holder_name": holder.name,
+                    "account_balance": float(acc.balance),
+                    "fifo_inventory": float(account_fifo_inventory),
+                    "correct_fifo": float(correct_fifo),
+                    "purchase_rmb": float(account_purchase_rmb),
+                    "sales_rmb": float(account_sales_rmb),
+                    "difference": float(account_difference),
+                    "has_issue": abs(account_difference) > 0.01
+                }
+                
+                account_details.append(account_info)
+                
+                if abs(account_difference) > 0.01:
+                    account_issues.append(account_info)
+        
+        global_difference = total_rmb_account_balance - total_global_fifo_inventory
+        has_global_issue = abs(global_difference) > 0.01
+        
+        return jsonify({
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "global_summary": {
+                "total_purchase_rmb": float(total_purchase_rmb),
+                "total_sales_rmb": float(total_sales_rmb),
+                "correct_global_fifo": float(correct_global_fifo),
+                "actual_global_fifo": float(total_global_fifo_inventory),
+                "total_rmb_account_balance": float(total_rmb_account_balance),
+                "global_difference": float(global_difference),
+                "fifo_difference": float(total_global_fifo_inventory - correct_global_fifo),
+                "balance_difference": float(total_rmb_account_balance - correct_global_fifo),
+                "has_issue": has_global_issue
+            },
+            "account_details": account_details,
+            "account_issues": account_issues,
+            "summary": {
+                "total_accounts": len(account_details),
+                "accounts_with_issues": len(account_issues),
+                "has_global_issue": has_global_issue
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "status": "error",
+            "message": f"診斷失敗: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
 # 添加狀態檢查 API
 @app.route("/api/admin/data-status", methods=["GET"])
 def get_data_status():
