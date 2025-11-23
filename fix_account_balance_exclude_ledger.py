@@ -67,6 +67,11 @@ def fix_account_balance():
                 
                 acc.balance = new_balance
                 
+                # 也計算從該帳戶扣款的售出（用於對比）
+                sales_deduction = SalesRecord.query.filter(
+                    SalesRecord.rmb_account_id == acc.id
+                ).with_entities(func.sum(SalesRecord.rmb_amount)).scalar() or 0
+                
                 account_fixes.append({
                     'holder': holder.name,
                     'account': acc.name,
@@ -74,13 +79,9 @@ def fix_account_balance():
                     'old_balance': old_balance,
                     'new_balance': new_balance,
                     'deposit_amount': deposit_amount,
-                    'sales_amount': sales_amount
+                    'actual_sold': actual_sold_from_this_account,
+                    'sales_deduction': sales_deduction
                 })
-                
-                # 也計算從該帳戶扣款的售出（用於對比）
-                sales_deduction = SalesRecord.query.filter(
-                    SalesRecord.rmb_account_id == acc.id
-                ).with_entities(func.sum(SalesRecord.rmb_amount)).scalar() or 0
                 
                 print(f"\n{holder.name}-{acc.name} (ID: {acc.id}):")
                 print(f"  買入: {deposit_amount:,.2f} RMB")
