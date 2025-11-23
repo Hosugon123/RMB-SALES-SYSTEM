@@ -12070,30 +12070,23 @@ def remote_data_recovery():
                 new_balance = 0 - payment_amount - ledger_debits + ledger_credits
                 
             elif account.currency == "RMB":
-                # RMB 帳戶餘額計算
+                # RMB 帳戶餘額計算 - 正確邏輯：
+                # 帳戶餘額 = 該帳戶作為deposit_account的買入 - 該帳戶作為rmb_account的售出扣款
+                # 注意：根據業務邏輯，帳戶餘額總和應該等於FIFO庫存總和
+                # LedgerEntry是額外的記錄，不應該影響帳戶餘額計算
+                
+                # 該帳戶作為deposit_account的買入總額
                 deposit_amount = PurchaseRecord.query.filter(
                     PurchaseRecord.deposit_account_id == account.id
                 ).with_entities(func.sum(PurchaseRecord.rmb_amount)).scalar() or 0
                 
+                # 該帳戶作為rmb_account的售出扣款總額
                 sales_amount = SalesRecord.query.filter(
                     SalesRecord.rmb_account_id == account.id
                 ).with_entities(func.sum(SalesRecord.rmb_amount)).scalar() or 0
                 
-                ledger_debits = LedgerEntry.query.filter(
-                    and_(
-                        LedgerEntry.account_id == account.id,
-                        LedgerEntry.entry_type.in_(['WITHDRAW', 'TRANSFER_OUT'])
-                    )
-                ).with_entities(func.sum(LedgerEntry.amount)).scalar() or 0
-                
-                ledger_credits = LedgerEntry.query.filter(
-                    and_(
-                        LedgerEntry.account_id == account.id,
-                        LedgerEntry.entry_type.in_(['DEPOSIT', 'TRANSFER_IN'])
-                    )
-                ).with_entities(func.sum(LedgerEntry.amount)).scalar() or 0
-                
-                new_balance = 0 + deposit_amount - sales_amount - ledger_debits + ledger_credits
+                # 正確的帳戶餘額計算（排除LedgerEntry）
+                new_balance = deposit_amount - sales_amount
             
             account.balance = new_balance
             
