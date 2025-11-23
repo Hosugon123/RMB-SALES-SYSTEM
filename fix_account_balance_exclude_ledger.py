@@ -12,7 +12,7 @@ from app import app, db
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from app import (
-    CashAccount, Holder, PurchaseRecord, SalesRecord
+    CashAccount, Holder, PurchaseRecord, SalesRecord, FIFOInventory, FIFOSalesAllocation
 )
 
 def fix_account_balance():
