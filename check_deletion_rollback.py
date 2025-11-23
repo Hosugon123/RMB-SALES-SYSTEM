@@ -3,6 +3,10 @@
 """
 檢查刪除記錄是否正確回滾餘額
 分析刪除審計日誌，找出未正確回滾的記錄並計算修復金額
+
+支持本地和部署環境：
+- 如果設置了 DATABASE_URL 環境變數，使用部署環境資料庫
+- 否則使用本地 SQLite 資料庫
 """
 
 import sys
@@ -13,6 +17,9 @@ from datetime import datetime
 # 添加項目根目錄到路徑
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 在導入 app 之前設置資料庫連接（如果需要）
+# app.py 會自動檢測 DATABASE_URL 環境變數
+
 from app import app, db
 from app import (
     CashAccount, PurchaseRecord, SalesRecord, 
@@ -22,9 +29,24 @@ from app import (
 def analyze_deletion_rollback():
     """分析刪除記錄的回滾情況"""
     
+    # 檢測資料庫類型
+    database_url = str(db.engine.url) if hasattr(db, 'engine') else "unknown"
+    is_postgresql = 'postgresql' in database_url.lower()
+    is_local = 'sqlite' in database_url.lower() or '///' in database_url
+    
     print("=" * 80)
     print("檢查刪除記錄回滾情況")
     print("=" * 80)
+    print()
+    
+    if is_postgresql:
+        print(f"[INFO] 使用部署環境資料庫 (PostgreSQL)")
+        print(f"連接字串: {database_url[:60]}...")
+    elif is_local:
+        print(f"[INFO] 使用本地資料庫 (SQLite)")
+        print(f"資料庫路徑: {database_url}")
+    else:
+        print(f"[INFO] 資料庫類型: {database_url[:60]}...")
     print()
     
     with app.app_context():

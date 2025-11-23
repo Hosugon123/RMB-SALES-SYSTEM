@@ -3,6 +3,10 @@
 """
 修復刪除記錄未正確回滾的餘額
 根據刪除審計日誌計算並修復餘額
+
+支持本地和部署環境：
+- 如果設置了 DATABASE_URL 環境變數，使用部署環境資料庫
+- 否則使用本地 SQLite 資料庫
 """
 
 import sys
@@ -233,9 +237,24 @@ def calculate_fixes():
 def fix_account_balances(auto_fix=False):
     """修復帳戶餘額"""
     
+    # 檢測資料庫類型
+    database_url = str(db.engine.url) if hasattr(db, 'engine') else "unknown"
+    is_postgresql = 'postgresql' in database_url.lower()
+    is_local = 'sqlite' in database_url.lower() or '///' in database_url
+    
     print("=" * 80)
     print("修復刪除記錄回滾問題")
     print("=" * 80)
+    print()
+    
+    if is_postgresql:
+        print(f"[INFO] 使用部署環境資料庫 (PostgreSQL)")
+        print(f"連接字串: {database_url[:60]}...")
+    elif is_local:
+        print(f"[INFO] 使用本地資料庫 (SQLite)")
+        print(f"資料庫路徑: {database_url}")
+    else:
+        print(f"[INFO] 資料庫類型: {database_url[:60]}...")
     print()
     
     with app.app_context():
